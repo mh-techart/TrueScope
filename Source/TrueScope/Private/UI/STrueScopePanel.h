@@ -1,0 +1,27 @@
+// Copyright 2026 TrueScope contributors
+// SPDX-License-Identifier: Apache-2.0
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Widgets/SCompoundWidget.h"
+
+/**
+ * Root content widget of the TrueScope tab: a 2x2 splitter grid holding the
+ * four scope panels — Waveform, Parade (top) and Vectorscope, Histogram
+ * (bottom). Phase 1 shows labeled placeholders only.
+ */
+class STrueScopePanel : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(STrueScopePanel)
+		{
+		}
+
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs);
+
+private:
+	static TSharedRef<SWidget> MakePlaceholderPanel(const FText& ScopeName);
+};

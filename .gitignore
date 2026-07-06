@@ -1,0 +1,6 @@
+# Build artifacts
+Binaries/
+Intermediate/
+
+# macOS
+.DS_Store

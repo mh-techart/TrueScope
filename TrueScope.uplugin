@@ -1,0 +1,17 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "TrueScope",
+	"Description": "Viewport Scopes for Unreal Engine Editor — Waveform, RGB Parade, Vectorscope and Histogram in a dockable editor window.",
+	"Category": "Editor",
+	"CanContainContent": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "TrueScope",
+			"Type": "Editor",
+			"LoadingPhase": "PostConfigInit"
+		}
+	]
+}
