@@ -17,7 +17,7 @@ Unreal Editor.
      `"LoadingPhase": "PostConfigInit"` (needed later for shader registration
      — set it correctly now to avoid churn),
    - plugin metadata: FriendlyName "TrueScope", Description
-     "Viewport Scopes for Unreal Engine — Waveform, RGB Parade, Vectorscope
+     "Viewport Scopes for Unreal Engine Editor — Waveform, RGB Parade, Vectorscope
      and Histogram in a dockable editor window.", Category "Editor",
      CanContainContent false, Installed false (for now).
 2. Module `FTrueScopeModule` (`StartupModule`/`ShutdownModule`):
