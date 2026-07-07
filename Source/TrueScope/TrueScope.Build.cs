@@ -20,9 +20,14 @@ public class TrueScope : ModuleRules
 			new string[]
 			{
 				"CoreUObject",
+				"Engine",
 				"InputCore",
+				"RHI",
+				"RenderCore",
+				"Renderer",
 				"Slate",
 				"SlateCore",
+				"UnrealEd",
 				"WorkspaceMenuStructure",
 			}
 		);
