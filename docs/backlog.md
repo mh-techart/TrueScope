@@ -44,6 +44,10 @@ without the plugin).
   transforms such as P3 or PQ). V1 is deliberately display-referred
   sRGB/Rec.709 only (see architecture.md).
 - **Toolbar button** to open the TrueScope tab (V1: Window menu only).
+- **Plugin icon (`Resources/Icon128.png`)** — the editor's Plugin Browser
+  logs a missing-Slate-resource line for it; cosmetic only, but needed for a
+  clean log and for Fab/marketplace presentation. Tab icon in the Window
+  menu could reuse it (phase 1 deliberately ships without icons).
 - **Higher refresh rates / per-frame mode** — trivial once the GPU path (M5)
   exists; expose as a setting with a resource-use warning.
 - **Fab listing (free)** — companion distribution channel to GitHub for
