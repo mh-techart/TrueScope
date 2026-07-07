@@ -175,6 +175,25 @@ references only* (what should scopes show for a given input). No code may be
 copied or transliterated from GPL sources. All math here is textbook-standard
 (BT.709 matrices, histogram binning) and is implemented from scratch.
 
+## Dev environment notes
+
+- **MCP toolsets (host `.uproject`, dev-only):** the `ModelContextProtocol`
+  plugin only provides the server + meta-tools; each actual toolset is a
+  separate plugin under `Engine/Plugins/Experimental/Toolsets/`. We enable
+  exactly three instead of Epic's `AllToolsets` aggregator (which pulls in all
+  ~21, most irrelevant to this project):
+  - `SlateInspectorToolset` — Slate UI automation/inspection (Snapshot, Click,
+    PressKey, **Screenshot**, Windows, WaitFor). This is what verifies the
+    TrueScope tab visually. `ToolsetRegistry` is pulled in automatically.
+  - `EditorToolset` — spawning/inspecting test scenes (color charts,
+    gradients) for the WYSIWYG and scope tests from M2 on.
+  - `AutomationTestToolset` — running TrueScope automation tests from the live
+    editor over MCP.
+
+  These live in the host `UEscopes.uproject` (not under version control), not
+  in `TrueScope.uplugin` — they are development tooling, never a plugin
+  dependency shipped to users.
+
 ## References
 
 - DaVinci Resolve scopes (visual reference; see reference screenshot)
