@@ -50,6 +50,18 @@ without the plugin).
   menu could reuse it (phase 1 deliberately ships without icons).
 - **Higher refresh rates / per-frame mode** — trivial once the GPU path (M5)
   exists; expose as a setting with a resource-use warning.
+- **Smooth scope drawing via interpolation (decoupled draw rate)** — the
+  measurement rate (capture + readback + analysis, the expensive part) and the
+  draw rate (rasterizing the scope from existing bin data, nearly free) are
+  independent. Measure at a low rate (~2–3 Hz) but *draw* at display rate
+  (~60 fps), interpolating each scope smoothly from the previous result to the
+  current one. Gives visually fluid scopes without raising measurement load —
+  the right fix for "3 Hz looks choppy", instead of measuring more often.
+  Deliberately deferred from M3: M3 must prove bin-exact correctness on a
+  *static* result (an interpolating scope shows in-between values that are
+  harder to verify). Depends on M3/M4 (a correct static scope first). Once
+  the per-cycle cost measured in M3 is known, this plus a settable
+  measurement rate (M6) covers both performance and smoothness.
 - **Fab listing (free)** — companion distribution channel to GitHub for
   Blueprint-only users; verify current Fab submission terms at M7 time.
 - **Engine version ports (±1 minor)** — after M6; per-version binaries in

@@ -143,12 +143,23 @@ Scopes are mathematically verifiable — exploit that:
    histogram peak in R at max bin; horizontal gradient → diagonal waveform
    line; SMPTE color bars → vectorscope points land in the six graticule
    targets. CPU results later serve as ground truth for GPU results.
-2. **WYSIWYG tests (M2+):** change viewport state (tonemapper on/off, exposure
+2. **Pixel-exact capture check — macOS Digital Color Meter** (fast everyday
+   verification that the captured/displayed image matches the viewport, not
+   just "looks the same"): with the raw preview (M2) or a scope's source
+   visible, use the built-in *Digital Color Meter* utility to read the value
+   at a point in the Unreal viewport and at the corresponding point in
+   TrueScope; they must match. This caught two real M2 bugs by measurement
+   that the eye would miss — an undefined-alpha wash-out and a Slate
+   display-gamma re-encode (`preview ≈ pow(viewport, 1/2.2)`). Use it whenever
+   "do these two image regions carry identical values?" is the question, at
+   any phase. (Windows/Linux equivalents exist; the check is the principle,
+   not the specific tool.)
+3. **WYSIWYG tests (M2+):** change viewport state (tonemapper on/off, exposure
    compensation, show flags) and assert/inspect that captured image and scopes
    follow.
-3. **Editor screenshots** via Epic's Claude Code MCP plugin for layout/visual
+4. **Editor screenshots** via Epic's Claude Code MCP plugin for layout/visual
    checks during development.
-4. **Human sign-off — external cross-check workflow** (acceptance ritual for
+5. **Human sign-off — external cross-check workflow** (acceptance ritual for
    M4, repeat after major analysis changes): compare TrueScope against DaVinci
    Resolve's scopes on the same frame.
    1. Use a test scene with **fixed exposure** (manual exposure / fixed
