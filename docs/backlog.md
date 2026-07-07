@@ -54,5 +54,37 @@ without the plugin).
   Blueprint-only users; verify current Fab submission terms at M7 time.
 - **Engine version ports (±1 minor)** — after M6; per-version binaries in
   GitHub releases.
-- **RGB overlay / luma-only waveform display modes** — small UI/analysis
-  variants once M4 is stable.
+- **Scope display modes** — small per-scope display variants once M4 is
+  stable, seen in FCP: RGB Overlay (all three channels superimposed instead
+  of side-by-side parade), luma-only waveform, **Monochrome** (white instead
+  of colored traces), Show Guides toggle, trace-brightness control. These are
+  display options on a scope, separate from the window layout (below).
+
+## Window layout options (post-M6 feature)
+
+Let the user choose how many scopes are shown and how they are arranged in the
+TrueScope tab — modeled on Final Cut Pro's scopes viewer (the richer, cleaner
+UX reference) and DaVinci Resolve's Scopes window. The *architecture guardrail*
+that makes this cheap to add later — per-scope space-usage policy (responsive
+vs. aspect-locked vectorscope) and extensible scope-type enumeration — is
+established in M3 (see architecture.md); this backlog item is the visible UI
+built on top of it.
+
+- **Layouts:** Single, Dual, Quad (current 2×2), vertical Row (stacked — good
+  when docked to a left/right edge), horizontal Row. FCP offers ~12
+  arrangements via an icon grid; start with the common ones and keep the set
+  extensible. Icon buttons in the tab's title area (FCP style) are preferred
+  over a text dropdown; final choice at build time.
+- **Free arrangement, sensible default:** the user freely sizes and arranges
+  panels; Quad (2×2) is the default so first open looks intentional.
+- **Per-panel scope selection:** each panel has a small dropdown (like UE
+  viewport's camera selector) to switch its scope type independently of the
+  layout — e.g. Dual view with Parade left, switch right panel from Waveform
+  to Histogram. Uses the extensible scope-type enumeration from M3.
+- **Space-usage is a scope-type property, not a layout setting** (settled in
+  architecture.md): responsive scopes (Waveform/Parade/Histogram) fill their
+  panel; the Vectorscope always stays circular with margins. This is why free
+  user arrangement does not conflict with correct scopes.
+- Reference screenshots: DaVinci Resolve (Single/Dual/Quad/4×1) and Final Cut
+  Pro (12-layout icon grid, Display submenu with Vertical Layout / Show Guides
+  / Monochrome / brightness).
