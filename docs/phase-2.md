@@ -98,28 +98,32 @@ Findings from live verification (macOS/Metal, editor level viewport):
 
 ## Acceptance criteria
 
-- [ ] Builds via the CLAUDE.md Build.sh command with no new warnings.
-- [ ] The raw preview in the TrueScope tab shows a live, downscaled image of
+- [x] Builds via the CLAUDE.md Build.sh command with no new warnings.
+- [x] The raw preview in the TrueScope tab shows a live, downscaled image of
       the active level viewport, updating at roughly 2–3 Hz.
-- [ ] **WYSIWYG — tonemapper:** toggling the viewport tonemapper
+- [x] **WYSIWYG — tonemapper:** toggling the viewport tonemapper
       (`Show → Post Processing → Tonemapper`, or exposure changes) is visibly
       reflected in the preview within an update or two. No crash or stall when
       the tonemap pass is disabled. If the chosen hook misbehaves with the
       tonemapper off, fall back to a later pass in the chain and note it.
-- [ ] **WYSIWYG — OCIO:** with an OCIO viewport transform active, the preview
+      *(Tonemap-hook works with the pass disabled; no fallback needed.)*
+- [x] **WYSIWYG — OCIO:** with an OCIO viewport transform active, the preview
       includes that transform (i.e. TrueScope samples after the OCIO pass).
       *Prerequisite: the OpenColorIO plugin is enabled in the host project and
       a view transform is set on the viewport — the human has enabled OCIO for
-      this test.*
-- [ ] Switching the active viewport / focusing a different level viewport
+      this test.* *(Confirmed by the human.)*
+- [x] Switching the active viewport / focusing a different level viewport
       updates which viewport is measured; no viewport → clean "no viewport"
-      state.
-- [ ] Verified via MCP screenshots (tonemapper on vs. off; OCIO on vs. off)
+      state. *(Confirmed by the human.)*
+- [x] Verified via MCP screenshots (tonemapper on vs. off; OCIO on vs. off)
       and reviewed by the human. Automated pixel-level tests are optional and
-      must not block this phase.
-- [ ] Chosen capture hook point + reasoning recorded (commit or note).
-- [ ] Editor stable across open/close of the tab and editor restart; no
-      TrueScope warnings/errors in the Output Log.
+      must not block this phase. *(Preview vs. viewport match measured to
+      ±2–3/255 on the tonemapper on/off screenshots.)*
+- [x] Chosen capture hook point + reasoning recorded (commit or note).
+      *(See "Capture hook" note above.)*
+- [x] Editor stable across open/close of the tab and editor restart; no
+      TrueScope warnings/errors in the Output Log. *(Confirmed by the human,
+      incl. after restart.)*
 
 ## Explicitly out of scope (do not build yet)
 
