@@ -3,6 +3,7 @@
 
 #include "Capture/TrueScopeViewExtension.h"
 
+#include "CommonRenderResources.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "LevelEditorViewport.h"
 #include "PostProcess/PostProcessMaterialInputs.h"
@@ -13,6 +14,8 @@
 #include "ScreenPass.h"
 #include "TextureResource.h"
 #include "UnrealClient.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogTrueScope, Log, All);
 
 FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegister)
 	: FSceneViewExtensionBase(AutoRegister)
@@ -94,16 +97,41 @@ FScreenPassTexture FTrueScopeViewExtension::AfterTonemapPass_RenderThread(FRDGBu
 			// Downscale the view rect into the full capture target (bilinear),
 			// stretching to the working resolution: scopes analyze pixel
 			// values, so the capture's aspect is irrelevant for measurement.
-			AddDrawTexturePass(
+			//
+			// RGB-only writes (CW_RGB): post-tonemap scene-color alpha is
+			// undefined (the tonemapper e.g. stores luma there for FXAA) and
+			// would make Slate alpha-blend the preview away — the target's
+			// alpha stays opaque from its initial clear instead.
+			FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(View.GetFeatureLevel());
+			TShaderMapRef<FScreenPassVS> VertexShader(ShaderMap);
+			TShaderMapRef<FCopyRectPS> PixelShader(ShaderMap);
+
+			FCopyRectPS::FParameters* Parameters = GraphBuilder.AllocParameters<FCopyRectPS::FParameters>();
+			Parameters->InputTexture = SceneColor.Texture;
+			Parameters->InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+			Parameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ELoad);
+
+			AddDrawScreenPass(
 				GraphBuilder,
+				RDG_EVENT_NAME("TrueScope.Capture"),
 				View,
-				SceneColor.Texture,
-				OutputTexture,
-				SceneColor.ViewRect.Min,
-				SceneColor.ViewRect.Size(),
-				FIntPoint::ZeroValue,
-				OutputTexture->Desc.Extent,
-				TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
+				FScreenPassTextureViewport(OutputTexture),
+				FScreenPassTextureViewport(SceneColor),
+				VertexShader,
+				PixelShader,
+				TStaticBlendState<CW_RGB>::GetRHI(),
+				Parameters);
+
+			if (!bFirstCaptureLogged)
+			{
+				bFirstCaptureLogged = true;
+				UE_LOG(LogTrueScope, Log,
+					TEXT("First viewport capture (%dx%d -> %dx%d), input format %s%s"),
+					SceneColor.ViewRect.Width(), SceneColor.ViewRect.Height(),
+					OutputTexture->Desc.Extent.X, OutputTexture->Desc.Extent.Y,
+					GPixelFormats[SceneColor.Texture->Desc.Format].Name,
+					EnumHasAnyFlags(SceneColor.Texture->Desc.Flags, TexCreate_SRGB) ? TEXT(" (sRGB)") : TEXT(""));
+			}
 		}
 	}
 

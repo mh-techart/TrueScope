@@ -80,4 +80,7 @@ private:
 	 * IsActiveThisFrame_Internal (game thread only), hence mutable.
 	 */
 	mutable double LastCaptureTimeSeconds = -1.0e12;
+
+	/** One-time diagnostic log when the capture pass first runs. Render thread. */
+	bool bFirstCaptureLogged = false;
 };

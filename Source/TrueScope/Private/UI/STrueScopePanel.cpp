@@ -8,14 +8,53 @@
 #include "LevelEditorViewport.h"
 #include "Styling/AppStyle.h"
 #include "TrueScopeModule.h"
-#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/SLeafWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopePanel"
+
+/**
+ * Draws the capture render target without Slate's gamma correction
+ * (ESlateDrawEffect::NoGamma), the same way the editor draws its scene
+ * viewports: the capture already holds display-encoded values, and a regular
+ * SImage would get Slate's linear-to-display encode on top, washing it out.
+ * M2 throwaway together with the rest of the preview panel.
+ */
+class STrueScopeCapturePreview : public SLeafWidget
+{
+public:
+	SLATE_BEGIN_ARGS(STrueScopeCapturePreview)
+		{
+		}
+
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs, const FSlateBrush* InBrush)
+	{
+		Brush = InBrush;
+	}
+
+	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+		const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+		const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override
+	{
+		FSlateDrawElement::MakeBox(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(),
+			Brush, ESlateDrawEffect::NoGamma);
+		return LayerId;
+	}
+
+	virtual FVector2D ComputeDesiredSize(float) const override
+	{
+		return FVector2D(Brush->ImageSize);
+	}
+
+private:
+	const FSlateBrush* Brush = nullptr;
+};
 
 void STrueScopePanel::Construct(const FArguments& InArgs)
 {
@@ -109,8 +148,7 @@ TSharedRef<SWidget> STrueScopePanel::MakeCapturePreviewPanel()
 				.Visibility_Lambda([HasActiveViewport]()
 					{ return HasActiveViewport() ? EVisibility::Visible : EVisibility::Collapsed; })
 				[
-					SNew(SImage)
-					.Image(&CapturePreviewBrush)
+					SNew(STrueScopeCapturePreview, &CapturePreviewBrush)
 				]
 			]
 

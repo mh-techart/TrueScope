@@ -55,6 +55,22 @@ priority 0** (`FTrueScopeViewExtension`). Reasoning, verified in
   *After Tonemapping* post-process materials run after this point and are not
   part of the captured signal.
 
+Findings from live verification (macOS/Metal, editor level viewport):
+
+- The post-tonemap scene color arrives as **A2B10G10R10 without an sRGB
+  flag** — display encoding is done in-shader, and the **alpha channel is
+  undefined** (the tonemapper stores FXAA luma there). The capture pass
+  therefore writes **RGB only** (`CW_RGB` blend state); the capture RT keeps
+  opaque alpha from its initial clear, otherwise Slate alpha-blends the
+  preview away.
+- Slate draws editor scene viewports with `ESlateBatchDrawFlag::NoGamma`;
+  a plain `SImage` brush instead gets Slate's display-gamma encode on top,
+  which visibly washes out the preview (verified by pixel measurement:
+  preview ≈ pow(viewport, 1/2.2)). The M2 preview widget therefore draws its
+  brush with `ESlateDrawEffect::NoGamma`; after that, preview and viewport
+  match within ~2/255. The RT bytes themselves are the unmodified
+  display-encoded values — the right measurement input for M3.
+
 ## Tasks
 
 1. **SceneViewExtension** (`Source/TrueScope/Capture/`): a
