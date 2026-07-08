@@ -10,6 +10,7 @@
 
 class FRDGBuilder;
 class FTextureRenderTargetResource;
+class FTrueScopeAnalyzer;
 class UTextureRenderTarget2D;
 struct FPostProcessMaterialInputs;
 struct FScreenPassTexture;
@@ -47,7 +48,8 @@ namespace TrueScope
 class FTrueScopeViewExtension : public FSceneViewExtensionBase, public FGCObject
 {
 public:
-	FTrueScopeViewExtension(const FAutoRegister& AutoRegister);
+	FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
+		const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer);
 
 	//~ Begin ISceneViewExtension interface
 	virtual int32 GetPriority() const override { return TrueScope::CaptureExtensionPriority; }
@@ -71,6 +73,9 @@ private:
 
 	/** Plugin-owned capture target, kept alive via AddReferencedObjects. */
 	TObjectPtr<UTextureRenderTarget2D> CaptureRenderTarget;
+
+	/** Receives the captured texture for async readback + analysis (M3). */
+	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 
 	/** Render target resource, cached for the render thread. Render thread only. */
 	FTextureRenderTargetResource* CaptureResourceRenderThread = nullptr;

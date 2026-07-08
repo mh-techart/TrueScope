@@ -3,6 +3,7 @@
 
 #include "Capture/TrueScopeViewExtension.h"
 
+#include "Analysis/TrueScopeAnalyzer.h"
 #include "CommonRenderResources.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "LevelEditorViewport.h"
@@ -17,8 +18,10 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogTrueScope, Log, All);
 
-FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegister)
+FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
+	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
 	: FSceneViewExtensionBase(AutoRegister)
+	, Analyzer(InAnalyzer)
 {
 	CaptureRenderTarget = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
 	// Non-sRGB: the after-tonemap scene color already holds display-encoded
@@ -121,6 +124,13 @@ FScreenPassTexture FTrueScopeViewExtension::AfterTonemapPass_RenderThread(FRDGBu
 				PixelShader,
 				TStaticBlendState<CW_RGB>::GetRHI(),
 				Parameters);
+
+			// M3: enqueue the async CPU readback of the freshly written
+			// capture in the same graph (RDG orders it after the draw).
+			if (Analyzer)
+			{
+				Analyzer->EnqueueReadback_RenderThread(GraphBuilder, OutputTexture);
+			}
 
 			if (!bFirstCaptureLogged)
 			{

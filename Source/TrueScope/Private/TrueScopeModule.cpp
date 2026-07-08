@@ -3,6 +3,7 @@
 
 #include "TrueScopeModule.h"
 
+#include "Analysis/TrueScopeAnalyzer.h"
 #include "Capture/TrueScopeViewExtension.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
@@ -30,8 +31,15 @@ void FTrueScopeModule::ShutdownModule()
 	FCoreDelegates::GetOnPostEngineInit().RemoveAll(this);
 
 	// The extension registry only holds a weak reference; releasing ours
-	// unregisters the extension.
+	// unregisters the extension, so no further capture pass can enqueue a
+	// readback. Then tear down the analyzer (unhooks its render-thread poll
+	// delegate and releases the readback on the render thread, flushing).
 	ViewExtension.Reset();
+	if (Analyzer.IsValid())
+	{
+		Analyzer->Shutdown();
+		Analyzer.Reset();
+	}
 
 	if (FSlateApplication::IsInitialized())
 	{
@@ -48,7 +56,8 @@ void FTrueScopeModule::OnPostEngineInit()
 		return;
 	}
 
-	ViewExtension = FSceneViewExtensions::NewExtension<FTrueScopeViewExtension>();
+	Analyzer = MakeShared<FTrueScopeAnalyzer, ESPMode::ThreadSafe>();
+	ViewExtension = FSceneViewExtensions::NewExtension<FTrueScopeViewExtension>(Analyzer);
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TrueScopeTabName,
 			FOnSpawnTab::CreateRaw(this, &FTrueScopeModule::SpawnTrueScopeTab))

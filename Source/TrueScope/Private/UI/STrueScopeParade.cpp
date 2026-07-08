@@ -1,0 +1,138 @@
+// Copyright 2026 TrueScope contributors
+// SPDX-License-Identifier: Apache-2.0
+
+#include "UI/STrueScopeParade.h"
+
+#include "Engine/Texture2D.h"
+#include "Fonts/FontMeasure.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Rendering/DrawElements.h"
+#include "Styling/AppStyle.h"
+#include "Styling/CoreStyle.h"
+
+namespace
+{
+	// Fixed-size chrome (architecture guardrail: labels/axes never scale with
+	// the panel).
+	constexpr float PlotPadding = 6.0f;
+	constexpr float LabelStripWidth = 30.0f;
+	constexpr float SectionGap = 4.0f;
+
+	const FLinearColor BackgroundColor(0.008f, 0.008f, 0.008f);
+	const FLinearColor GraticuleColor(0.5f, 0.5f, 0.5f, 0.22f);
+	const FLinearColor LabelColor(0.6f, 0.6f, 0.6f, 0.9f);
+
+	/** 10-bit scale graticule levels (matches the DaVinci Resolve reference). */
+	constexpr int32 GraticuleLevels[] = {0, 256, 512, 768, 1023};
+
+	/** Section tints masking the density texture down to one channel each. */
+	const FLinearColor SectionTints[FTrueScopeAnalysisResult::NumChannels] = {
+		FLinearColor(1.0f, 0.16f, 0.16f),
+		FLinearColor(0.16f, 1.0f, 0.16f),
+		FLinearColor(0.25f, 0.45f, 1.0f),
+	};
+}
+
+void STrueScopeParade::Construct(const FArguments& InArgs,
+	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
+{
+	ParadeBrush.DrawAs = ESlateBrushDrawType::Image;
+	ParadeBrush.Tiling = ESlateBrushTileType::NoTile;
+	InitializeScopeWidget(InAnalyzer, /*bMaintainSquareAspect*/ false);
+}
+
+void STrueScopeParade::OnAnalysisResultChanged()
+{
+	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
+	if (!Result.IsValid() || Result->ParadeImage.Num() == 0)
+	{
+		return;
+	}
+	const FIntPoint Size = Result->ParadeImageSize;
+
+	if (!ParadeTexture.IsValid() || ParadeTexture->GetSizeX() != Size.X || ParadeTexture->GetSizeY() != Size.Y)
+	{
+		UTexture2D* Texture = UTexture2D::CreateTransient(Size.X, Size.Y, PF_B8G8R8A8, TEXT("TrueScopeParade"));
+		// Raw intensity values: no sRGB decode on sampling (drawn with
+		// NoGamma, so the computed display mapping arrives 1:1 on screen).
+		Texture->SRGB = false;
+		Texture->Filter = TF_Bilinear;
+		Texture->UpdateResource();
+		ParadeTexture.Reset(Texture);
+		ParadeBrush.SetResourceObject(Texture);
+		ParadeBrush.ImageSize = FVector2f(Size.X, Size.Y);
+	}
+
+	// Async upload; the shared result (captured in the cleanup lambda) keeps
+	// the source pixels alive until the render thread has consumed them.
+	FUpdateTextureRegion2D* Region = new FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y);
+	ParadeTexture->UpdateTextureRegions(0, 1, Region, Size.X * sizeof(FColor), sizeof(FColor),
+		const_cast<uint8*>(reinterpret_cast<const uint8*>(Result->ParadeImage.GetData())),
+		[KeepAlive = Result](uint8*, const FUpdateTextureRegion2D* InRegion)
+		{
+			delete InRegion;
+		});
+}
+
+int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+{
+	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
+	const FSlateBrush* WhiteBrush = FAppStyle::Get().GetBrush("WhiteBrush");
+
+	FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
+		AllottedGeometry.ToPaintGeometry(FVector2f(Content.GetSize()), FSlateLayoutTransform(FVector2f(Content.GetTopLeft()))),
+		WhiteBrush, ESlateDrawEffect::None, BackgroundColor);
+	++LayerId;
+
+	// Plot area: fixed-size left label strip and padding.
+	const FSlateRect Plot(Content.Left + LabelStripWidth, Content.Top + PlotPadding,
+		Content.Right - PlotPadding, Content.Bottom - PlotPadding);
+	if (Plot.GetSize().X < 32.0f || Plot.GetSize().Y < 16.0f)
+	{
+		return LayerId;
+	}
+
+	// Density sections, drawn under the graticule.
+	if (ParadeTexture.IsValid())
+	{
+		const float SectionWidth =
+			(Plot.GetSize().X - SectionGap * (FTrueScopeAnalysisResult::NumChannels - 1))
+			/ FTrueScopeAnalysisResult::NumChannels;
+		for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
+		{
+			const float SectionLeft = Plot.Left + Channel * (SectionWidth + SectionGap);
+			FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
+				AllottedGeometry.ToPaintGeometry(FVector2f(SectionWidth, Plot.GetSize().Y),
+					FSlateLayoutTransform(FVector2f(SectionLeft, Plot.Top))),
+				&ParadeBrush, ESlateDrawEffect::NoGamma, SectionTints[Channel]);
+		}
+		++LayerId;
+	}
+
+	// Graticule + fixed-size 10-bit scale labels.
+	const TSharedRef<FSlateFontMeasure> FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+	const FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 8);
+	for (int32 Level : GraticuleLevels)
+	{
+		const float Y = Plot.Bottom - Plot.GetSize().Y * (Level / 1023.0f);
+
+		TArray<FVector2f> Line;
+		Line.Add(FVector2f(Plot.Left, Y));
+		Line.Add(FVector2f(Plot.Right, Y));
+		FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(),
+			Line, ESlateDrawEffect::None, GraticuleColor, /*bAntialias*/ true, 1.0f);
+
+		const FString LabelString = FString::Printf(TEXT("%d"), Level);
+		const FVector2f LabelSize = FVector2f(FontMeasure->Measure(LabelString, LabelFont));
+		const float LabelY = FMath::Clamp(Y - LabelSize.Y * 0.5f, Content.Top, Content.Bottom - LabelSize.Y);
+		FSlateDrawElement::MakeText(OutDrawElements, LayerId,
+			AllottedGeometry.ToPaintGeometry(LabelSize,
+				FSlateLayoutTransform(FVector2f(Plot.Left - 4.0f - LabelSize.X, LabelY))),
+			LabelString, LabelFont, ESlateDrawEffect::None, LabelColor);
+	}
+	++LayerId;
+
+	return LayerId;
+}
