@@ -42,13 +42,16 @@ struct FTrueScopeAnalysisResult
 	TArray<uint32> Parade[NumChannels];
 
 	/**
-	 * Display-mapped parade density image (log intensity, see
-	 * TrueScopeAnalysis.h), one FColor per (column, row): width SourceSize.X,
-	 * height NumBins, row 0 = top = bin 255. The R/G/B channels of each pixel
-	 * hold the respective channel's intensity, so a widget can tint out a
-	 * single channel. Derived convenience data, not ground truth.
+	 * Display-mapped parade density, one intensity array PER channel (log
+	 * intensity, see TrueScopeAnalysis.h), size SourceSize.X * NumBins, indexed
+	 * [Row * SourceSize.X + Column] with Row 0 = top = highest value bin.
+	 *
+	 * Each array holds ONLY its own channel's density: the parade's R/G/B
+	 * blocks are single-channel by construction, so a block can never show
+	 * another channel's trace (no cross-channel bleed). Derived convenience
+	 * data, not ground truth.
 	 */
-	TArray<FColor> ParadeImage;
+	TArray<uint8> ParadeChannelIntensity[NumChannels];
 	FIntPoint ParadeImageSize = FIntPoint::ZeroValue;
 
 	/** Cost of the CPU analysis (background task), for the M3 measurement. */

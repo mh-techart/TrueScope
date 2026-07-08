@@ -64,33 +64,37 @@ void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult)
 	const int32 Height = FTrueScopeAnalysisResult::NumBins;
 	if (Width <= 0)
 	{
-		InOutResult.ParadeImage.Reset();
+		for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
+		{
+			InOutResult.ParadeChannelIntensity[Channel].Reset();
+		}
 		InOutResult.ParadeImageSize = FIntPoint::ZeroValue;
 		return;
 	}
 
 	InOutResult.ParadeImageSize = FIntPoint(Width, Height);
-	InOutResult.ParadeImage.SetNumUninitialized(Width * Height);
 
 	// Maximum possible count per (column, bin) cell: every source row of the
 	// column holding the same value.
 	const uint32 MaxCount = static_cast<uint32>(InOutResult.SourceSize.Y);
 
-	// Precomputed 32-entry-per-count table would be overkill: map per cell.
-	FColor* Out = InOutResult.ParadeImage.GetData();
-	for (int32 Row = 0; Row < Height; ++Row)
+	// One independent intensity image per channel — the block for channel C is
+	// fed only channel C, so nothing from the other channels can appear in it.
+	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
-		const int32 Bin = (Height - 1) - Row; // row 0 = top = brightest bin
-		for (int32 Column = 0; Column < Width; ++Column, ++Out)
+		TArray<uint8>& Image = InOutResult.ParadeChannelIntensity[Channel];
+		Image.SetNumUninitialized(Width * Height);
+		const uint32* Counts = InOutResult.Parade[Channel].GetData();
+
+		uint8* Out = Image.GetData();
+		for (int32 Row = 0; Row < Height; ++Row)
 		{
-			const int32 CellIndex = Column * FTrueScopeAnalysisResult::NumBins + Bin;
-			const uint8 R = static_cast<uint8>(FMath::RoundToInt(255.0f
-				* CountToIntensity(InOutResult.Parade[FTrueScopeAnalysisResult::ChannelR][CellIndex], MaxCount)));
-			const uint8 G = static_cast<uint8>(FMath::RoundToInt(255.0f
-				* CountToIntensity(InOutResult.Parade[FTrueScopeAnalysisResult::ChannelG][CellIndex], MaxCount)));
-			const uint8 B = static_cast<uint8>(FMath::RoundToInt(255.0f
-				* CountToIntensity(InOutResult.Parade[FTrueScopeAnalysisResult::ChannelB][CellIndex], MaxCount)));
-			*Out = FColor(R, G, B, 255);
+			const int32 Bin = (Height - 1) - Row; // row 0 = top = brightest bin
+			for (int32 Column = 0; Column < Width; ++Column, ++Out)
+			{
+				const int32 CellIndex = Column * FTrueScopeAnalysisResult::NumBins + Bin;
+				*Out = static_cast<uint8>(FMath::RoundToInt(255.0f * CountToIntensity(Counts[CellIndex], MaxCount)));
+			}
 		}
 	}
 }

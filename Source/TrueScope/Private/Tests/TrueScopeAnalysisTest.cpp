@@ -70,6 +70,68 @@ namespace
 		}
 		return Occupied;
 	}
+
+	/**
+	 * True iff the channel's parade intensity image has content on ExpectRow
+	 * and *only* there — i.e. every other row sums to zero. Catches the parade
+	 * channel-bleed bug: a block that showed another channel's trace would have
+	 * a non-zero row where that other channel's values land.
+	 */
+	bool TraceOnlyOnRow(const FResult& Result, int32 Channel, int32 ExpectRow)
+	{
+		const int32 Width = Result.ParadeImageSize.X;
+		const int32 Height = Result.ParadeImageSize.Y;
+		const TArray<uint8>& Image = Result.ParadeChannelIntensity[Channel];
+		if (Image.Num() != Width * Height)
+		{
+			return false;
+		}
+		for (int32 Row = 0; Row < Height; ++Row)
+		{
+			uint32 RowSum = 0;
+			for (int32 Column = 0; Column < Width; ++Column)
+			{
+				RowSum += Image[Row * Width + Column];
+			}
+			if (Row == ExpectRow)
+			{
+				if (RowSum == 0) { return false; } // expected trace missing
+			}
+			else if (RowSum != 0)
+			{
+				return false; // stray content on a row that must be empty
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Runs the pure-channel no-bleed assertions for a solid image of one
+	 * primary. The "on" channel is full (value 255 -> top row 0); the two
+	 * "off" channels are zero (value 0 -> bottom row Height-1). Each block must
+	 * carry a trace on exactly its own row and nowhere else.
+	 */
+	void CheckPureChannelNoBleed(FAutomationTestBase& Test, int32 OnChannel, const FColor& Solid)
+	{
+		constexpr int32 Width = 40;
+		constexpr int32 Height = 24;
+		TArray<FColor> Pixels;
+		Pixels.Init(Solid, Width * Height);
+
+		FResult Result;
+		TrueScope::AnalyzePixels(Pixels, Width, Height, Result);
+		TrueScope::BuildParadeImage(Result);
+
+		const int32 TopRow = 0;                          // value 255 -> highest bin
+		const int32 BottomRow = FResult::NumBins - 1;    // value 0 -> lowest bin
+		for (int32 Channel = 0; Channel < FResult::NumChannels; ++Channel)
+		{
+			const int32 ExpectRow = (Channel == OnChannel) ? TopRow : BottomRow;
+			Test.TestTrue(
+				*FString::Printf(TEXT("Channel %d trace only on row %d (no bleed)"), Channel, ExpectRow),
+				TraceOnlyOnRow(Result, Channel, ExpectRow));
+		}
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeSolidRedTest,
@@ -218,6 +280,47 @@ bool FTrueScopeFlatMidGrayTest::RunTest(const FString&)
 	}
 	TestTrue(TEXT("Parade is a flat horizontal line at mid-height"), bFlatLine);
 
+	return true;
+}
+
+// Regression tests for the parade channel-bleed bug: each parade block must
+// show only its own channel. A solid primary gives the other two channels no
+// content to bleed except at value 0 (their own legitimate baseline row), so
+// any non-empty row elsewhere in an "off" block is a bleed. The earlier
+// solid-red test alone missed this — a pure-red image has no green/blue to
+// bleed anywhere.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeParadePureRedNoBleedTest,
+	"TrueScope.Analysis.ParadePureRedNoBleed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeParadePureRedNoBleedTest::RunTest(const FString&)
+{
+	// Pure red: R block trace at top, G and B blocks empty (only their value-0
+	// baseline), no red bleeding into them.
+	CheckPureChannelNoBleed(*this, FResult::ChannelR, FColor(255, 0, 0, 255));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeParadePureGreenNoBleedTest,
+	"TrueScope.Analysis.ParadePureGreenNoBleed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeParadePureGreenNoBleedTest::RunTest(const FString&)
+{
+	CheckPureChannelNoBleed(*this, FResult::ChannelG, FColor(0, 255, 0, 255));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeParadePureBlueNoBleedTest,
+	"TrueScope.Analysis.ParadePureBlueNoBleed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeParadePureBlueNoBleedTest::RunTest(const FString&)
+{
+	// The block that showed the worst bleed in the reported bug: pure blue must
+	// leave the R and G blocks empty (no red/green traces behind the blue).
+	CheckPureChannelNoBleed(*this, FResult::ChannelB, FColor(0, 0, 255, 255));
 	return true;
 }
 

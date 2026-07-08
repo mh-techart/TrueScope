@@ -25,53 +25,86 @@ namespace
 	/** 10-bit scale graticule levels (matches the DaVinci Resolve reference). */
 	constexpr int32 GraticuleLevels[] = {0, 256, 512, 768, 1023};
 
-	/** Section tints masking the density texture down to one channel each. */
-	const FLinearColor SectionTints[FTrueScopeAnalysisResult::NumChannels] = {
-		FLinearColor(1.0f, 0.16f, 0.16f),
-		FLinearColor(0.16f, 1.0f, 0.16f),
-		FLinearColor(0.25f, 0.45f, 1.0f),
-	};
+	/**
+	 * Colour written into each channel's density texel — the single-channel
+	 * intensity goes into exactly the channel's own component, zero elsewhere,
+	 * so a block physically cannot contain another channel's trace.
+	 */
+	FColor MakeChannelTexel(int32 Channel, uint8 Intensity)
+	{
+		switch (Channel)
+		{
+		case FTrueScopeAnalysisResult::ChannelR: return FColor(Intensity, 0, 0, 255);
+		case FTrueScopeAnalysisResult::ChannelG: return FColor(0, Intensity, 0, 255);
+		default:                                 return FColor(0, 0, Intensity, 255);
+		}
+	}
 }
 
 void STrueScopeParade::Construct(const FArguments& InArgs,
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
 {
-	ParadeBrush.DrawAs = ESlateBrushDrawType::Image;
-	ParadeBrush.Tiling = ESlateBrushTileType::NoTile;
+	for (FSlateBrush& Brush : ChannelBrush)
+	{
+		Brush.DrawAs = ESlateBrushDrawType::Image;
+		Brush.Tiling = ESlateBrushTileType::NoTile;
+	}
 	InitializeScopeWidget(InAnalyzer, /*bMaintainSquareAspect*/ false);
 }
 
 void STrueScopeParade::OnAnalysisResultChanged()
 {
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
-	if (!Result.IsValid() || Result->ParadeImage.Num() == 0)
+	if (!Result.IsValid() || Result->ParadeImageSize.X <= 0)
 	{
 		return;
 	}
 	const FIntPoint Size = Result->ParadeImageSize;
+	const int32 NumTexels = Size.X * Size.Y;
 
-	if (!ParadeTexture.IsValid() || ParadeTexture->GetSizeX() != Size.X || ParadeTexture->GetSizeY() != Size.Y)
+	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
-		UTexture2D* Texture = UTexture2D::CreateTransient(Size.X, Size.Y, PF_B8G8R8A8, TEXT("TrueScopeParade"));
-		// Raw intensity values: no sRGB decode on sampling (drawn with
-		// NoGamma, so the computed display mapping arrives 1:1 on screen).
-		Texture->SRGB = false;
-		Texture->Filter = TF_Bilinear;
-		Texture->UpdateResource();
-		ParadeTexture.Reset(Texture);
-		ParadeBrush.SetResourceObject(Texture);
-		ParadeBrush.ImageSize = FVector2f(Size.X, Size.Y);
-	}
-
-	// Async upload; the shared result (captured in the cleanup lambda) keeps
-	// the source pixels alive until the render thread has consumed them.
-	FUpdateTextureRegion2D* Region = new FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y);
-	ParadeTexture->UpdateTextureRegions(0, 1, Region, Size.X * sizeof(FColor), sizeof(FColor),
-		const_cast<uint8*>(reinterpret_cast<const uint8*>(Result->ParadeImage.GetData())),
-		[KeepAlive = Result](uint8*, const FUpdateTextureRegion2D* InRegion)
+		const TArray<uint8>& Intensity = Result->ParadeChannelIntensity[Channel];
+		if (Intensity.Num() != NumTexels)
 		{
-			delete InRegion;
-		});
+			continue;
+		}
+
+		if (!ChannelTexture[Channel].IsValid()
+			|| ChannelTexture[Channel]->GetSizeX() != Size.X || ChannelTexture[Channel]->GetSizeY() != Size.Y)
+		{
+			// NAME_None: let each of the three channel textures get a unique
+			// auto-generated name. A shared explicit name makes the 2nd/3rd
+			// CreateTransient collide with the still-referenced 1st in the
+			// transient package and assert in FreeUObjectIndex.
+			UTexture2D* Texture = UTexture2D::CreateTransient(Size.X, Size.Y, PF_B8G8R8A8);
+			// Raw intensity values: no sRGB decode on sampling (drawn with
+			// NoGamma, so the computed display mapping arrives 1:1 on screen).
+			Texture->SRGB = false;
+			Texture->Filter = TF_Bilinear;
+			Texture->UpdateResource();
+			ChannelTexture[Channel].Reset(Texture);
+			ChannelBrush[Channel].SetResourceObject(Texture);
+			ChannelBrush[Channel].ImageSize = FVector2f(Size.X, Size.Y);
+		}
+
+		// Colour the single-channel intensity into a private BGRA buffer, freed
+		// by the async-upload cleanup once the render thread has consumed it.
+		FColor* Texels = static_cast<FColor*>(FMemory::Malloc(NumTexels * sizeof(FColor)));
+		for (int32 Index = 0; Index < NumTexels; ++Index)
+		{
+			Texels[Index] = MakeChannelTexel(Channel, Intensity[Index]);
+		}
+
+		FUpdateTextureRegion2D* Region = new FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y);
+		ChannelTexture[Channel]->UpdateTextureRegions(0, 1, Region, Size.X * sizeof(FColor), sizeof(FColor),
+			reinterpret_cast<uint8*>(Texels),
+			[](uint8* SrcData, const FUpdateTextureRegion2D* InRegion)
+			{
+				FMemory::Free(SrcData);
+				delete InRegion;
+			});
+	}
 }
 
 int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
@@ -94,19 +127,24 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 		return LayerId;
 	}
 
-	// Density sections, drawn under the graticule.
-	if (ParadeTexture.IsValid())
+	// Density sections, drawn under the graticule. Each section samples only
+	// its own channel's texture (colour already baked in), so it is drawn with
+	// a plain white tint — no cross-channel masking that could bleed.
 	{
 		const float SectionWidth =
 			(Plot.GetSize().X - SectionGap * (FTrueScopeAnalysisResult::NumChannels - 1))
 			/ FTrueScopeAnalysisResult::NumChannels;
 		for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 		{
+			if (!ChannelTexture[Channel].IsValid())
+			{
+				continue;
+			}
 			const float SectionLeft = Plot.Left + Channel * (SectionWidth + SectionGap);
 			FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
 				AllottedGeometry.ToPaintGeometry(FVector2f(SectionWidth, Plot.GetSize().Y),
 					FSlateLayoutTransform(FVector2f(SectionLeft, Plot.Top))),
-				&ParadeBrush, ESlateDrawEffect::NoGamma, SectionTints[Channel]);
+				&ChannelBrush[Channel], ESlateDrawEffect::NoGamma, FLinearColor::White);
 		}
 		++LayerId;
 	}

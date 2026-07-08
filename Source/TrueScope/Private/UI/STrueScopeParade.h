@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "Analysis/TrueScopeAnalysisResult.h"
 #include "CoreMinimal.h"
 #include "Styling/SlateBrush.h"
 #include "UI/STrueScopeWidget.h"
@@ -15,12 +16,12 @@ class UTexture2D;
  * RGB parade scope: three side-by-side sections (R, G, B), each plotting the
  * channel's value distribution per image column on a 10-bit 0-1023 scale.
  *
- * The density data (columns x bins, log-mapped intensity — see
- * FTrueScopeAnalysisResult::ParadeImage) is uploaded into a dynamic texture
- * and drawn bilinearly scaled per section with the channel tinted out;
- * graticule lines and the fixed-size scale labels are anti-aliased Slate
- * elements on top (architecture "anti-pixelation recipe"). Responsive: fills
- * its panel.
+ * Each section has its own single-channel density texture, fed from that
+ * channel's intensity array (FTrueScopeAnalysisResult::ParadeChannelIntensity)
+ * and drawn bilinearly scaled in the channel's colour — so a block can only
+ * ever show its own channel, never bleed from the other two. Graticule lines
+ * and the fixed-size scale labels are anti-aliased Slate elements on top
+ * (architecture "anti-pixelation recipe"). Responsive: fills its panel.
  */
 class STrueScopeParade : public STrueScopeWidget
 {
@@ -41,9 +42,9 @@ protected:
 	virtual void OnAnalysisResultChanged() override;
 
 private:
-	/** Density texture, recreated on size change, updated per result. */
-	TStrongObjectPtr<UTexture2D> ParadeTexture;
+	/** Per-channel density textures, recreated on size change, updated per result. */
+	TStrongObjectPtr<UTexture2D> ChannelTexture[FTrueScopeAnalysisResult::NumChannels];
 
-	/** Brush wrapping ParadeTexture for MakeBox. */
-	FSlateBrush ParadeBrush;
+	/** Brushes wrapping the per-channel textures for MakeBox. */
+	FSlateBrush ChannelBrush[FTrueScopeAnalysisResult::NumChannels];
 };

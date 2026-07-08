@@ -16,7 +16,7 @@ namespace TrueScope
 	/**
 	 * Builds histogram and parade counts from an 8-bit BGRA pixel array
 	 * (FColor layout, row-major, tightly packed). Fills Histogram, Parade and
-	 * SourceSize of OutResult; does not touch the derived ParadeImage.
+	 * SourceSize of OutResult; does not touch the derived ParadeChannelIntensity.
 	 */
 	void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, FTrueScopeAnalysisResult& OutResult);
 
@@ -29,11 +29,12 @@ namespace TrueScope
 	float CountToIntensity(uint32 Count, uint32 MaxCount);
 
 	/**
-	 * Builds the display-mapped parade density image from the parade counts
-	 * (see FTrueScopeAnalysisResult::ParadeImage for the layout). Intensities
-	 * are normalized against the maximum possible count per cell — the image
-	 * height, i.e. a column with every row at one value — so brightness is
-	 * stable over time instead of re-scaling with scene content.
+	 * Builds the display-mapped per-channel parade density from the parade
+	 * counts (see FTrueScopeAnalysisResult::ParadeChannelIntensity for the
+	 * layout). Intensities are normalized against the maximum possible count
+	 * per cell — the source height, i.e. a column with every row at one value —
+	 * so brightness is stable over time instead of re-scaling with scene
+	 * content.
 	 */
 	void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult);
 }
