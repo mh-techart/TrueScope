@@ -62,6 +62,19 @@ without the plugin).
   harder to verify). Depends on M3/M4 (a correct static scope first). Once
   the per-cycle cost measured in M3 is known, this plus a settable
   measurement rate (M6) covers both performance and smoothness.
+- **Cheaper readback retrieval (render-thread cost)** — M3 measured the
+  render-thread step that maps the staging texture and copies it to CPU
+  (`Lock` + row-by-row copy + `Unlock` in `FTrueScopeAnalyzer::
+  PollReadback_RenderThread`) at ~41 ms per capture on this machine (Metal,
+  960×540 BGRA8) — the dominant per-cycle CPU cost and far above the ~7 ms
+  analysis. It only runs on throttled capture frames (~2.5 Hz), so the editor
+  stays responsive, but it is a periodic render-thread hitch. Options to
+  explore: `Lock` on the render thread but hand the mapped pointer + pitch to
+  the background task for the slow copy (then `Unlock`); investigate whether
+  the Metal `Lock` itself (not the memcpy) dominates and whether a
+  persistently-mapped buffer readback avoids it; or reduce the capture
+  resolution. Tie-in with the settable measurement rate (M6) and the GPU path
+  (M5, which removes the CPU copy entirely for the GPU analysis result).
 - **Fab listing (free)** — companion distribution channel to GitHub for
   Blueprint-only users; verify current Fab submission terms at M7 time.
 - **Engine version ports (±1 minor)** — after M6; per-version binaries in
