@@ -58,6 +58,20 @@ struct FTrueScopeAnalysisResult
 	FIntPoint ParadeImageSize = FIntPoint::ZeroValue;
 
 	/**
+	 * Luma waveform: per-column counts over BT.709 luma bins, indexed
+	 * [Column * NumBins + Bin], size SourceSize.X * NumBins. Exact counts; the
+	 * luma is the vectorscope's own intermediate, not a second colour pass.
+	 */
+	TArray<uint32> LumaParade;
+
+	/**
+	 * Display-mapped luma density, laid out exactly like ParadeChannelIntensity
+	 * (size ParadeImageSize, row 0 = top = highest value bin). Derived
+	 * convenience data, not ground truth.
+	 */
+	TArray<uint8> LumaIntensity;
+
+	/**
 	 * Vectorscope: pixel counts over the (Cb, Cr) plane, indexed
 	 * [CrBin * NumVectorBins + CbBin]; bin 0 = -0.5, last bin = +0.5 on both
 	 * axes. Exact counts (ground truth for the M5 GPU path).

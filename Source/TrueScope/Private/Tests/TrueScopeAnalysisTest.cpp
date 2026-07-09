@@ -568,7 +568,7 @@ bool FTrueScopeWaveformHorizontalGradientTest::RunTest(const FString&)
 
 	TArray<FColor> Texels;
 	Texels.SetNumUninitialized(Result.ParadeImageSize.X * Result.ParadeImageSize.Y);
-	TrueScope::BuildWaveformTexels(Result, Texels);
+	TrueScope::BuildRgbWaveformTexels(Result, Texels);
 
 	const int32 ImageWidth = Result.ParadeImageSize.X;
 	const int32 ImageHeight = Result.ParadeImageSize.Y;

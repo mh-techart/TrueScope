@@ -33,11 +33,33 @@ namespace TrueScope
 		float Cr = 0.0f;
 	};
 
-	/** R'G'B' in [0,1] -> BT.709 Cb/Cr. */
-	FChroma RgbToChroma(float R, float G, float B);
+	/**
+	 * Full BT.709 Y'CbCr of one pixel: luma in [0,1], chroma in [-0.5, 0.5].
+	 * Luma is the vectorscope's own intermediate, so the analysis loop gets the
+	 * luma waveform's data for free by taking it rather than recomputing it.
+	 */
+	struct FYCbCr
+	{
+		float Luma = 0.0f;
+		FChroma Chroma;
+	};
 
-	/** 8-bit display-encoded pixel -> BT.709 Cb/Cr. */
-	FChroma RgbToChroma(const FColor& Color);
+	/** R'G'B' in [0,1] -> BT.709 Y'CbCr. */
+	FYCbCr RgbToYCbCr(float R, float G, float B);
+
+	/** 8-bit display-encoded pixel -> BT.709 Y'CbCr. */
+	FYCbCr RgbToYCbCr(const FColor& Color);
+
+	/** Chroma only — the vectorscope graticule needs nothing else. */
+	inline FChroma RgbToChroma(float R, float G, float B)
+	{
+		return RgbToYCbCr(R, G, B).Chroma;
+	}
+
+	inline FChroma RgbToChroma(const FColor& Color)
+	{
+		return RgbToYCbCr(Color).Chroma;
+	}
 
 	/**
 	 * Bin index of a chroma component on the vectorscope's
@@ -45,6 +67,13 @@ namespace TrueScope
 	 * +0.5. Neutral (0.0) lands on the first bin above center.
 	 */
 	int32 ChromaToBin(float Chroma);
+
+	/**
+	 * Value bin of a luma in [0,1] on the same NumBins axis the R/G/B channels
+	 * use, so a neutral pixel bins on its own code value and the luma waveform
+	 * reads on the shared 0-1023 scale.
+	 */
+	int32 LumaToBin(float Luma);
 
 	/** One graticule target of the vectorscope: a 75 % color-bar position. */
 	struct FVectorscopeTarget

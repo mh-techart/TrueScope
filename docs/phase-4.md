@@ -81,6 +81,34 @@ add:
 - **Waveform:** a horizontal gradient produces the diagonal trace (as the
   parade does, but unseparated).
 
+## Post-review addition — waveform Luma / RGB display modes
+
+Task 2 originally specified only the combined RGB trace, which conflicted with
+the `architecture.md` "Color math" row ("BT.709 R'G'B' → Y'CbCr for vectorscope
+and **luma waveform**"). Resolved by giving the waveform both, user-switchable:
+
+- **RGB** (default, as in Resolve) — the three channel densities superimposed;
+  the view for colour balance. Keeping Resolve's default keeps the scope
+  cross-check apples-to-apples.
+- **Luma** — BT.709 luma only, drawn as a neutral trace; the classic exposure
+  waveform.
+
+Neither is "the" waveform, so neither is hardcoded. This is the second user of
+the `FTrueScopeDisplayMode` mechanism from Task 1 and needed only the three
+overrides. No new colour maths: `RgbToChroma` already derived the BT.709 luma
+per pixel for the vectorscope and discarded it, so it was widened to
+`RgbToYCbCr` and the analysis loop bins the luma it was already computing.
+With this, the architecture's Color-math row is literally true and the
+`backlog.md` "luma-only waveform" idea is delivered.
+
+Two tests, split across the layers the histogram bug taught us to separate:
+
+- `Analysis.LumaWaveform` — luma bins match the published BT.709 weights
+  (pure R/G/B land on 54/182/18), independent of the RGB path.
+- `UI.WaveformModeSelection` — each mode draws its own dataset: on a pure-green
+  frame the RGB trace sits at bin 255 in green and the luma trace alone at bin
+  182 in neutral. Verified to fail when the two modes are deliberately crossed.
+
 ## Post-review fix — histogram vertical scale
 
 The M4 review (Resolve cross-check on a ColorCalibrator frame) found the three
@@ -139,11 +167,13 @@ bin arrays, and `UI.HistogramChannelLayout` only checked geometry:
       TrueScope.UI.ValueScale test pins the shared axis and both gridline
       sets; visible in the screenshot.)*
 - [x] All automation tests pass (the seven existing plus the new SMPTE-bars,
-      histogram-channel and waveform tests). *(Self-verified headless: 16/16
+      histogram-channel and waveform tests). *(Self-verified headless: 18/18
       Result={Success} — the 7 from M3 plus Chroma709, ColorBarsVectorscope,
       ColorBarsParade, WaveformHorizontalGradient, HistogramChannels,
-      UI.ValueScale, UI.HistogramChannelLayout, and the two post-review tests
-      UI.HistogramChannelAssignment and UI.HistogramCurveScale.)*
+      UI.ValueScale, UI.HistogramChannelLayout, the two post-review histogram
+      tests UI.HistogramChannelAssignment and UI.HistogramCurveScale, and the
+      two waveform-mode tests Analysis.LumaWaveform and
+      UI.WaveformModeSelection.)*
 - [ ] **Scope cross-check vs. DaVinci Resolve** (architecture.md method,
       point 5) performed by the human on a ColorCalibrator frame for all four
       scopes; values agree on their scales (appearance may differ by mapping).

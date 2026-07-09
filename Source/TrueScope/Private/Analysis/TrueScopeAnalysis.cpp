@@ -24,6 +24,7 @@ void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, F
 		OutResult.Histogram[Channel].SetNumZeroed(FTrueScopeAnalysisResult::NumBins);
 		OutResult.Parade[Channel].SetNumZeroed(Width * FTrueScopeAnalysisResult::NumBins);
 	}
+	OutResult.LumaParade.SetNumZeroed(Width * FTrueScopeAnalysisResult::NumBins);
 	OutResult.Vectorscope.SetNumZeroed(
 		FTrueScopeAnalysisResult::NumVectorBins * FTrueScopeAnalysisResult::NumVectorBins);
 
@@ -33,6 +34,7 @@ void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, F
 	uint32* ParadeR = OutResult.Parade[FTrueScopeAnalysisResult::ChannelR].GetData();
 	uint32* ParadeG = OutResult.Parade[FTrueScopeAnalysisResult::ChannelG].GetData();
 	uint32* ParadeB = OutResult.Parade[FTrueScopeAnalysisResult::ChannelB].GetData();
+	uint32* LumaParade = OutResult.LumaParade.GetData();
 	uint32* Vector = OutResult.Vectorscope.GetData();
 
 	const FColor* Pixel = Pixels.GetData();
@@ -50,8 +52,12 @@ void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, F
 			++ParadeG[ColumnBase + Pixel->G];
 			++ParadeB[ColumnBase + Pixel->B];
 
-			const FChroma Chroma = RgbToChroma(*Pixel);
-			++Vector[ChromaToBin(Chroma.Cr) * FTrueScopeAnalysisResult::NumVectorBins + ChromaToBin(Chroma.Cb)];
+			// One BT.709 conversion feeds both the luma waveform and the
+			// vectorscope; the luma is the chroma's own intermediate.
+			const FYCbCr Ycc = RgbToYCbCr(*Pixel);
+			++LumaParade[ColumnBase + LumaToBin(Ycc.Luma)];
+			++Vector[ChromaToBin(Ycc.Chroma.Cr) * FTrueScopeAnalysisResult::NumVectorBins
+				+ ChromaToBin(Ycc.Chroma.Cb)];
 		}
 	}
 }
@@ -64,6 +70,32 @@ float CountToIntensity(uint32 Count, uint32 MaxCount)
 	}
 	return FMath::Loge(1.0f + IntensityGain * static_cast<float>(Count))
 		/ FMath::Loge(1.0f + IntensityGain * static_cast<float>(MaxCount));
+}
+
+namespace
+{
+	/**
+	 * Maps one column-x-bin count array to a display-mapped intensity image
+	 * (row 0 = top = highest bin). Shared by the parade's three channel images
+	 * and the luma waveform, so all four traces carry the same density curve.
+	 */
+	void BuildColumnIntensityImage(const TArray<uint32>& Counts, int32 Width, uint32 MaxCount, TArray<uint8>& OutImage)
+	{
+		const int32 Height = FTrueScopeAnalysisResult::NumBins;
+		OutImage.SetNumUninitialized(Width * Height);
+
+		const uint32* Cells = Counts.GetData();
+		uint8* Out = OutImage.GetData();
+		for (int32 Row = 0; Row < Height; ++Row)
+		{
+			const int32 Bin = (Height - 1) - Row; // row 0 = top = brightest bin
+			for (int32 Column = 0; Column < Width; ++Column, ++Out)
+			{
+				const int32 CellIndex = Column * FTrueScopeAnalysisResult::NumBins + Bin;
+				*Out = static_cast<uint8>(FMath::RoundToInt(255.0f * CountToIntensity(Cells[CellIndex], MaxCount)));
+			}
+		}
+	}
 }
 
 void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult)
@@ -90,21 +122,22 @@ void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult)
 	// fed only channel C, so nothing from the other channels can appear in it.
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
-		TArray<uint8>& Image = InOutResult.ParadeChannelIntensity[Channel];
-		Image.SetNumUninitialized(Width * Height);
-		const uint32* Counts = InOutResult.Parade[Channel].GetData();
-
-		uint8* Out = Image.GetData();
-		for (int32 Row = 0; Row < Height; ++Row)
-		{
-			const int32 Bin = (Height - 1) - Row; // row 0 = top = brightest bin
-			for (int32 Column = 0; Column < Width; ++Column, ++Out)
-			{
-				const int32 CellIndex = Column * FTrueScopeAnalysisResult::NumBins + Bin;
-				*Out = static_cast<uint8>(FMath::RoundToInt(255.0f * CountToIntensity(Counts[CellIndex], MaxCount)));
-			}
-		}
+		BuildColumnIntensityImage(InOutResult.Parade[Channel], Width, MaxCount,
+			InOutResult.ParadeChannelIntensity[Channel]);
 	}
+}
+
+void BuildLumaWaveformImage(FTrueScopeAnalysisResult& InOutResult)
+{
+	const int32 Width = InOutResult.SourceSize.X;
+	if (Width <= 0 || InOutResult.LumaParade.Num() != Width * FTrueScopeAnalysisResult::NumBins)
+	{
+		InOutResult.LumaIntensity.Reset();
+		return;
+	}
+
+	const uint32 MaxCount = static_cast<uint32>(InOutResult.SourceSize.Y);
+	BuildColumnIntensityImage(InOutResult.LumaParade, Width, MaxCount, InOutResult.LumaIntensity);
 }
 
 void BuildVectorscopeImage(FTrueScopeAnalysisResult& InOutResult)
@@ -135,7 +168,7 @@ void BuildVectorscopeImage(FTrueScopeAnalysisResult& InOutResult)
 	}
 }
 
-void BuildWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels)
+void BuildRgbWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels)
 {
 	const int32 NumTexels = Result.ParadeImageSize.X * Result.ParadeImageSize.Y;
 	check(OutTexels.Num() == NumTexels);
@@ -147,6 +180,20 @@ void BuildWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FCol
 	for (int32 Index = 0; Index < NumTexels; ++Index)
 	{
 		OutTexels[Index] = FColor(Red[Index], Green[Index], Blue[Index], 255);
+	}
+}
+
+void BuildLumaWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels)
+{
+	const int32 NumTexels = Result.ParadeImageSize.X * Result.ParadeImageSize.Y;
+	check(OutTexels.Num() == NumTexels);
+	check(Result.LumaIntensity.Num() == NumTexels);
+
+	const uint8* Luma = Result.LumaIntensity.GetData();
+	for (int32 Index = 0; Index < NumTexels; ++Index)
+	{
+		// Neutral trace: luma carries no colour, so the waveform must not imply one.
+		OutTexels[Index] = FColor(Luma[Index], Luma[Index], Luma[Index], 255);
 	}
 }
 

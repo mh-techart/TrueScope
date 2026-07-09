@@ -14,10 +14,10 @@
 namespace TrueScope
 {
 	/**
-	 * Builds histogram, parade and vectorscope counts from an 8-bit BGRA pixel
-	 * array (FColor layout, row-major, tightly packed). Fills Histogram, Parade,
-	 * Vectorscope and SourceSize of OutResult; does not touch the derived
-	 * intensity images.
+	 * Builds histogram, parade, luma and vectorscope counts from an 8-bit BGRA
+	 * pixel array (FColor layout, row-major, tightly packed). Fills Histogram,
+	 * Parade, LumaParade, Vectorscope and SourceSize of OutResult; does not
+	 * touch the derived intensity images.
 	 */
 	void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, FTrueScopeAnalysisResult& OutResult);
 
@@ -40,6 +40,13 @@ namespace TrueScope
 	void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult);
 
 	/**
+	 * Builds the display-mapped luma density from the luma counts (see
+	 * FTrueScopeAnalysisResult::LumaIntensity), on the same normalization and
+	 * density curve as the parade, so the two waveform modes are comparable.
+	 */
+	void BuildLumaWaveformImage(FTrueScopeAnalysisResult& InOutResult);
+
+	/**
 	 * Builds the display-mapped vectorscope density from the vectorscope counts
 	 * (see FTrueScopeAnalysisResult::VectorscopeIntensity). Normalized against
 	 * the total pixel count — the maximum a single (Cb, Cr) cell can reach, as
@@ -48,8 +55,8 @@ namespace TrueScope
 	void BuildVectorscopeImage(FTrueScopeAnalysisResult& InOutResult);
 
 	/**
-	 * Waveform texels: the parade's three channel densities superimposed in one
-	 * full-width trace instead of side-by-side blocks (Resolve's default
+	 * RGB waveform texels: the parade's three channel densities superimposed in
+	 * one full-width trace instead of side-by-side blocks (Resolve's default
 	 * waveform). Texel = (R density, G density, B density), so equal densities
 	 * read white and a channel excursion shows in its own color.
 	 *
@@ -58,5 +65,12 @@ namespace TrueScope
 	 * ParadeChannelIntensity. Kept out of FTrueScopeAnalysisResult so the widget
 	 * can fill its upload buffer directly.
 	 */
-	void BuildWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels);
+	void BuildRgbWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels);
+
+	/**
+	 * Luma waveform texels: the BT.709 luma density as a neutral trace — the
+	 * classic exposure waveform. Requires BuildLumaWaveformImage to have run;
+	 * same buffer contract as BuildRgbWaveformTexels.
+	 */
+	void BuildLumaWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels);
 }

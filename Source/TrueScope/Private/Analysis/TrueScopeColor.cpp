@@ -36,22 +36,30 @@ namespace
 	};
 }
 
-FChroma RgbToChroma(float R, float G, float B)
+FYCbCr RgbToYCbCr(float R, float G, float B)
 {
 	const float Luma = LumaR * R + LumaG * G + LumaB * B;
-	return FChroma{(B - Luma) / CbScale, (R - Luma) / CrScale};
+	return FYCbCr{Luma, FChroma{(B - Luma) / CbScale, (R - Luma) / CrScale}};
 }
 
-FChroma RgbToChroma(const FColor& Color)
+FYCbCr RgbToYCbCr(const FColor& Color)
 {
 	constexpr float Inv255 = 1.0f / 255.0f;
-	return RgbToChroma(Color.R * Inv255, Color.G * Inv255, Color.B * Inv255);
+	return RgbToYCbCr(Color.R * Inv255, Color.G * Inv255, Color.B * Inv255);
 }
 
 int32 ChromaToBin(float Chroma)
 {
 	const int32 Bin = FMath::FloorToInt32((Chroma + 0.5f) * FTrueScopeAnalysisResult::NumVectorBins);
 	return FMath::Clamp(Bin, 0, FTrueScopeAnalysisResult::NumVectorBins - 1);
+}
+
+int32 LumaToBin(float Luma)
+{
+	// Rounded, not floored: a neutral pixel of code value v must land in bin v,
+	// exactly where the R/G/B channels put it.
+	const int32 Bin = FMath::RoundToInt32(Luma * (FTrueScopeAnalysisResult::NumBins - 1));
+	return FMath::Clamp(Bin, 0, FTrueScopeAnalysisResult::NumBins - 1);
 }
 
 TArrayView<const FVectorscopeTarget> GetVectorscopeTargets()

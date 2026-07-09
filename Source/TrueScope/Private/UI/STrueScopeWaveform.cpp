@@ -8,6 +8,8 @@
 #include "Rendering/DrawElements.h"
 #include "UI/TrueScopeDraw.h"
 
+#define LOCTEXT_NAMESPACE "STrueScopeWaveform"
+
 void STrueScopeWaveform::Construct(const FArguments& InArgs,
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
 {
@@ -16,15 +18,71 @@ void STrueScopeWaveform::Construct(const FArguments& InArgs,
 	InitializeScopeWidget(InAnalyzer, /*bMaintainSquareAspect*/ false);
 }
 
+int32 STrueScopeWaveform::GetTexelCount(const FTrueScopeAnalysisResult& Result)
+{
+	return Result.ParadeImageSize.X * Result.ParadeImageSize.Y;
+}
+
+void STrueScopeWaveform::BuildTexels(const FTrueScopeAnalysisResult& Result, ETrueScopeWaveformMode InMode,
+	TArrayView<FColor> OutTexels)
+{
+	switch (InMode)
+	{
+	case ETrueScopeWaveformMode::Luma:
+		TrueScope::BuildLumaWaveformTexels(Result, OutTexels);
+		break;
+	default:
+		TrueScope::BuildRgbWaveformTexels(Result, OutTexels);
+		break;
+	}
+}
+
+TArrayView<const FTrueScopeDisplayMode> STrueScopeWaveform::GetDisplayModes() const
+{
+	// Function-local: LOCTEXT must not run before localization is initialized.
+	static const TArray<FTrueScopeDisplayMode> Modes = {
+		FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeWaveformMode::Rgb), LOCTEXT("Rgb", "RGB")},
+		FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeWaveformMode::Luma), LOCTEXT("Luma", "Luma")},
+	};
+	return Modes;
+}
+
+int32 STrueScopeWaveform::GetDisplayModeId() const
+{
+	return static_cast<int32>(Mode);
+}
+
+void STrueScopeWaveform::SetDisplayModeId(int32 InModeId)
+{
+	Mode = static_cast<ETrueScopeWaveformMode>(InModeId);
+
+	// The trace lives in a texture, so a mode switch has to re-upload it rather
+	// than wait for the next analysis result (~2.5 Hz away).
+	UpdateTraceTexture();
+}
+
 void STrueScopeWaveform::OnAnalysisResultChanged()
 {
+	UpdateTraceTexture();
+}
+
+void STrueScopeWaveform::UpdateTraceTexture()
+{
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
-	if (!Result.IsValid() || Result->ParadeImageSize.X <= 0)
+	if (!Result.IsValid())
 	{
 		return;
 	}
 	const FIntPoint Size = Result->ParadeImageSize;
-	const int32 NumTexels = Size.X * Size.Y;
+	const int32 NumTexels = GetTexelCount(*Result);
+
+	// Both intensity images come out of the same analysis pass; if either is
+	// missing, keep the last good trace rather than upload a half-built one.
+	if (NumTexels <= 0 || Result->LumaIntensity.Num() != NumTexels
+		|| Result->ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelR].Num() != NumTexels)
+	{
+		return;
+	}
 
 	if (!TraceTexture.IsValid() || TraceTexture->GetSizeX() != Size.X || TraceTexture->GetSizeY() != Size.Y)
 	{
@@ -42,7 +100,7 @@ void STrueScopeWaveform::OnAnalysisResultChanged()
 	// Private BGRA buffer, freed by the async-upload cleanup once the render
 	// thread has consumed it.
 	FColor* Texels = static_cast<FColor*>(FMemory::Malloc(NumTexels * sizeof(FColor)));
-	TrueScope::BuildWaveformTexels(*Result, TArrayView<FColor>(Texels, NumTexels));
+	BuildTexels(*Result, Mode, TArrayView<FColor>(Texels, NumTexels));
 
 	FUpdateTextureRegion2D* Region = new FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y);
 	TraceTexture->UpdateTextureRegions(0, 1, Region, Size.X * sizeof(FColor), sizeof(FColor),
@@ -86,3 +144,5 @@ int32 STrueScopeWaveform::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
 
 	return LayerId;
 }
+
+#undef LOCTEXT_NAMESPACE
