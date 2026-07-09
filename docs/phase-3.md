@@ -125,9 +125,11 @@ in-engine user of a non-blocking single-buffer readback:
       replaced. *(Self-verified via MCP screenshot: both scopes draw the
       live color-calibrator scene; capture-preview code removed. Layout still
       shows Waveform/Vectorscope placeholders as intended for M4.)*
-- [x] All four synthetic-image automation tests pass (`Automation RunTests
-      TrueScope`). *(Self-verified headless: SolidRed, HorizontalGradient,
-      VerticalGradient, FlatMidGray all Result={Success}.)*
+- [x] All synthetic-image automation tests pass (`Automation RunTests
+      TrueScope`). *(Self-verified headless: the four original tests —
+      SolidRed, HorizontalGradient, VerticalGradient, FlatMidGray — plus the
+      three pure-channel no-bleed tests added with the parade fix; 7/7
+      Result={Success}.)*
 - [x] Pixel-exact / value spot-check: on a known test frame, the scopes'
       readings match expectation. *(Self-verified: the automation tests prove
       bin-exact channel separation, column↔luma mapping and concentration on

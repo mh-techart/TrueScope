@@ -53,7 +53,12 @@ receives. Consequences, by design:
   display signal (WYSIWYG), but its colorimetric interpretation is only
   guaranteed for the SDR Rec.709 case. Scene-referred / HDR / OCIO-aware
   modes are explicitly deferred (see backlog) and documented as a V1
-  limitation. Related user-facing note for the README: Movie Render Queue
+  limitation. **End goal (backlog):** the scopes must eventually handle every
+  selectable UE Working Color Space (sRGB/Rec709, Rec2020, ACES AP0,
+  ACES AP1/ACEScg, P3DCI, P3D65), since these affect the viewport image; scale
+  and graticule calibration become color-space-aware there. Note that color
+  space and bit depth are independent concerns. Related user-facing note for
+  the README: Movie Render Queue
   exports with their own OCIO output transform are a different signal than
   the viewport — TrueScope measures the viewport.
 
@@ -73,7 +78,7 @@ receives. Consequences, by design:
 | Analysis, stage 1 (MVP) | **CPU**: async GPU readback (`FRHIGPUTextureReadback`) of the downsampled capture, C++ histogram building in a background task | No shaders → fully debuggable and unit-testable in text; at 2–3 Hz and ~0.5 MPix per update the cost is negligible. Becomes the ground truth for the GPU path. |
 | Analysis, stage 2 | **Compute shaders** (plugin `.usf`, virtual shader dir via `AddShaderSourceDirectoryMapping`, module loading phase `PostConfigInit`), RDG passes, `InterlockedAdd` binning, second pass maps counts → intensity texture | Full-resolution precision, Resolve-grade density look, headroom for higher refresh rates. Must produce results matching the CPU path on test images. |
 | Color math | **BT.709** R'G'B' → Y'CbCr for vectorscope and luma waveform; measurement point = display-referred output (sRGB/Rec.709 case) | Matches what Resolve shows for SDR delivery. OCIO / HDR / working-color-space variants deferred (backlog). |
-| Scales | Waveform/Parade: 10-bit (0–1023); Histogram: 0–100 %; Vectorscope: standard graticule with 75 % targets (R/Mg/B/Cy/G/Yl) | Matches the DaVinci Resolve reference. |
+| Scales | Waveform/Parade/Histogram: normalized **10-bit 0–1023** — a convention, not a claim about source bit depth (Resolve shows it for 8-bit material too; our A2B10G10R10 capture is already 10-bit-capable). Parade/Waveform gridlines every 128 (8 divisions) for finer reading. Vectorscope: standard graticule with 75 % targets (R/Mg/B/Cy/G/Yl) | Colorists are used to 0–1023, and one shared value axis across all scopes beats mixed units. Histogram moved from 0–100 % to 0–1023 in M4 for this reason. Scale behavior for HDR / non-Rec.709 color spaces is deferred (backlog). |
 | Anti-pixelation recipe | (1) density accumulation with log intensity mapping — no binary on/off pixels; (2) scope textures at display resolution or higher; (3) graticules/scales as anti-aliased Slate lines (`FSlateDrawElement::MakeLines`, `MakeCustomVerts`) | This is why Resolve/FCP scopes look smooth and most free solutions don't. |
 | Layout | 2×2 `SSplitter` grid — Waveform | Parade / Vectorscope | Histogram — each panel switchable via dropdown | Resolve reference layout. |
 | Data interface | `FTrueScopeAnalysisResult` (bin arrays and/or textures) decouples analysis from UI | Lets CPU → GPU migration happen without touching the UI layer. |
@@ -143,41 +148,53 @@ Scopes are mathematically verifiable — exploit that:
    histogram peak in R at max bin; horizontal gradient → diagonal waveform
    line; SMPTE color bars → vectorscope points land in the six graticule
    targets. CPU results later serve as ground truth for GPU results.
-2. **Pixel-exact capture check — macOS Digital Color Meter** (fast everyday
-   verification that the captured/displayed image matches the viewport, not
-   just "looks the same"): with the raw preview (M2) or a scope's source
-   visible, use the built-in *Digital Color Meter* utility to read the value
-   at a point in the Unreal viewport and at the corresponding point in
-   TrueScope; they must match. This caught two real M2 bugs by measurement
+2. **Pixel-exact image check — macOS Digital Color Meter** (fast verification
+   that two versions of the *same image* carry identical values — e.g.
+   viewport vs. captured image in M2 — rather than merely "looking the same"):
+   read the value at a point in one image and at the corresponding point in
+   the other; they must match. This caught two real M2 bugs by measurement
    that the eye would miss — an undefined-alpha wash-out and a Slate
-   display-gamma re-encode (`preview ≈ pow(viewport, 1/2.2)`). Use it whenever
-   "do these two image regions carry identical values?" is the question, at
-   any phase. (Windows/Linux equivalents exist; the check is the principle,
-   not the specific tool.)
+   display-gamma re-encode (`preview ≈ pow(viewport, 1/2.2)`).
+   **Applicability:** image-to-image only. From M3 on, scopes are *graphical
+   representations*, not a second copy of the image, so this method does
+   **not** verify scopes — use the scope cross-check (point 5) for those.
+   (Windows/Linux equivalents exist; the check is the principle, not the
+   specific tool.)
 3. **WYSIWYG tests (M2+):** change viewport state (tonemapper on/off, exposure
    compensation, show flags) and assert/inspect that captured image and scopes
    follow.
 4. **Editor screenshots** via Epic's Claude Code MCP plugin for layout/visual
    checks during development.
-5. **Human sign-off — external cross-check workflow** (acceptance ritual for
-   M4, repeat after major analysis changes): compare TrueScope against DaVinci
-   Resolve's scopes on the same frame.
-   1. Use a test scene with **fixed exposure** (manual exposure / fixed
-      EV100) — auto eye adaptation would make screenshot and scope moment
-      differ.
-   2. Take a viewport **High Resolution Screenshot at multiplier 1.0**
-      (higher multipliers alter screen-space effects and no longer match the
-      viewport) as a **standard LDR PNG** — *not* the HDR/EXR option, which
-      captures linear pre-tonemap data and is not our display-referred
-      measurement point.
-   3. Open the PNG in DaVinci Resolve; set clip data levels to **Full**
-      (not Video — the 64–940 vs 0–1023 mismatch is the classic false alarm)
-      and color management to sRGB/Rec.709. Photoshop's histogram works as a
-      second opinion without setup, but only Resolve provides waveform and
-      vectorscope.
-   4. Compare histogram shape, waveform/parade, and vectorscope positions
-      (color bars!). Minor deviations from the PNG's 8-bit quantization are
-      expected; structural deviations are bugs.
+5. **Scope cross-check — TrueScope vs. DaVinci Resolve** (*the* scope
+   verification method from M3 on; acceptance ritual for scope work, repeated
+   after major analysis changes). Both tools analyze the same still, so their
+   scopes must agree on the values they report.
+   1. Put a test subject in the viewport — the engine's **ColorCalibrator**
+      asset works well (includes a color-chart texture). Use **fixed
+      exposure** (manual / fixed EV100); auto eye adaptation would make the
+      screenshot and the scope moment differ.
+   2. Take a viewport **High Resolution Screenshot at multiplier 1.0** (higher
+      multipliers alter screen-space effects and no longer match the viewport)
+      as a **standard LDR PNG** — *not* the HDR/EXR option, which captures
+      linear pre-tonemap data and is not our display-referred measurement
+      point. Note: this screenshot is always written as **sRGB
+      IEC61966-2.1**, regardless of the project's Working Color Space (even
+      under ACEScg). Quick check: the PNG looks like the current viewport.
+   3. Import the PNG into Resolve on a timeline matching it: same pixel
+      dimensions, 8-bit, sRGB. Set clip data levels to **Full** (not Video —
+      the 64–940 vs 0–1023 mismatch is the classic false alarm). On the Color
+      page, undock the Scopes into a floating window.
+   4. Place Resolve's scope window next to TrueScope's, size them similarly,
+      and compare both the visual impression **and the values read off each
+      scale**. Screenshot both to document the comparison.
+   - **Beware scale/mapping differences:** the two can look different yet both
+     be correct — e.g. a histogram drawn on a different (log) intensity curve
+     looks different while reading the same values on its scale. Compare
+     values on the scale, not raw appearance.
+   - Photoshop's histogram is a quick second opinion without setup, but only
+     Resolve provides waveform, parade and vectorscope.
+   - Backlog: also cross-check against Final Cut Pro's scopes before a public
+     release (not installed on the dev machine yet).
 
 ## Licensing red line
 

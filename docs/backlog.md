@@ -75,6 +75,28 @@ without the plugin).
   persistently-mapped buffer readback avoids it; or reduce the capture
   resolution. Tie-in with the settable measurement rate (M6) and the GPU path
   (M5, which removes the CPU copy entirely for the GPU analysis result).
+- **Density-to-brightness curve tuning ("scopes drowning in dense areas")** —
+  observed in the M3 review: TrueScope's parade density is much denser than
+  Resolve's, so structure drowns in solid fills. The likely cause is **not**
+  capture resolution (lowering it would cost precision in other scopes) but
+  the **intensity mapping**: our count→brightness curve is probably too
+  linear, so dense regions saturate into an undifferentiated mass. Resolve
+  keeps structure visible with a pronounced log/sqrt curve that lifts low
+  densities and saturates high ones early; per-sample opacity is another
+  lever. This is finish-tuning (M6) and should be calibrated **once across
+  all four scopes together** for a consistent look — so tackle it after all
+  scopes exist, not per-scope.
+- **Scale behavior across bit depth / HDR / color spaces** — V1 uses a
+  normalized 0–1023 scale for the SDR display-referred case (settled in
+  architecture.md). Open for later: what the scale should show for HDR
+  material (Nits 0–1000/4000/10000, ST2084/PQ, HLG, or a normalized 10-bit
+  code value) and how it interacts with non-Rec.709 Working Color Spaces;
+  scale and vectorscope graticule become color-space-aware there. Part of the
+  scene-referred/HDR/OCIO item above.
+- **Cross-check against Final Cut Pro scopes before public release** — the
+  scope cross-check (architecture.md) currently uses DaVinci Resolve; also
+  verify against FCP's scopes before a release (FCP not installed on the dev
+  machine yet).
 - **Fab listing (free)** — companion distribution channel to GitHub for
   Blueprint-only users; verify current Fab submission terms at M7 time.
 - **Engine version ports (±1 minor)** — after M6; per-version binaries in
