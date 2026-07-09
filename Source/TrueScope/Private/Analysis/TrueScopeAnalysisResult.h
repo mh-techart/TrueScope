@@ -25,6 +25,9 @@ struct FTrueScopeAnalysisResult
 	/** Bins per channel; 256 matches the 8-bit display-encoded capture. */
 	static constexpr int32 NumBins = 256;
 
+	/** Vectorscope bins per chroma axis; both axes span [-0.5, 0.5]. */
+	static constexpr int32 NumVectorBins = 256;
+
 	/** Dimensions of the analyzed capture (960x540 in M3). */
 	FIntPoint SourceSize = FIntPoint::ZeroValue;
 
@@ -53,6 +56,20 @@ struct FTrueScopeAnalysisResult
 	 */
 	TArray<uint8> ParadeChannelIntensity[NumChannels];
 	FIntPoint ParadeImageSize = FIntPoint::ZeroValue;
+
+	/**
+	 * Vectorscope: pixel counts over the (Cb, Cr) plane, indexed
+	 * [CrBin * NumVectorBins + CbBin]; bin 0 = -0.5, last bin = +0.5 on both
+	 * axes. Exact counts (ground truth for the M5 GPU path).
+	 */
+	TArray<uint32> Vectorscope;
+
+	/**
+	 * Display-mapped vectorscope density (log intensity), size
+	 * NumVectorBins^2, indexed [Row * NumVectorBins + CbBin] with Row 0 = top =
+	 * highest Cr. Derived convenience data, not ground truth.
+	 */
+	TArray<uint8> VectorscopeIntensity;
 
 	/** Cost of the CPU analysis (background task), for the M3 measurement. */
 	double AnalysisDurationMs = 0.0;

@@ -142,6 +142,7 @@ void FTrueScopeAnalyzer::RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size
 		MakeShared<FTrueScopeAnalysisResult, ESPMode::ThreadSafe>();
 	TrueScope::AnalyzePixels(Pixels, Size.X, Size.Y, *Result);
 	TrueScope::BuildParadeImage(*Result);
+	TrueScope::BuildVectorscopeImage(*Result);
 
 	const double Now = FPlatformTime::Seconds();
 	Result->AnalysisDurationMs = (Now - AnalysisStartSeconds) * 1000.0;

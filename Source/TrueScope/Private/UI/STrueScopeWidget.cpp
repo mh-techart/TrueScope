@@ -4,6 +4,14 @@
 #include "UI/STrueScopeWidget.h"
 
 #include "Analysis/TrueScopeAnalyzer.h"
+#include "Framework/Application/MenuStack.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/Commands/UIAction.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Layout/WidgetPath.h"
+#include "Textures/SlateIcon.h"
+
+#define LOCTEXT_NAMESPACE "STrueScopeWidget"
 
 namespace
 {
@@ -63,3 +71,57 @@ FSlateRect STrueScopeWidget::GetScopeContentRect(const FGeometry& AllottedGeomet
 	const float Top = (Size.Y - Side) * 0.5f;
 	return FSlateRect(Left, Top, Left + Side, Top + Side);
 }
+
+FReply STrueScopeWidget::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	// Capture on press so the release lands here and opens the menu.
+	if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton && !GetDisplayModes().IsEmpty())
+	{
+		return FReply::Handled().CaptureMouse(SharedThis(this));
+	}
+	return FReply::Unhandled();
+}
+
+FReply STrueScopeWidget::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	if (MouseEvent.GetEffectingButton() != EKeys::RightMouseButton || GetDisplayModes().IsEmpty())
+	{
+		return FReply::Unhandled();
+	}
+
+	const FWidgetPath OwnerPath = MouseEvent.GetEventPath() != nullptr ? *MouseEvent.GetEventPath() : FWidgetPath();
+	FSlateApplication::Get().PushMenu(AsShared(), OwnerPath, BuildDisplayModeMenu(),
+		MouseEvent.GetScreenSpacePosition(), FPopupTransitionEffect::ContextMenu);
+
+	return FReply::Handled().ReleaseMouseCapture();
+}
+
+TSharedRef<SWidget> STrueScopeWidget::BuildDisplayModeMenu()
+{
+	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr);
+	MenuBuilder.BeginSection(TEXT("TrueScopeDisplayModes"), LOCTEXT("DisplaySection", "Display"));
+	for (const FTrueScopeDisplayMode& Mode : GetDisplayModes())
+	{
+		MenuBuilder.AddMenuEntry(Mode.Label, FText::GetEmpty(), FSlateIcon(),
+			FUIAction(
+				FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSetDisplayMode, Mode.Id),
+				FCanExecuteAction(),
+				FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsDisplayModeActive, Mode.Id)),
+			NAME_None, EUserInterfaceActionType::RadioButton);
+	}
+	MenuBuilder.EndSection();
+	return MenuBuilder.MakeWidget();
+}
+
+void STrueScopeWidget::HandleSetDisplayMode(int32 ModeId)
+{
+	SetDisplayModeId(ModeId);
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+bool STrueScopeWidget::IsDisplayModeActive(int32 ModeId) const
+{
+	return GetDisplayModeId() == ModeId;
+}
+
+#undef LOCTEXT_NAMESPACE

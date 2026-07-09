@@ -14,9 +14,10 @@
 namespace TrueScope
 {
 	/**
-	 * Builds histogram and parade counts from an 8-bit BGRA pixel array
-	 * (FColor layout, row-major, tightly packed). Fills Histogram, Parade and
-	 * SourceSize of OutResult; does not touch the derived ParadeChannelIntensity.
+	 * Builds histogram, parade and vectorscope counts from an 8-bit BGRA pixel
+	 * array (FColor layout, row-major, tightly packed). Fills Histogram, Parade,
+	 * Vectorscope and SourceSize of OutResult; does not touch the derived
+	 * intensity images.
 	 */
 	void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, FTrueScopeAnalysisResult& OutResult);
 
@@ -37,4 +38,25 @@ namespace TrueScope
 	 * content.
 	 */
 	void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult);
+
+	/**
+	 * Builds the display-mapped vectorscope density from the vectorscope counts
+	 * (see FTrueScopeAnalysisResult::VectorscopeIntensity). Normalized against
+	 * the total pixel count — the maximum a single (Cb, Cr) cell can reach, as
+	 * a flat neutral frame does — so brightness does not re-scale with content.
+	 */
+	void BuildVectorscopeImage(FTrueScopeAnalysisResult& InOutResult);
+
+	/**
+	 * Waveform texels: the parade's three channel densities superimposed in one
+	 * full-width trace instead of side-by-side blocks (Resolve's default
+	 * waveform). Texel = (R density, G density, B density), so equal densities
+	 * read white and a channel excursion shows in its own color.
+	 *
+	 * Requires BuildParadeImage to have run. OutTexels must hold exactly
+	 * ParadeImageSize.X * ParadeImageSize.Y entries, laid out like
+	 * ParadeChannelIntensity. Kept out of FTrueScopeAnalysisResult so the widget
+	 * can fill its upload buffer directly.
+	 */
+	void BuildWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels);
 }

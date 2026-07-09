@@ -106,6 +106,11 @@ without the plugin).
   of side-by-side parade), luma-only waveform, **Monochrome** (white instead
   of colored traces), Show Guides toggle, trace-brightness control. These are
   display options on a scope, separate from the window layout (below).
+  M4 built the mechanism (`FTrueScopeDisplayMode` + the right-click menu on
+  `STrueScopeWidget`) and its first user, the histogram's Separate Channels /
+  RGB Overlay pair; further modes only need the three overrides. The
+  luma-only waveform is cheap: `RgbToChroma` already derives BT.709 luma per
+  pixel for the vectorscope, so `AnalyzePixels` would only have to bin it.
 
 ## Window layout options (post-M6 feature)
 

@@ -22,7 +22,7 @@ class FRHIGPUTextureReadback;
  *     -> poll IsReady(); when ready Lock / pitch-aware copy / Unlock —
  *        never waits on the fence, so the render thread is never stalled
  *   background task (UE::Tasks)
- *     -> TrueScope::AnalyzePixels + BuildParadeImage
+ *     -> TrueScope::AnalyzePixels + BuildParadeImage + BuildVectorscopeImage
  *     -> publishes an immutable TSharedPtr<const FTrueScopeAnalysisResult>
  *
  * Widgets read the latest result from any thread via GetLatestResult() and

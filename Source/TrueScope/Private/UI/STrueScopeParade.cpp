@@ -4,26 +4,13 @@
 #include "UI/STrueScopeParade.h"
 
 #include "Engine/Texture2D.h"
-#include "Fonts/FontMeasure.h"
-#include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
-#include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
+#include "UI/TrueScopeDraw.h"
 
 namespace
 {
-	// Fixed-size chrome (architecture guardrail: labels/axes never scale with
-	// the panel).
-	constexpr float PlotPadding = 6.0f;
-	constexpr float LabelStripWidth = 30.0f;
+	/** Fixed-size gap between the three channel sections. */
 	constexpr float SectionGap = 4.0f;
-
-	const FLinearColor BackgroundColor(0.008f, 0.008f, 0.008f);
-	const FLinearColor GraticuleColor(0.5f, 0.5f, 0.5f, 0.22f);
-	const FLinearColor LabelColor(0.6f, 0.6f, 0.6f, 0.9f);
-
-	/** 10-bit scale graticule levels (matches the DaVinci Resolve reference). */
-	constexpr int32 GraticuleLevels[] = {0, 256, 512, 768, 1023};
 
 	/**
 	 * Colour written into each channel's density texel — the single-channel
@@ -111,16 +98,13 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
 	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
-	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
-	const FSlateBrush* WhiteBrush = FAppStyle::Get().GetBrush("WhiteBrush");
+	using namespace TrueScope::Draw;
 
-	FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
-		AllottedGeometry.ToPaintGeometry(FVector2f(Content.GetSize()), FSlateLayoutTransform(FVector2f(Content.GetTopLeft()))),
-		WhiteBrush, ESlateDrawEffect::None, BackgroundColor);
-	++LayerId;
+	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
+	LayerId = DrawBackground(OutDrawElements, LayerId, AllottedGeometry, Content);
 
 	// Plot area: fixed-size left label strip and padding.
-	const FSlateRect Plot(Content.Left + LabelStripWidth, Content.Top + PlotPadding,
+	const FSlateRect Plot(Content.Left + ValueLabelStripWidth, Content.Top + PlotPadding,
 		Content.Right - PlotPadding, Content.Bottom - PlotPadding);
 	if (Plot.GetSize().X < 32.0f || Plot.GetSize().Y < 16.0f)
 	{
@@ -149,28 +133,8 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 		++LayerId;
 	}
 
-	// Graticule + fixed-size 10-bit scale labels.
-	const TSharedRef<FSlateFontMeasure> FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
-	const FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 8);
-	for (int32 Level : GraticuleLevels)
-	{
-		const float Y = Plot.Bottom - Plot.GetSize().Y * (Level / 1023.0f);
-
-		TArray<FVector2f> Line;
-		Line.Add(FVector2f(Plot.Left, Y));
-		Line.Add(FVector2f(Plot.Right, Y));
-		FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(),
-			Line, ESlateDrawEffect::None, GraticuleColor, /*bAntialias*/ true, 1.0f);
-
-		const FString LabelString = FString::Printf(TEXT("%d"), Level);
-		const FVector2f LabelSize = FVector2f(FontMeasure->Measure(LabelString, LabelFont));
-		const float LabelY = FMath::Clamp(Y - LabelSize.Y * 0.5f, Content.Top, Content.Bottom - LabelSize.Y);
-		FSlateDrawElement::MakeText(OutDrawElements, LayerId,
-			AllottedGeometry.ToPaintGeometry(LabelSize,
-				FSlateLayoutTransform(FVector2f(Plot.Left - 4.0f - LabelSize.X, LabelY))),
-			LabelString, LabelFont, ESlateDrawEffect::None, LabelColor);
-	}
-	++LayerId;
+	// Graticule + fixed-size 10-bit scale labels, every 128 code values.
+	LayerId = DrawValueAxisY(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetWaveformGraticuleLevels());
 
 	return LayerId;
 }

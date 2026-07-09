@@ -3,6 +3,8 @@
 
 #include "Analysis/TrueScopeAnalysis.h"
 
+#include "Analysis/TrueScopeColor.h"
+
 namespace TrueScope
 {
 
@@ -22,6 +24,8 @@ void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, F
 		OutResult.Histogram[Channel].SetNumZeroed(FTrueScopeAnalysisResult::NumBins);
 		OutResult.Parade[Channel].SetNumZeroed(Width * FTrueScopeAnalysisResult::NumBins);
 	}
+	OutResult.Vectorscope.SetNumZeroed(
+		FTrueScopeAnalysisResult::NumVectorBins * FTrueScopeAnalysisResult::NumVectorBins);
 
 	uint32* HistR = OutResult.Histogram[FTrueScopeAnalysisResult::ChannelR].GetData();
 	uint32* HistG = OutResult.Histogram[FTrueScopeAnalysisResult::ChannelG].GetData();
@@ -29,6 +33,7 @@ void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, F
 	uint32* ParadeR = OutResult.Parade[FTrueScopeAnalysisResult::ChannelR].GetData();
 	uint32* ParadeG = OutResult.Parade[FTrueScopeAnalysisResult::ChannelG].GetData();
 	uint32* ParadeB = OutResult.Parade[FTrueScopeAnalysisResult::ChannelB].GetData();
+	uint32* Vector = OutResult.Vectorscope.GetData();
 
 	const FColor* Pixel = Pixels.GetData();
 	for (int32 Y = 0; Y < Height; ++Y)
@@ -44,6 +49,9 @@ void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, F
 			++ParadeR[ColumnBase + Pixel->R];
 			++ParadeG[ColumnBase + Pixel->G];
 			++ParadeB[ColumnBase + Pixel->B];
+
+			const FChroma Chroma = RgbToChroma(*Pixel);
+			++Vector[ChromaToBin(Chroma.Cr) * FTrueScopeAnalysisResult::NumVectorBins + ChromaToBin(Chroma.Cb)];
 		}
 	}
 }
@@ -96,6 +104,49 @@ void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult)
 				*Out = static_cast<uint8>(FMath::RoundToInt(255.0f * CountToIntensity(Counts[CellIndex], MaxCount)));
 			}
 		}
+	}
+}
+
+void BuildVectorscopeImage(FTrueScopeAnalysisResult& InOutResult)
+{
+	constexpr int32 NumVectorBins = FTrueScopeAnalysisResult::NumVectorBins;
+	if (InOutResult.Vectorscope.Num() != NumVectorBins * NumVectorBins)
+	{
+		InOutResult.VectorscopeIntensity.Reset();
+		return;
+	}
+
+	// Maximum possible count in one (Cb, Cr) cell: the whole frame on one
+	// chroma coordinate, which a flat neutral image actually produces.
+	const uint32 MaxCount = static_cast<uint32>(InOutResult.SourceSize.X * InOutResult.SourceSize.Y);
+
+	InOutResult.VectorscopeIntensity.SetNumUninitialized(NumVectorBins * NumVectorBins);
+	const uint32* Counts = InOutResult.Vectorscope.GetData();
+	uint8* Out = InOutResult.VectorscopeIntensity.GetData();
+
+	for (int32 Row = 0; Row < NumVectorBins; ++Row)
+	{
+		const int32 CrBin = (NumVectorBins - 1) - Row; // row 0 = top = highest Cr
+		for (int32 CbBin = 0; CbBin < NumVectorBins; ++CbBin, ++Out)
+		{
+			*Out = static_cast<uint8>(
+				FMath::RoundToInt(255.0f * CountToIntensity(Counts[CrBin * NumVectorBins + CbBin], MaxCount)));
+		}
+	}
+}
+
+void BuildWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels)
+{
+	const int32 NumTexels = Result.ParadeImageSize.X * Result.ParadeImageSize.Y;
+	check(OutTexels.Num() == NumTexels);
+
+	const uint8* Red = Result.ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelR].GetData();
+	const uint8* Green = Result.ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelG].GetData();
+	const uint8* Blue = Result.ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelB].GetData();
+
+	for (int32 Index = 0; Index < NumTexels; ++Index)
+	{
+		OutTexels[Index] = FColor(Red[Index], Green[Index], Blue[Index], 255);
 	}
 }
 

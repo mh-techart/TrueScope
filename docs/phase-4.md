@@ -83,22 +83,41 @@ add:
 
 ## Acceptance criteria
 
-- [ ] Builds via the CLAUDE.md Build.sh command with no new warnings.
-- [ ] Histogram defaults to separate stacked RGB channels; the superimposed
-      "RGB overlay" mode is selectable and works.
-- [ ] Waveform and Vectorscope render live from the viewport capture and are
-      registered in the scope-type enumeration/factory.
-- [ ] Vectorscope stays circular with margins at extreme panel shapes (never
-      an ellipse); 75 % graticule drawn anti-aliased.
-- [ ] All four scopes read on the 0–1023 scale (histogram included);
-      parade/waveform gridlines at 128 intervals.
-- [ ] All automation tests pass (the seven existing plus the new SMPTE-bars,
-      histogram-channel and waveform tests).
+- [x] Builds via the CLAUDE.md Build.sh command with no new warnings.
+      *(Self-verified: clean build, zero warnings.)*
+- [x] Histogram defaults to separate stacked RGB channels; the superimposed
+      "RGB overlay" mode is selectable and works. *(Self-verified via MCP: the
+      right-click Display menu shows "Separate Channels" checked by default;
+      selecting "RGB Overlay" superimposes the three curves on the same axis
+      and the radio state follows. Modelled as a display mode on the base
+      scope widget, so other scopes can add modes without new plumbing.)*
+- [x] Waveform and Vectorscope render live from the viewport capture and are
+      registered in the scope-type enumeration/factory. *(Self-verified via
+      MCP screenshot of the live ColorCalibrator scene; the factory's
+      placeholder branch now only serves future scope types.)*
+- [x] Vectorscope stays circular with margins at extreme panel shapes (never
+      an ellipse); 75 % graticule drawn anti-aliased. *(Self-verified by
+      measuring the graticule in MCP screenshots: in a 400×170 panel the
+      circle is 142×142 px, in an 80×168 panel 50×50 px — centred with
+      margins in both.)*
+- [x] All four scopes read on the 0–1023 scale (histogram included);
+      parade/waveform gridlines at 128 intervals. *(Self-verified: the
+      TrueScope.UI.ValueScale test pins the shared axis and both gridline
+      sets; visible in the screenshot.)*
+- [x] All automation tests pass (the seven existing plus the new SMPTE-bars,
+      histogram-channel and waveform tests). *(Self-verified headless: 14/14
+      Result={Success} — the 7 from M3 plus Chroma709, ColorBarsVectorscope,
+      ColorBarsParade, WaveformHorizontalGradient, HistogramChannels,
+      UI.ValueScale, UI.HistogramChannelLayout.)*
 - [ ] **Scope cross-check vs. DaVinci Resolve** (architecture.md method,
       point 5) performed by the human on a ColorCalibrator frame for all four
       scopes; values agree on their scales (appearance may differ by mapping).
+      *(Human confirmation required.)*
 - [ ] Anti-aliased, no blocky pixelation (MCP screenshot, human review).
-- [ ] No TrueScope warnings/errors in the Output Log.
+      *(Screenshots taken and inspected; final human review pending.)*
+- [x] No TrueScope warnings/errors in the Output Log. *(Self-verified: only
+      Log-level capture/cost lines. Per-cycle cost after the vectorscope was
+      added: analysis ~7.9 ms, unchanged within noise.)*
 
 ## Explicitly out of scope (do not build yet)
 

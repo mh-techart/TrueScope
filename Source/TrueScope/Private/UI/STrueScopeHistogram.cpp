@@ -4,22 +4,16 @@
 #include "UI/STrueScopeHistogram.h"
 
 #include "Analysis/TrueScopeAnalysis.h"
-#include "Fonts/FontMeasure.h"
-#include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
+#include "UI/TrueScopeDraw.h"
+
+#define LOCTEXT_NAMESPACE "STrueScopeHistogram"
 
 namespace
 {
-	// Fixed-size chrome (architecture guardrail: labels/axes never scale with
-	// the panel).
-	constexpr float PlotPadding = 6.0f;
-	constexpr float LabelStripHeight = 14.0f;
-
-	const FLinearColor BackgroundColor(0.008f, 0.008f, 0.008f);
-	const FLinearColor GraticuleColor(0.5f, 0.5f, 0.5f, 0.22f);
-	const FLinearColor LabelColor(0.6f, 0.6f, 0.6f, 0.9f);
+	/** Fixed-size gap between the stacked channel sub-plots. */
+	constexpr float ChannelGap = 3.0f;
 
 	const FLinearColor ChannelFillColors[FTrueScopeAnalysisResult::NumChannels] = {
 		FLinearColor(0.9f, 0.08f, 0.08f, 0.38f),
@@ -39,47 +33,62 @@ void STrueScopeHistogram::Construct(const FArguments& InArgs,
 	InitializeScopeWidget(InAnalyzer, /*bMaintainSquareAspect*/ false);
 }
 
+FSlateRect STrueScopeHistogram::GetChannelPlotRect(const FSlateRect& Plot, ETrueScopeHistogramMode InMode, int32 Channel)
+{
+	if (InMode == ETrueScopeHistogramMode::RgbOverlay)
+	{
+		return Plot;
+	}
+
+	// Clamped so a plot too small for the gaps degenerates to zero-height bands
+	// instead of inverted rects. OnPaint never draws that small.
+	constexpr int32 NumChannels = FTrueScopeAnalysisResult::NumChannels;
+	const float SectionHeight = FMath::Max(0.0f, (Plot.GetSize().Y - ChannelGap * (NumChannels - 1)) / NumChannels);
+	const float Top = Plot.Top + Channel * (SectionHeight + ChannelGap);
+	return FSlateRect(Plot.Left, Top, Plot.Right, Top + SectionHeight);
+}
+
+TArrayView<const FTrueScopeDisplayMode> STrueScopeHistogram::GetDisplayModes() const
+{
+	// Function-local: LOCTEXT must not run before localization is initialized.
+	static const TArray<FTrueScopeDisplayMode> Modes = {
+		FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeHistogramMode::SeparateChannels),
+			LOCTEXT("SeparateChannels", "Separate Channels")},
+		FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeHistogramMode::RgbOverlay),
+			LOCTEXT("RgbOverlay", "RGB Overlay")},
+	};
+	return Modes;
+}
+
+int32 STrueScopeHistogram::GetDisplayModeId() const
+{
+	return static_cast<int32>(Mode);
+}
+
+void STrueScopeHistogram::SetDisplayModeId(int32 InModeId)
+{
+	Mode = static_cast<ETrueScopeHistogramMode>(InModeId);
+}
+
 int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
 	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
 	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
-	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
-	const FSlateBrush* WhiteBrush = FAppStyle::Get().GetBrush("WhiteBrush");
+	using namespace TrueScope::Draw;
 
-	FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
-		AllottedGeometry.ToPaintGeometry(FVector2f(Content.GetSize()), FSlateLayoutTransform(FVector2f(Content.GetTopLeft()))),
-		WhiteBrush, ESlateDrawEffect::None, BackgroundColor);
-	++LayerId;
+	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
+	LayerId = DrawBackground(OutDrawElements, LayerId, AllottedGeometry, Content);
 
 	// Plot area: fixed-size padding and bottom label strip.
 	const FSlateRect Plot(Content.Left + PlotPadding, Content.Top + PlotPadding,
-		Content.Right - PlotPadding, Content.Bottom - PlotPadding - LabelStripHeight);
+		Content.Right - PlotPadding, Content.Bottom - PlotPadding - ValueLabelStripHeight);
 	if (Plot.GetSize().X < 16.0f || Plot.GetSize().Y < 16.0f)
 	{
 		return LayerId;
 	}
 
-	// Graticule + labels: verticals at 0/25/50/75/100 % of the value range.
-	const TSharedRef<FSlateFontMeasure> FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
-	const FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 8);
-	for (int32 Percent = 0; Percent <= 100; Percent += 25)
-	{
-		const float X = Plot.Left + Plot.GetSize().X * (Percent / 100.0f);
-
-		TArray<FVector2f> Line;
-		Line.Add(FVector2f(X, Plot.Top));
-		Line.Add(FVector2f(X, Plot.Bottom));
-		FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(),
-			Line, ESlateDrawEffect::None, GraticuleColor, /*bAntialias*/ true, 1.0f);
-
-		const FString LabelString = FString::Printf(TEXT("%d"), Percent);
-		const FVector2f LabelSize = FVector2f(FontMeasure->Measure(LabelString, LabelFont));
-		const float LabelX = FMath::Clamp(X - LabelSize.X * 0.5f, Content.Left, Content.Right - LabelSize.X);
-		FSlateDrawElement::MakeText(OutDrawElements, LayerId,
-			AllottedGeometry.ToPaintGeometry(LabelSize, FSlateLayoutTransform(FVector2f(LabelX, Plot.Bottom + 2.0f))),
-			LabelString, LabelFont, ESlateDrawEffect::None, LabelColor);
-	}
-	++LayerId;
+	// One 0-1023 value axis spanning all channel sub-plots.
+	LayerId = DrawValueAxisX(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetHistogramGraticuleLevels());
 
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
 	if (!Result.IsValid() || Result->SourceSize.X <= 0)
@@ -102,9 +111,12 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		return LayerId;
 	}
 
+	const FSlateBrush* WhiteBrush = FAppStyle::Get().GetBrush("WhiteBrush");
 	constexpr int32 NumBins = FTrueScopeAnalysisResult::NumBins;
+
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
+		const FSlateRect ChannelPlot = GetChannelPlotRect(Plot, Mode, Channel);
 		const FColor FillColor = ChannelFillColors[Channel].ToFColor(false);
 
 		// Filled curve as one triangle strip: bottom/top vertex pairs per bin.
@@ -118,13 +130,14 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 
 		for (int32 Bin = 0; Bin < NumBins; ++Bin)
 		{
-			const float X = Plot.Left + Plot.GetSize().X * (static_cast<float>(Bin) / (NumBins - 1));
+			// Bin -> fraction of the 0-1023 axis; bin 255 sits on full scale.
+			const float X = ChannelPlot.Left + ChannelPlot.GetSize().X * (static_cast<float>(Bin) / (NumBins - 1));
 			const float Intensity = TrueScope::CountToIntensity(Result->Histogram[Channel][Bin], MaxCount);
-			const float TopY = Plot.Bottom - Plot.GetSize().Y * Intensity;
+			const float TopY = ChannelPlot.Bottom - ChannelPlot.GetSize().Y * Intensity;
 			TopLine.Add(FVector2f(X, TopY));
 
 			FSlateVertex Bottom;
-			Bottom.Position = FVector2f(AllottedGeometry.LocalToAbsolute(FVector2D(X, Plot.Bottom)));
+			Bottom.Position = FVector2f(AllottedGeometry.LocalToAbsolute(FVector2D(X, ChannelPlot.Bottom)));
 			Bottom.TexCoords[0] = Bottom.TexCoords[1] = Bottom.TexCoords[2] = Bottom.TexCoords[3] = 0.0f;
 			Bottom.Color = FillColor;
 			Vertices.Add(Bottom);
@@ -151,3 +164,5 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 
 	return LayerId;
 }
+
+#undef LOCTEXT_NAMESPACE

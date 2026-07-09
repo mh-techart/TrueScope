@@ -6,6 +6,8 @@
 #include "Styling/AppStyle.h"
 #include "UI/STrueScopeHistogram.h"
 #include "UI/STrueScopeParade.h"
+#include "UI/STrueScopeVectorscope.h"
+#include "UI/STrueScopeWaveform.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -44,12 +46,17 @@ TSharedRef<SWidget> MakeScopeWidget(ETrueScopeType Type,
 {
 	switch (Type)
 	{
-	case ETrueScopeType::Histogram:
-		return SNew(STrueScopeHistogram, Analyzer);
+	case ETrueScopeType::Waveform:
+		return SNew(STrueScopeWaveform, Analyzer);
 	case ETrueScopeType::Parade:
 		return SNew(STrueScopeParade, Analyzer);
+	case ETrueScopeType::Vectorscope:
+		return SNew(STrueScopeVectorscope, Analyzer);
+	case ETrueScopeType::Histogram:
+		return SNew(STrueScopeHistogram, Analyzer);
 	default:
-		// Waveform, Vectorscope: M4.
+		// A scope type added to the enumeration but not yet built (CIE, M8
+		// overlays): the panel keeps working, the gap is visible.
 		return MakePlaceholder(Type);
 	}
 }
