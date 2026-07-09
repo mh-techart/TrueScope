@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Analysis/TrueScopeAnalysisResult.h"
+#include "Containers/ArrayView.h"
 #include "CoreMinimal.h"
 #include "UI/STrueScopeWidget.h"
 
@@ -29,8 +30,9 @@ enum class ETrueScopeHistogramMode : int32
 /**
  * RGB histogram scope: per-channel pixel-count curves over the normalized
  * 10-bit 0-1023 value axis (display-referred), drawn as translucent
- * anti-aliased filled curves (vector, not texture). Channels share one
- * normalization so their relative heights stay truthful in both modes.
+ * anti-aliased filled curves (vector, not texture). The vertical axis is a
+ * linear pixel count on one scale shared by the three channels, so their
+ * relative heights stay truthful in both modes.
  *
  * Responsive: fills its panel. Right-click switches the display mode.
  */
@@ -56,6 +58,38 @@ public:
 	 * rule is testable without Slate.
 	 */
 	static FSlateRect GetChannelPlotRect(const FSlateRect& Plot, ETrueScopeHistogramMode Mode, int32 Channel);
+
+	/**
+	 * The bins drawn as Channel's curve, in Channel's colour — the single place
+	 * the analysis arrays are bound to the three curves, and the same binding in
+	 * both display modes. Pulled out of OnPaint so a test can assert that the
+	 * red-tinted curve really carries the red channel.
+	 */
+	static TArrayView<const uint32> GetChannelBins(const FTrueScopeAnalysisResult& Result, int32 Channel);
+
+	/** Tint of Channel's curve; the component of Channel dominates. */
+	static FLinearColor GetChannelFillColor(int32 Channel);
+	static FLinearColor GetChannelLineColor(int32 Channel);
+
+	/**
+	 * Largest bin count across all three channels — one shared vertical scale,
+	 * so the curves' relative heights stay comparable.
+	 */
+	static uint32 GetSharedMaxCount(const FTrueScopeAnalysisResult& Result);
+
+	/**
+	 * Curve height in [0,1] for a bin count. **Linear**: the histogram plots how
+	 * many pixels hold a value, so the height must be proportional to that count.
+	 *
+	 * Deliberately NOT TrueScope::CountToIntensity — that log curve maps a count
+	 * to the *brightness* of a density texel (parade, waveform, vectorscope),
+	 * where lifting sparse cells into visibility is the point. Used as a curve
+	 * height it draws a bin holding 0.04 % of the frame at ~60 % height, which
+	 * flat-tops every curve and makes a channel appear to reach whatever its
+	 * rarest outlier pixel is. That inverted the apparent R/B order against
+	 * DaVinci Resolve on a ColorCalibrator frame (M4 review).
+	 */
+	static float GetCurveHeight(uint32 Count, uint32 MaxCount);
 
 protected:
 	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const override;

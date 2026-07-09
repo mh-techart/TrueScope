@@ -1,6 +1,8 @@
 // Copyright 2026 TrueScope contributors
 // SPDX-License-Identifier: Apache-2.0
 
+#include "Analysis/TrueScopeAnalysis.h"
+#include "Analysis/TrueScopeAnalysisResult.h"
 #include "Misc/AutomationTest.h"
 #include "UI/STrueScopeHistogram.h"
 #include "UI/TrueScopeDraw.h"
@@ -93,6 +95,123 @@ bool FTrueScopeHistogramChannelLayoutTest::RunTest(const FString&)
 			STrueScopeHistogram::GetChannelPlotRect(Tiny, ETrueScopeHistogramMode::SeparateChannels, Channel);
 		TestTrue(*FString::Printf(TEXT("Tiny plot band %d is not inverted"), Channel), Rect.Bottom >= Rect.Top);
 	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeHistogramChannelAssignmentTest,
+	"TrueScope.UI.HistogramChannelAssignment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeHistogramChannelAssignmentTest::RunTest(const FString&)
+{
+	// The gap the M4 analysis tests left open: they stop at the bin arrays, this
+	// one covers which bin array is drawn as which coloured curve. A red/blue
+	// swap in GetChannelBins fails here — the values are distinct and asymmetric,
+	// so the peaks cannot line up by accident.
+	using FResult = FTrueScopeAnalysisResult;
+	constexpr int32 NumChannels = FResult::NumChannels;
+	constexpr int32 Width = 32;
+	constexpr int32 Height = 16;
+	constexpr uint8 Levels[NumChannels] = {64, 128, 192};
+
+	TArray<FColor> Pixels;
+	Pixels.Init(FColor(Levels[0], Levels[1], Levels[2], 255), Width * Height);
+
+	FResult Result;
+	TrueScope::AnalyzePixels(Pixels, Width, Height, Result);
+
+	auto PeakBin = [](TArrayView<const uint32> Bins)
+	{
+		int32 Peak = 0;
+		for (int32 Bin = 1; Bin < Bins.Num(); ++Bin)
+		{
+			if (Bins[Bin] > Bins[Peak])
+			{
+				Peak = Bin;
+			}
+		}
+		return Peak;
+	};
+
+	for (int32 Channel = 0; Channel < NumChannels; ++Channel)
+	{
+		const TArrayView<const uint32> Bins = STrueScopeHistogram::GetChannelBins(Result, Channel);
+		TestEqual(*FString::Printf(TEXT("Curve %d is fed its own channel's bins"), Channel),
+			PeakBin(Bins), (int32)Levels[Channel]);
+
+		// ...and is drawn in that channel's colour: the curve peaking at 64 must
+		// be the red one. Binding and tint have to agree, or the scope lies.
+		const FLinearColor Line = STrueScopeHistogram::GetChannelLineColor(Channel);
+		const FLinearColor Fill = STrueScopeHistogram::GetChannelFillColor(Channel);
+		const float LineComponents[3] = {Line.R, Line.G, Line.B};
+		const float FillComponents[3] = {Fill.R, Fill.G, Fill.B};
+		for (int32 Other = 0; Other < NumChannels; ++Other)
+		{
+			if (Other == Channel)
+			{
+				continue;
+			}
+			TestTrue(*FString::Printf(TEXT("Curve %d line colour is dominated by component %d"), Channel, Channel),
+				LineComponents[Channel] > LineComponents[Other]);
+			TestTrue(*FString::Printf(TEXT("Curve %d fill colour is dominated by component %d"), Channel, Channel),
+				FillComponents[Channel] > FillComponents[Other]);
+		}
+	}
+
+	// Both display modes read the same binding — overlay only changes geometry,
+	// which is why the swap hypothesis would have been invisible there. Assert
+	// each channel's peak lands at the same X in either mode.
+	const FSlateRect Plot(0.0f, 0.0f, 255.0f, 300.0f);
+	for (int32 Channel = 0; Channel < NumChannels; ++Channel)
+	{
+		const int32 Peak = PeakBin(STrueScopeHistogram::GetChannelBins(Result, Channel));
+		const FSlateRect Stacked =
+			STrueScopeHistogram::GetChannelPlotRect(Plot, ETrueScopeHistogramMode::SeparateChannels, Channel);
+		const FSlateRect Overlay =
+			STrueScopeHistogram::GetChannelPlotRect(Plot, ETrueScopeHistogramMode::RgbOverlay, Channel);
+
+		const float StackedX = Stacked.Left + Stacked.GetSize().X * (Peak / float(FResult::NumBins - 1));
+		const float OverlayX = Overlay.Left + Overlay.GetSize().X * (Peak / float(FResult::NumBins - 1));
+		TestEqual(*FString::Printf(TEXT("Channel %d peaks at the same value in both modes"), Channel),
+			OverlayX, StackedX);
+		TestEqual(*FString::Printf(TEXT("Channel %d peak sits on its own value"), Channel),
+			StackedX, (float)Levels[Channel]);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeHistogramCurveScaleTest,
+	"TrueScope.UI.HistogramCurveScale",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeHistogramCurveScaleTest::RunTest(const FString&)
+{
+	// The histogram's vertical axis is a pixel count, so the curve height must be
+	// proportional to it. Regression guard for the M4 review bug: the log density
+	// mapping (right for the parade's texel *brightness*) drew a bin holding
+	// 0.04 % of the frame at ~60 % height, which flat-topped every curve and let
+	// a handful of outlier pixels decide where a channel appeared to end.
+	constexpr uint32 MaxCount = 14556;   // the frame the bug was found on
+
+	TestEqual(TEXT("Empty bin has no height"), STrueScopeHistogram::GetCurveHeight(0, MaxCount), 0.0f);
+	TestEqual(TEXT("An empty frame draws nothing"), STrueScopeHistogram::GetCurveHeight(10, 0), 0.0f);
+	TestEqual(TEXT("The tallest bin fills the band"), STrueScopeHistogram::GetCurveHeight(MaxCount, MaxCount), 1.0f);
+	TestEqual(TEXT("Half the count is half the height"),
+		STrueScopeHistogram::GetCurveHeight(MaxCount / 2, MaxCount), 0.5f, 0.001f);
+	TestEqual(TEXT("One percent of the count is one percent of the height"),
+		STrueScopeHistogram::GetCurveHeight(MaxCount / 100, MaxCount), 0.01f, 0.001f);
+
+	// The exact bin that inverted the apparent R/B order against Resolve.
+	constexpr uint32 OutlierCount = 116;
+	const float Height = STrueScopeHistogram::GetCurveHeight(OutlierCount, MaxCount);
+	TestTrue(TEXT("A 116-pixel outlier bin stays under 2 % of the band height"), Height < 0.02f);
+
+	// Spell out what it used to do, so nobody reintroduces it.
+	const float LogHeight = TrueScope::CountToIntensity(OutlierCount, MaxCount);
+	TestTrue(TEXT("The log density mapping would have drawn that bin above 50 %"), LogHeight > 0.5f);
+	TestTrue(TEXT("The linear scale is far shorter there than the log one"), Height < LogHeight * 0.1f);
 
 	return true;
 }

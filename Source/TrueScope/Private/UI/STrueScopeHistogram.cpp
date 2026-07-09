@@ -3,7 +3,6 @@
 
 #include "UI/STrueScopeHistogram.h"
 
-#include "Analysis/TrueScopeAnalysis.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/AppStyle.h"
 #include "UI/TrueScopeDraw.h"
@@ -46,6 +45,43 @@ FSlateRect STrueScopeHistogram::GetChannelPlotRect(const FSlateRect& Plot, ETrue
 	const float SectionHeight = FMath::Max(0.0f, (Plot.GetSize().Y - ChannelGap * (NumChannels - 1)) / NumChannels);
 	const float Top = Plot.Top + Channel * (SectionHeight + ChannelGap);
 	return FSlateRect(Plot.Left, Top, Plot.Right, Top + SectionHeight);
+}
+
+TArrayView<const uint32> STrueScopeHistogram::GetChannelBins(const FTrueScopeAnalysisResult& Result, int32 Channel)
+{
+	return Result.Histogram[Channel];
+}
+
+FLinearColor STrueScopeHistogram::GetChannelFillColor(int32 Channel)
+{
+	return ChannelFillColors[Channel];
+}
+
+FLinearColor STrueScopeHistogram::GetChannelLineColor(int32 Channel)
+{
+	return ChannelLineColors[Channel];
+}
+
+uint32 STrueScopeHistogram::GetSharedMaxCount(const FTrueScopeAnalysisResult& Result)
+{
+	uint32 MaxCount = 0;
+	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
+	{
+		for (uint32 Count : GetChannelBins(Result, Channel))
+		{
+			MaxCount = FMath::Max(MaxCount, Count);
+		}
+	}
+	return MaxCount;
+}
+
+float STrueScopeHistogram::GetCurveHeight(uint32 Count, uint32 MaxCount)
+{
+	if (Count == 0 || MaxCount == 0)
+	{
+		return 0.0f;
+	}
+	return static_cast<float>(Count) / static_cast<float>(MaxCount);
 }
 
 TArrayView<const FTrueScopeDisplayMode> STrueScopeHistogram::GetDisplayModes() const
@@ -96,16 +132,9 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		return LayerId;
 	}
 
-	// Shared normalization across channels so relative channel heights stay
-	// truthful; log mapping for the smooth density look.
-	uint32 MaxCount = 0;
-	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
-	{
-		for (uint32 Count : Result->Histogram[Channel])
-		{
-			MaxCount = FMath::Max(MaxCount, Count);
-		}
-	}
+	// One shared vertical scale across the channels, so their relative heights
+	// stay comparable (see GetCurveHeight for why the scale is linear).
+	const uint32 MaxCount = GetSharedMaxCount(*Result);
 	if (MaxCount == 0)
 	{
 		return LayerId;
@@ -117,7 +146,8 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
 		const FSlateRect ChannelPlot = GetChannelPlotRect(Plot, Mode, Channel);
-		const FColor FillColor = ChannelFillColors[Channel].ToFColor(false);
+		const TArrayView<const uint32> Bins = GetChannelBins(*Result, Channel);
+		const FColor FillColor = GetChannelFillColor(Channel).ToFColor(false);
 
 		// Filled curve as one triangle strip: bottom/top vertex pairs per bin.
 		TArray<FSlateVertex> Vertices;
@@ -132,8 +162,8 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		{
 			// Bin -> fraction of the 0-1023 axis; bin 255 sits on full scale.
 			const float X = ChannelPlot.Left + ChannelPlot.GetSize().X * (static_cast<float>(Bin) / (NumBins - 1));
-			const float Intensity = TrueScope::CountToIntensity(Result->Histogram[Channel][Bin], MaxCount);
-			const float TopY = ChannelPlot.Bottom - ChannelPlot.GetSize().Y * Intensity;
+			const float Height = GetCurveHeight(Bins[Bin], MaxCount);
+			const float TopY = ChannelPlot.Bottom - ChannelPlot.GetSize().Y * Height;
 			TopLine.Add(FVector2f(X, TopY));
 
 			FSlateVertex Bottom;
@@ -158,7 +188,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 
 		// Crisp anti-aliased outline on top of the translucent fill.
 		FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 1, AllottedGeometry.ToPaintGeometry(),
-			TopLine, ESlateDrawEffect::None, ChannelLineColors[Channel], /*bAntialias*/ true, 1.0f);
+			TopLine, ESlateDrawEffect::None, GetChannelLineColor(Channel), /*bAntialias*/ true, 1.0f);
 	}
 	LayerId += 2;
 

@@ -81,6 +81,40 @@ add:
 - **Waveform:** a horizontal gradient produces the diagonal trace (as the
   parade does, but unseparated).
 
+## Post-review fix — histogram vertical scale
+
+The M4 review (Resolve cross-check on a ColorCalibrator frame) found the three
+stacked curves reading their channels in the wrong order — red appearing to
+fall off last where Resolve shows it falling first.
+
+**The channels were not swapped.** Measured against the same frame, each drawn
+band correlated best with its own channel (band 0 vs R 0.90, vs B 0.65) and its
+right edge landed exactly on that channel's true maximum bin.
+
+The cause was the **vertical mapping**: the histogram ran its bin counts
+through `TrueScope::CountToIntensity`, the log curve that maps a count to the
+*brightness* of a density texel (parade, waveform, vectorscope), where lifting
+sparse cells into visibility is the whole point. As a curve *height* it drew a
+bin holding 22 pixels at 47 % of the band, and one holding 0.04 % of the frame
+at 61 %. That flat-topped every curve (234 of 256 bins above half height) and
+made each channel appear to run out to its rarest outlier pixel — so the
+apparent fall-off order was decided by stray highlights, not by the
+distribution, and the R/B order inverted.
+
+Fixed by plotting the count linearly against the shared per-frame maximum. The
+shared maximum stays: it is what keeps the three curves comparable. `Count →
+brightness` (log) and `count → curve height` (linear) are now distinct and
+documented, so the M5 GPU path cannot inherit the confusion.
+
+Two tests close the gap the M4 suite left — the analysis tests stopped at the
+bin arrays, and `UI.HistogramChannelLayout` only checked geometry:
+
+- `UI.HistogramChannelAssignment` — a flat R=64/G=128/B=192 frame must peak
+  each curve on its own value, and each curve's tint must be dominated by its
+  own component. Verified to fail on a deliberately swapped `GetChannelBins`.
+- `UI.HistogramCurveScale` — the curve height is proportional to the count, and
+  the 116-pixel bin that inverted the order stays under 2 % of band height.
+
 ## Acceptance criteria
 
 - [x] Builds via the CLAUDE.md Build.sh command with no new warnings.
@@ -105,14 +139,19 @@ add:
       TrueScope.UI.ValueScale test pins the shared axis and both gridline
       sets; visible in the screenshot.)*
 - [x] All automation tests pass (the seven existing plus the new SMPTE-bars,
-      histogram-channel and waveform tests). *(Self-verified headless: 14/14
+      histogram-channel and waveform tests). *(Self-verified headless: 16/16
       Result={Success} — the 7 from M3 plus Chroma709, ColorBarsVectorscope,
       ColorBarsParade, WaveformHorizontalGradient, HistogramChannels,
-      UI.ValueScale, UI.HistogramChannelLayout.)*
+      UI.ValueScale, UI.HistogramChannelLayout, and the two post-review tests
+      UI.HistogramChannelAssignment and UI.HistogramCurveScale.)*
 - [ ] **Scope cross-check vs. DaVinci Resolve** (architecture.md method,
       point 5) performed by the human on a ColorCalibrator frame for all four
       scopes; values agree on their scales (appearance may differ by mapping).
-      *(Human confirmation required.)*
+      *(Human confirmation required. First pass found the histogram scale bug
+      above; after the fix the drawn curves match the frame's own per-channel
+      histograms — peaks at 706/674/664 vs. a ground truth of 702/674/666,
+      correlation 0.99 per channel — but the Resolve comparison is still the
+      human's to repeat.)*
 - [ ] Anti-aliased, no blocky pixelation (MCP screenshot, human review).
       *(Screenshots taken and inspected; final human review pending.)*
 - [x] No TrueScope warnings/errors in the Output Log. *(Self-verified: only
