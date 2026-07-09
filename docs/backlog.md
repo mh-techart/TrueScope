@@ -86,13 +86,17 @@ without the plugin).
   lever. This is finish-tuning (M6) and should be calibrated **once across
   all four scopes together** for a consistent look — so tackle it after all
   scopes exist, not per-scope.
-- **Histogram vertical scaling: per-channel default + shared-max mode** (M6,
-  together with the density curve above) — M4 ships a shared per-frame maximum
-  across the three curves. Settled default becomes **per-channel scaling**, as
-  Resolve does: it keeps shadow and highlight detail readable instead of
-  drowned, and a clipped mid-tone peak is harmless. The shared maximum stays
-  available as a display mode for comparing relative channel intensity.
-  Rationale and caveats: `architecture.md`, "Histogram vertical scaling".
+- **Histogram scale gain: Resolve-style default + exact mode** (M6, together
+  with the density curve above) — the three curves always share one scale
+  (derived from the strongest channel), never per-channel. The option is the
+  **gain** on that shared scale: *Resolve-style* (default) amplifies past the
+  band height so the tallest peak clips while edge detail becomes readable;
+  *Exact* (gain 1.0, M4's current behavior) makes the tallest peak touch the
+  top. Same draw path, one parameter — possibly a slider rather than a
+  toggle. Before fixing details, **measure Resolve**: fixed vs. adaptive
+  gain, and whether its plot is linear or slightly non-linear (sqrt-ish).
+  Test with known bin ratios. Rationale: `architecture.md`, "Histogram
+  vertical scaling".
 - **Scale behavior across bit depth / HDR / color spaces** — V1 uses a
   normalized 0–1023 scale for the SDR display-referred case (settled in
   architecture.md). Open for later: what the scale should show for HDR

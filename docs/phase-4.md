@@ -142,12 +142,14 @@ shared maximum stays: it is what keeps the three curves comparable. `Count →
 brightness` (log) and `count → curve height` (linear) are now distinct and
 documented, so the M5 GPU path cannot inherit the confusion.
 
-> **Follow-up decision (M6):** the shared maximum was the right call for this
-> fix, but the settled default becomes **per-channel scaling** (as Resolve
-> does), with the shared maximum offered as a display mode. Rationale and
-> trade-offs: see the "Histogram vertical scaling" row in `architecture.md`.
-> Implemented in M6 together with the density-curve tuning, so all scopes are
-> calibrated at once.
+> **Follow-up decision (M6):** the shared maximum is correct and stays — the
+> three curves always share one scale, never per-channel, so their true ratio
+> is preserved. What becomes optional is the **gain** on that shared scale:
+> Resolve-style amplification (default; tallest peak clips, edge detail
+> readable) vs. exact scaling (gain 1.0, M4's current behavior). Rationale
+> and the open question of Resolve's exact curve: see the "Histogram vertical
+> scaling" row in `architecture.md`. Implemented in M6 together with the
+> density-curve tuning, so all scopes are calibrated at once.
 
 Two tests close the gap the M4 suite left — the analysis tests stopped at the
 bin arrays, and `UI.HistogramChannelLayout` only checked geometry:
