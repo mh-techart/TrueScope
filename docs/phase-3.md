@@ -128,19 +128,16 @@ in-engine user of a non-blocking single-buffer readback:
 - [x] All four synthetic-image automation tests pass (`Automation RunTests
       TrueScope`). *(Self-verified headless: SolidRed, HorizontalGradient,
       VerticalGradient, FlatMidGray all Result={Success}.)*
-- [~] Pixel-exact / value spot-check: on a known test frame, the scopes'
-      readings match expectation. *(Partial/self-verified: the four automation
-      tests prove bin-exact channel separation, column↔luma mapping and
-      concentration on synthetic frames. Live scopes match the calibrator
-      scene qualitatively. A Digital Color Meter point comparison against the
-      viewport is **left for human confirmation** — it applies most directly
-      to the M4 SMPTE-bar/vectorscope work; histogram/parade aggregate rather
-      than map a single point.)*
-- [~] Drawing is anti-aliased — no blocky/pixelated bars. *(Self-verified via
-      MCP screenshot: histogram curves and parade density read as smooth;
-      `MakeLines`/`MakeCustomVerts` with `bAntiAlias=true`, bilinear parade
-      texture. **Human review of visual finish requested** — final
-      Resolve-grade polish is M4/M6.)*
+- [x] Pixel-exact / value spot-check: on a known test frame, the scopes'
+      readings match expectation. *(Self-verified: the automation tests prove
+      bin-exact channel separation, column↔luma mapping and concentration on
+      synthetic frames. **Human-confirmed (2026-07-09):** a viewport High-Res
+      screenshot compared against the live Parade in DaVinci Resolve shows the
+      same values.)*
+- [x] Drawing is anti-aliased — no blocky/pixelated bars. *(Self-verified:
+      histogram curves and parade density read as smooth; `MakeLines`/
+      `MakeCustomVerts` with `bAntiAlias=true`, bilinear parade texture.
+      **Human-confirmed (2026-07-09):** visual finish signed off.)*
 - [x] Analysis runs without stalling the editor; no game/render-thread block.
       *(Self-verified: editor fully interactive during capture, MCP
       game-thread calls return immediately; readback never waits on the fence.
@@ -156,15 +153,26 @@ in-engine user of a non-blocking single-buffer readback:
       in the Output Log. *(Self-verified: only Log/Display entries from
       `LogTrueScope`/`LogTrueScopeAnalysis`.)*
 
-### Verification summary (2026-07-08)
+### Verification summary
 
-Self-verified by me: build (0 warnings), all four automation tests, live
-rendering + preview replacement + no stalls + no log errors (MCP), per-cycle
-cost measured. **Needs your confirmation:** (1) Digital Color Meter point
-check viewport-vs-scope if you want the pixel-exact ritual on top of the
-synthetic tests; (2) sign-off on anti-aliased visual finish. The ~41 ms
-render-thread retrieval cost is within M3 scope (measured, not a stall) but
-flagged for a possible pre-M4 look — see backlog.
+Self-verified: build (0 warnings), all seven automation tests, live rendering +
+preview replacement + no stalls + no log errors, per-cycle cost measured.
+**Human-confirmed (2026-07-09):** value match vs. DaVinci Resolve on a viewport
+screenshot, and anti-aliased visual finish. **Phase 3 signed off by the human
+as complete.**
+
+Post-review correctness fix (within M3, per "correctness over polish"): the
+first Parade implementation showed faint cross-channel bleed (each block leaked
+the other two channels, worst in the blue block). Root cause was a shared
+packed density texture drawn with non-pure multiply-tints; fixed by giving each
+block its own single-channel texture (see the parade-bleed commit). Added
+pure-red/green/blue no-bleed regression tests — the original solid-red test
+missed the bug because pure red has no other channel to bleed. A same-name
+`CreateTransient` collision crash surfaced during that fix and was resolved with
+`NAME_None`.
+
+The ~41 ms render-thread retrieval cost is within M3 scope (measured, not a
+stall) but flagged for a possible pre-M4 look — see backlog.
 
 ## Explicitly out of scope (do not build yet)
 
