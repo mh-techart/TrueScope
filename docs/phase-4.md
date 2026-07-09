@@ -39,6 +39,10 @@ default waveform draws the combined RGB trace). Reuse the parade code path and
 add it to the `ETrueScopeType` enumeration and factory — it should be small,
 since the parade already solved the 2D mechanics.
 
+> **Superseded during the phase:** the waveform ships with both an RGB and a
+> Luma display mode — see "Post-review addition — waveform Luma / RGB display
+> modes" below. RGB remains the default.
+
 ## Task 3 — Vectorscope
 
 The first **aspect-locked** scope: this is where M3's `bMaintainSquareAspect`
@@ -71,7 +75,7 @@ Per architecture.md "Scales":
 ## Automation tests (headless, synthetic images)
 
 Keep the seven existing tests (four original + three pure-channel no-bleed);
-add:
+add at minimum:
 
 - **SMPTE color bars:** vectorscope density lands in the six graticule
   targets; parade/waveform show the expected bar levels.
@@ -80,6 +84,10 @@ add:
   the same data superimposed.
 - **Waveform:** a horizontal gradient produces the diagonal trace (as the
   parade does, but unseparated).
+
+*(In the end eleven were added — the three above plus `Chroma709`,
+`ColorBarsParade`, `UI.ValueScale`, `UI.HistogramChannelLayout`, and the four
+post-review tests listed in the sections below. Final total: 18.)*
 
 ## Post-review addition — waveform Luma / RGB display modes
 
@@ -134,6 +142,13 @@ shared maximum stays: it is what keeps the three curves comparable. `Count →
 brightness` (log) and `count → curve height` (linear) are now distinct and
 documented, so the M5 GPU path cannot inherit the confusion.
 
+> **Follow-up decision (M6):** the shared maximum was the right call for this
+> fix, but the settled default becomes **per-channel scaling** (as Resolve
+> does), with the shared maximum offered as a display mode. Rationale and
+> trade-offs: see the "Histogram vertical scaling" row in `architecture.md`.
+> Implemented in M6 together with the density-curve tuning, so all scopes are
+> calibrated at once.
+
 Two tests close the gap the M4 suite left — the analysis tests stopped at the
 bin arrays, and `UI.HistogramChannelLayout` only checked geometry:
 
@@ -174,16 +189,17 @@ bin arrays, and `UI.HistogramChannelLayout` only checked geometry:
       tests UI.HistogramChannelAssignment and UI.HistogramCurveScale, and the
       two waveform-mode tests Analysis.LumaWaveform and
       UI.WaveformModeSelection.)*
-- [ ] **Scope cross-check vs. DaVinci Resolve** (architecture.md method,
+- [x] **Scope cross-check vs. DaVinci Resolve** (architecture.md method,
       point 5) performed by the human on a ColorCalibrator frame for all four
       scopes; values agree on their scales (appearance may differ by mapping).
-      *(Human confirmation required. First pass found the histogram scale bug
-      above; after the fix the drawn curves match the frame's own per-channel
-      histograms — peaks at 706/674/664 vs. a ground truth of 702/674/666,
-      correlation 0.99 per channel — but the Resolve comparison is still the
-      human's to repeat.)*
-- [ ] Anti-aliased, no blocky pixelation (MCP screenshot, human review).
-      *(Screenshots taken and inspected; final human review pending.)*
+      *(First pass found the histogram scale bug above; after the fix the drawn
+      curves match the frame's own per-channel histograms — peaks at 706/674/664
+      vs. a ground truth of 702/674/666, correlation 0.99 per channel.
+      **Human-confirmed:** waveform, vectorscope, parade and — after the fix —
+      histogram all agree with Resolve on their scales. Remaining visual
+      differences are the known density-weighting question, deferred to M6.)*
+- [x] Anti-aliased, no blocky pixelation (MCP screenshot, human review).
+      *(**Human-confirmed:** signed off, with and without High DPI.)*
 - [x] No TrueScope warnings/errors in the Output Log. *(Self-verified: only
       Log-level capture/cost lines. Per-cycle cost after the vectorscope was
       added: analysis ~7.9 ms, unchanged within noise.)*
@@ -196,3 +212,25 @@ interpolated draw rate (backlog); density-curve and opacity finish-tuning
 (backlog); window layout options and per-panel scope dropdowns (post-M6); the
 ~41 ms render-thread readback optimization (backlog). Ideas →
 `docs/backlog.md`.
+
+## Verification summary
+
+Self-verified: clean build (0 warnings), 18/18 automation tests green (7 from
+M3 + 11 added, count checked against expectation), all four scopes rendering
+live, vectorscope circularity measured at extreme panel shapes, display modes
+working, per-cycle analysis cost ~7.9 ms, no log entries above Log level.
+
+Two correctness bugs were found in review and fixed within the phase (see the
+post-review sections above): the histogram's vertical mapping, and — resolving
+a spec conflict rather than deciding alone — the waveform's missing Luma mode.
+Both got regression tests that were proven to fail on the reintroduced bug.
+
+Incidental refactor, accepted: the parade's column→intensity pass was factored
+into a shared helper so all four traces use one density curve instead of four
+copies. Slightly beyond the phase scope, but it is a precondition for M6's
+"calibrate the curve across all scopes at once" and is covered by the existing
+parade tests.
+
+**Human-confirmed:** Resolve cross-check for all four scopes, anti-aliased
+finish, both display-mode switches. **Phase 4 signed off by the human as
+complete.**

@@ -88,8 +88,15 @@ in-engine user of a non-blocking single-buffer readback:
    - *Parade:* per-channel 2D counts (image column × luma bin) at full
      960×540 capture resolution (no further downscale). Waveform (M4) will be
      the same mechanism without channel separation.
-   - Log-ish intensity mapping of counts → display brightness so the result
-     is not binary on/off (the smooth "density" look; final tuning is M4/M6).
+   - Intensity mapping of counts. **Corrected after M4** — this line
+     originally said "log-ish intensity mapping of counts → display
+     brightness" for both scopes, and that conflation caused a real bug (see
+     `phase-4.md`, "Post-review fix — histogram vertical scale"). The two
+     mappings are distinct: *count → texel brightness* is **logarithmic** and
+     applies to density fields (parade, later waveform/vectorscope), where
+     sparse cells must be lifted into visibility; *count → curve height* is
+     **linear** against the frame maximum and applies to drawn curves (the
+     histogram). Final appearance tuning is M6.
 3. **Slate drawing** of Histogram and Parade in their tab panels, replacing
    the M2 throwaway preview:
    - Anti-aliased fills/lines (`FSlateDrawElement::MakeLines` /
