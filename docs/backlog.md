@@ -75,6 +75,17 @@ without the plugin).
   persistently-mapped buffer readback avoids it; or reduce the capture
   resolution. Tie-in with the settable measurement rate (M6) and the GPU path
   (M5, which removes the CPU copy entirely for the GPU analysis result).
+  **Status after the M5 path decision:** with the GPU path as the internal
+  default from M5 on, the ~41 ms hitch no longer affects normal use, so this is
+  **not a release blocker**. It does still affect the shipped CPU compatibility
+  path. **M7 acceptance question:** is the CPU path, as shipped, tolerable for a
+  user who has to fall back to it? If not, do the optimization there, or lower
+  the capture resolution for the CPU path only. Independently, the
+  instrumentation experiment that precedes `phase-5.md` answers a question that
+  **decides M5's architecture**: if the ~41 ms are a fixed cost of the map/lock
+  call rather than of the memcpy, then the GPU path must contain **no readback
+  at all** (results stay GPU-resident), because even a few kilobytes would cost
+  the same.
 - **Density-to-brightness curve tuning ("scopes drowning in dense areas")** —
   observed in the M3 review: TrueScope's parade density is much denser than
   Resolve's, so structure drowns in solid fills. The likely cause is **not**
@@ -120,6 +131,21 @@ without the plugin).
   right-click menu on `STrueScopeWidget`) and shipped its first two users — the
   histogram's Separate Channels / RGB Overlay pair and the waveform's RGB /
   Luma pair. Further modes only need the three overrides.
+- **Vectorscope graticule extensions** — the M4 graticule ships the six 75 %
+  targets only. Missing, all standard in Resolve/FCP and all display-only
+  (no new analysis): the **skin-tone line** (I-line, ≈123°), **100 % targets**
+  in addition to the 75 % boxes, and a **2× zoom** for reading low-saturation
+  material. Candidates for the per-scope display-mode mechanism (M4) plus a
+  "Show Guides" toggle.
+- **PIE in a separate editor window** — unknown behaviour. PIE launched as
+  "New Editor Window" runs inside the editor process, so the SceneViewExtension
+  may well see it, but the "last focused **Level Editor** viewport" selection
+  likely filters it out — meaning TrueScope would keep measuring the level
+  viewport while the user looks at the PIE window. To be verified by
+  experiment (see the readback/PIE work order). Not a deal-breaker either way:
+  if it works, it is a bonus for end users; if not, it becomes a documented
+  limitation. **Standalone Game is not a candidate** — separate process, no
+  editor module, out of scope by construction; document it in the README.
 
 ## Window layout options (post-M6 feature)
 
