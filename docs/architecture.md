@@ -20,8 +20,20 @@ instruction conflicts with them, flag it.
 - **Zero level footprint:** no actors, components or volumes are placed in
   the user's level. Teams sharing a level must be unaffected by whether a
   member has TrueScope installed.
-- Measures the **active viewport** (WYSIWYG). Exact camera measurement is
-  achieved by piloting a Cine Camera or using the Cinematic Viewport.
+- **The end user is an artist, not an engine programmer.** Every user-facing
+  capability must be discoverable and operable from the TrueScope UI. Console
+  variables are a diagnostic and developer channel, never the only way to
+  reach a feature. Defaults must produce a correct, pleasant result without
+  configuration.
+- Measures **exactly one viewport at a time**: the last focused Level Editor
+  viewport. There is no viewport picker and the user never chooses — this is
+  intentional. Cinematic Viewport and PIE running *inside* a level viewport
+  are covered, since these are level editor viewports. Exact camera
+  measurement is achieved by piloting a Cine Camera or using the Cinematic
+  Viewport.
+- **Standalone Game is out of scope by construction:** it is a separate
+  process without the editor module, so TrueScope does not load there. PIE in
+  a *separate editor window* is currently **untested** — see `backlog.md`.
 - Refresh rate ~2–3 Hz by default (configurable); resource-friendly.
 - Smooth, anti-aliased rendering — no blocky/pixelated scopes.
 - Distribution: GitHub (this repo, source + prebuilt binaries per release);
@@ -72,7 +84,7 @@ receives. Consequences, by design:
 | UI framework | **Slate**, dockable **Nomad Tab** (registered via `FGlobalTabmanager`), menu entry under *Window → TrueScope* | Native editor integration, docking + layout persistence for free, anti-aliased line/polygon drawing solves the "no pixelated look" requirement. No content assets needed → clean code-only plugin. |
 | UMG / Editor Utility Widgets | Rejected for the scopes UI | Would still need a C++ backend, and lacks crisp vector drawing; a Slate tab already docks next to any Editor Utility Widget. |
 | Common UI plugin | Not used | Runtime/game UI framework (input routing, gamepad); irrelevant for editor tools. |
-| Image source | **Active Viewport via `FSceneViewExtensionBase`**, subscribed after the tonemap pass; the post-tonemap image is copied/downsampled into a plugin render target. Single source in V1. | Zero level footprint; WYSIWYG for every viewport type incl. Cinematic Viewport and PIE; camera measurement via piloting. Engine reference for the pattern: the OpenColorIO plugin (post-tonemap view-extension pass) and other in-engine `SceneViewExtension` users. |
+| Image source | **Active Viewport via `FSceneViewExtensionBase`**, subscribed after the tonemap pass; the post-tonemap image is copied/downsampled into a plugin render target. Single source in V1. | Zero level footprint; WYSIWYG for the last focused Level Editor viewport, which covers the Cinematic Viewport and PIE running inside a level viewport (PIE in a separate editor window untested, Standalone Game out of scope — see the product constraints); camera measurement via piloting. Engine reference for the pattern: the OpenColorIO plugin (post-tonemap view-extension pass) and other in-engine `SceneViewExtension` users. |
 | Cine Camera via SceneCapture | **Deferred to backlog** (optional convenience: measure a camera without piloting it) | Original MVP path; superseded as primary source by the decision above. Would reintroduce a scene-side component — acceptable only as an opt-in extra, never a requirement. |
 | Viewport overlays | Not in the scopes window scope of V1, **but planned (M8)**: Zebra, over/under-exposure warning (red/blue), False Color — implemented as a *writing* pass on the same SceneViewExtension, per-viewport toggle from the TrueScope tab | Reuses M2 (view extension) + M5 (plugin shader) infrastructure; thresholds are display-referred % and therefore consistent with the waveform. No PostProcessVolume, no material asset, no level changes. |
 | Analysis, stage 1 (MVP) | **CPU**: async GPU readback (`FRHIGPUTextureReadback`) of the downsampled capture, C++ histogram building in a background task | No shaders → fully debuggable and unit-testable in text; at 2–3 Hz and ~0.5 MPix per update the cost is negligible. Becomes the ground truth for the GPU path. |
@@ -83,15 +95,17 @@ receives. Consequences, by design:
 | Two distinct count mappings — never confuse them | **count → brightness** (logarithmic) for density fields, where sparse cells must stay visible. **count → curve height** (linear, against the frame maximum) for drawn curves, i.e. the histogram. Keep them separately named in code | Applying the log brightness curve as a curve *height* flat-topped the M4 histogram (a 22-pixel bin drew at 47 % height) and made the apparent channel fall-off order depend on stray outlier pixels rather than the distribution. An earlier version of these docs stated the log mapping without this distinction and caused the bug. The M5 GPU path must inherit the distinction, not the confusion. |
 | Histogram vertical scaling | The three curves **always share one scale**, derived from the strongest channel's peak — never scaled per channel. The option is the **gain applied to that shared scale**: *Resolve-style* (default) amplifies beyond the band height, so the tallest peak clips off the top while low counts at the edges become readable; *Exact* (gain 1.0) makes the tallest peak just touch the top. One parameter, one draw path. Implemented in M6 with the density-curve tuning | A shared scale preserves the true ratio between channels; per-channel scaling would inflate a nearly empty channel to full height and mislead. Amplifying the shared scale solves the real problem — that shadow and highlight detail, where image information is actually lost, must stay readable — without that cost, since all three curves gain together. A clipped mid-tone peak is harmless: exposure is fine there. Resolve's behavior is the default because colorists read histograms that way. **Open for M6:** measure Resolve's exact behavior before fixing details — is the gain a fixed factor or content-adaptive, and is the plot truly linear, or slightly non-linear (sqrt-ish, far gentler than the density log curve)? Test with known bin ratios (e.g. 1000 px at value 500 vs. 10 px at value 100). |
 | Per-scope display modes | Scopes may offer **display modes** — alternative renderings of the same analysis data, switched per scope via right-click (`FTrueScopeDisplayMode` + menu on `STrueScopeWidget`, built in M4). Shipped: histogram *Separate Channels* / *RGB Overlay*; waveform *RGB* / *Luma*. Planned: parade and vectorscope modes, Monochrome, Show Guides, trace brightness, histogram scale gain (Resolve-style / Exact) | A display mode is not a scope type: it changes presentation, not what is measured. Neither member of a pair is "the" correct one (luma for exposure, RGB for colour balance; stacked channels for video, overlay for photo work), so nothing is hardcoded and the user chooses. Defaults follow Resolve so the scope cross-check stays apples-to-apples. |
-| Layout | 2×2 `SSplitter` grid — Waveform | Parade / Vectorscope | Histogram — each panel switchable via dropdown | Resolve reference layout. |
+| Layout | Fixed 2×2 `SSplitter` grid: Waveform / Parade (top row), Vectorscope / Histogram (bottom row) | Resolve reference layout. Per-panel scope-type selection and alternative layouts are deferred (see `backlog.md`, "Window layout options"). Not to be confused with per-scope **display modes**, which exist since M4 and change presentation, not which scope a panel shows. |
 | Data interface | `FTrueScopeAnalysisResult` (bin arrays and/or textures) decouples analysis from UI | Lets CPU → GPU migration happen without touching the UI layer. |
 | Repo scope | This repo contains **only** `Plugins/TrueScope/`; the host project stays local to each developer | Users clone straight into their own project's `Plugins/` folder. |
 | Menu entry | Window menu only in V1; toolbar button deferred (backlog) | Toolbar space is contested; Window menu is where editor panels are expected. |
+| Cross-platform parity outranks optimization | Windows, macOS and Linux must all work. If an optimization would restrict, degrade or bypass one platform, it is not taken — the portable path is chosen even at a measurable performance cost. Platform-specific measurements (e.g. Metal readback timings) inform the *problem statement*, never the architecture alone; before designing around a number, ask whether the number is platform-specific. | A tool the developer can only test on one of its three target platforms must not depend on that platform's characteristics. Portability is a product promise, performance is a quality. |
+| Analysis path selection | Both paths ship. From M5 on, the **GPU compute path is the internal default**; the CPU path remains available as a user-selectable compatibility option. UI labels in the TrueScope tab: `GPU (performance)` / `CPU (compatibility)` — neither is labelled "default". A console variable exists **in addition** for diagnostics, never as the only access. Both paths must produce identical values on the synthetic test images. The M6 status line shows which path is active. | The shipped path is the path that gets exercised: defaulting to CPU would leave GPU-path bugs undiscovered on the two platforms the developer cannot test. The CPU path's ~41 ms render-thread readback is a periodic editor hitch and must not be the out-of-the-box experience. The compatibility option exists for driver/platform failures, **not** for different results — say so in the README, so "performance" is never read as "less accurate". |
 
 ## Architecture overview
 
 ```
-Active editor viewport (any type: Level, Cinematic, PIE)
+Last focused Level Editor viewport (incl. Cinematic, in-viewport PIE)
         │
         ▼
 FSceneViewExtensionBase (plugin, no level footprint)
@@ -139,7 +153,7 @@ TrueScope/
 | M3 | CPU MVP: async readback, histogram + parade drawn anti-aliased in Slate, automation tests on synthetic images. **Space-usage policy per scope type (architecture guardrail, established here because M3 draws the first scope):** each scope widget declares how it uses the space it is given. Waveform / Parade / Histogram are *responsive* — they fill the available area (X = image columns or luma bins, Y = luma or frequency; both stretch meaningfully). The Vectorscope is *aspect-locked* — it MUST stay circular; it scales uniformly and centers itself with margins, never distorting into an ellipse, no matter how narrow or wide the panel (a circle becoming an ellipse would falsify hue angle and saturation). Implement as a per-widget policy (e.g. `bMaintainSquareAspect`, true only for the vectorscope), not four hardwired special cases. Scope *types* are an extensible enumeration + factory (a fifth type like CIE Chromaticity, or the M8 overlays, must not require reworking the UI). Axis labels (0–1023, %, IRE) are UI elements of fixed size — not part of the scaled graphic — so they stay legible at any panel size (FCP behavior; Resolve scales them, which is the worse UX) |
 | M4 | All four scopes complete (BT.709 math, vectorscope graticule, log mapping, scales) |
 | M5 | GPU compute path (validated against CPU ground truth on test images) |
-| M6 | Polish: settings, persistence, per-panel switching, perf check, **appearance calibration across all four scopes at once** (density-to-brightness curve tuning; histogram per-channel scaling as the new default with shared-max as a display mode), **measurement status line** in the TrueScope tab showing what is being measured (viewport type/name; display encoding, e.g. "sRGB/Rec.709" or the active OCIO view-transform name) — makes the V1 calibration scope visible in the UI instead of only in the README |
+| M6 | Polish: settings, persistence, perf check, **appearance calibration across all four scopes at once** (density-to-brightness curve tuning; histogram **gain on the shared scale** — Resolve-style default vs. Exact — the three curves always share one scale, never per-channel), **TrueScope tab menu/toolbar** exposing user-facing options (analysis path, display modes, measurement rate) per the "end user is an artist" constraint, **measurement status line** showing what is being measured (viewport type/name; display encoding, e.g. "sRGB/Rec.709" or the active OCIO view-transform name) and which analysis path is active (GPU / CPU) |
 | M7 | Release: `RunUAT BuildPlugin` for Win64+Mac+Linux (Win/Linux built on a Windows machine — Linux via Epic's cross-compile toolchain), README, binaries; optional Fab |
 | M8 | **Overlays: Zebra, over/under-exposure warning, False Color** — writing SceneViewExtension pass, thresholds consistent with waveform %, per-viewport toggles in the TrueScope tab (details: backlog.md) |
 
@@ -164,6 +178,11 @@ Scopes are mathematically verifiable — exploit that:
      A test that never failed proves nothing. Also design cases that *can*
      expose the fault: the M3 parade bleed survived a solid-red test because
      pure red has no other channel to bleed — pure-blue was needed.
+   - **Keep both analysis paths honest.** From M5 on, the CPU path is only
+     reachable through a compatibility option, so it can rot unnoticed. The
+     headless automation tests keep exercising it (no RHI required), and one
+     test compares CPU and GPU results on the same image. Neither path may
+     break silently.
 2. **Pixel-exact image check — macOS Digital Color Meter** (fast verification
    that two versions of the *same image* carry identical values — e.g.
    viewport vs. captured image in M2 — rather than merely "looking the same"):
@@ -237,6 +256,12 @@ copied or transliterated from GPL sources. All math here is textbook-standard
   These live in the host `UEscopes.uproject` (not under version control), not
   in `TrueScope.uplugin` — they are development tooling, never a plugin
   dependency shipped to users.
+- **Reference hardware is modest by design.** All timings so far were measured
+  on a low-end development machine (Apple M1 Mac Mini, 2020, Metal). Treat
+  every performance figure as a conservative upper bound — but note that
+  single-core CPU performance on this machine is not far from a modern
+  workstation, so a *fixed cost* (e.g. a driver-level map/lock call) will not
+  shrink on better hardware. Only costs that scale with data volume will.
 
 ## References
 

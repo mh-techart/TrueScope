@@ -37,20 +37,20 @@ Unreal Editor.
 
 ## Acceptance criteria
 
-- [ ] Project builds via the `Build.sh` command from CLAUDE.md with no new
+- [x] Project builds via the `Build.sh` command from CLAUDE.md with no new
       warnings.
-- [ ] Editor starts; **Window → TrueScope** opens the tab.
-- [ ] The tab shows the 2×2 splitter with the four labeled placeholders and
+- [x] Editor starts; **Window → TrueScope** opens the tab.
+- [x] The tab shows the 2×2 splitter with the four labeled placeholders and
       splitters can be dragged.
-- [ ] The tab can be docked next to other editor tabs; after closing and
+- [x] The tab can be docked next to other editor tabs; after closing and
       restarting the editor, the docked position is restored (Slate layout
       persistence — comes for free if the tab is registered correctly).
-- [ ] The tab can be closed and reopened repeatedly without errors; no
+- [x] The tab can be closed and reopened repeatedly without errors; no
       warnings/errors from TrueScope in the Output Log.
-- [ ] Disabling the plugin in a packaged-game context is a non-issue by
+- [x] Disabling the plugin in a packaged-game context is a non-issue by
       construction (Editor module) — verified simply by the module type in
       the .uplugin.
-- [ ] Screenshot of the docked tab taken (via MCP plugin or manually) and
+- [x] Screenshot of the docked tab taken (via MCP plugin or manually) and
       reviewed by the human.
 
 ## Explicitly out of scope (do not build yet)
@@ -58,3 +58,12 @@ Unreal Editor.
 Scene capture, timers, analysis code, settings, toolbar buttons, icons,
 shader files, any per-scope drawing beyond the text placeholders. Ideas go
 to `docs/backlog.md`.
+
+## Verification summary
+
+All acceptance criteria reviewed and confirmed by the human. The plugin
+builds, the tab opens from **Window → TrueScope**, the 2×2 splitter layout
+with four labelled placeholders is draggable, docking position survives an
+editor restart, and the tab opens and closes repeatedly without log warnings.
+Editor-only module type verified in the `.uplugin`.
+**Phase 1 signed off by the human as complete** (retroactively recorded).
