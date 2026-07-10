@@ -189,3 +189,31 @@ Waveform, Vectorscope (M4); GPU compute path (M5); settings UI, selectable
 measurement/refresh rate (M6); interpolated/decoupled draw rate (backlog);
 double-buffered readback; final scale/graticule polish; SMPTE-bar tests;
 per-scope display modes (mono/RGB-overlay). Ideas → `docs/backlog.md`.
+
+## Correction (found during the pre-M5 readback experiment)
+
+Two statements in this phase's Task-0 finding and acceptance notes are wrong and
+are corrected here. The phase's *deliverables* were and remain correct; only the
+explanation of the readback cost was mistaken. History is left intact above for
+the record.
+
+- The Task-0 finding says the `Lock` "never waits because the fence has already
+  signaled, so the render thread is never stalled on the GPU." **This is false on
+  Metal.** `FMetalDynamicRHI::RHIMapStagingSurface` unconditionally calls
+  `RHICmdList.SubmitAndBlockUntilGPUIdle()` before mapping
+  (`MetalRenderTarget.cpp`). The `Lock` therefore drains the entire in-flight GPU
+  frame; it does block the render thread, for **about one host frame-time**,
+  independent of texture size (a 1×1 readback costs the same as 960×540; the
+  memcpy itself is negligible).
+- The acceptance note "a periodic hitch … not a block" is therefore also wrong:
+  it is a periodic **block** of roughly one frame-time, at the ~2.5 Hz capture
+  rate. In normal use this is not perceptible on a frame-time-averaged FPS
+  readout (confirmed qualitatively via `stat fps`: no human-visible difference
+  with the TrueScope tab open vs. closed), but it is a genuine render-thread
+  stall, not a free hitch.
+- Consequence, already reflected in `architecture.md` and `backlog.md`: the M5
+  GPU path contains **no runtime readback**; the two backlog "cheaper readback"
+  ideas that assumed a volume cost (lower capture resolution; Lock-on-render-
+  thread-copy-in-background) do **not** help, because the cost is the GPU-drain
+  in `Lock`, not the copy. The equivalence test that compares GPU vs. CPU results
+  *may* read back — it runs in the test harness, not at runtime.

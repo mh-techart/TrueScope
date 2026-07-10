@@ -100,7 +100,7 @@ receives. Consequences, by design:
 | Repo scope | This repo contains **only** `Plugins/TrueScope/`; the host project stays local to each developer | Users clone straight into their own project's `Plugins/` folder. |
 | Menu entry | Window menu only in V1; toolbar button deferred (backlog) | Toolbar space is contested; Window menu is where editor panels are expected. |
 | Cross-platform parity outranks optimization | Windows, macOS and Linux must all work. If an optimization would restrict, degrade or bypass one platform, it is not taken — the portable path is chosen even at a measurable performance cost. Platform-specific measurements (e.g. Metal readback timings) inform the *problem statement*, never the architecture alone; before designing around a number, ask whether the number is platform-specific. | A tool the developer can only test on one of its three target platforms must not depend on that platform's characteristics. Portability is a product promise, performance is a quality. |
-| Analysis path selection | Both paths ship. From M5 on, the **GPU compute path is the internal default**; the CPU path remains available as a user-selectable compatibility option. UI labels in the TrueScope tab: `GPU (performance)` / `CPU (compatibility)` — neither is labelled "default". A console variable exists **in addition** for diagnostics, never as the only access. Both paths must produce identical values on the synthetic test images. The M6 status line shows which path is active. | The shipped path is the path that gets exercised: defaulting to CPU would leave GPU-path bugs undiscovered on the two platforms the developer cannot test. The CPU path's ~41 ms render-thread readback is a periodic editor hitch and must not be the out-of-the-box experience. The compatibility option exists for driver/platform failures, **not** for different results — say so in the README, so "performance" is never read as "less accurate". |
+| Analysis path selection | Both paths ship. From M5 on, the **GPU compute path is the internal default**; the CPU path remains available as a user-selectable compatibility option. UI labels in the TrueScope tab: `GPU (performance)` / `CPU (compatibility)` — neither is labelled "default". A console variable exists **in addition** for diagnostics, never as the only access. Both paths must produce identical values on the synthetic test images. The M6 status line shows which path is active. | The shipped path is the path that gets exercised: defaulting to CPU would leave GPU-path bugs undiscovered on the two platforms the developer cannot test. The CPU path's ~41 ms render-thread readback is a periodic editor hitch and must not be the out-of-the-box experience. The compatibility option exists for driver/platform failures, **not** for different results — say so in the README, so "performance" is never read as "less accurate". The GPU path must contain **no readback at all** (results stay GPU-resident): on Metal the readback `Lock` drains the GPU regardless of payload size, so even a few-kilobyte bin readback would pay a full frame-time — measured and verified in engine source (`phase-3.md`, "Correction"). The GPU-resident design is also the portable one, so the platform-specific finding and the parity rule agree. |
 
 ## Architecture overview
 
@@ -258,10 +258,15 @@ copied or transliterated from GPL sources. All math here is textbook-standard
   dependency shipped to users.
 - **Reference hardware is modest by design.** All timings so far were measured
   on a low-end development machine (Apple M1 Mac Mini, 2020, Metal). Treat
-  every performance figure as a conservative upper bound — but note that
-  single-core CPU performance on this machine is not far from a modern
-  workstation, so a *fixed cost* (e.g. a driver-level map/lock call) will not
-  shrink on better hardware. Only costs that scale with data volume will.
+  every performance figure as a conservative upper bound — but note that the
+  readback `Lock`, the dominant cost, is **not** fixed in the way raw compute
+  is. On Metal it drains the in-flight GPU frame (see `phase-3.md`,
+  "Correction"), so it costs **about one host frame-time** and therefore
+  *shrinks on faster hardware* in proportion to frame rate: ~one frame per
+  capture, whatever that frame costs. A workstation rendering the same scene
+  at 60 fps pays ~16 ms where this machine at ~15 fps pays ~65 ms. Express
+  readback-related costs as *frame-times*, not milliseconds — a millisecond
+  figure from this machine does not transfer; "one frame per capture" does.
 
 ## References
 
