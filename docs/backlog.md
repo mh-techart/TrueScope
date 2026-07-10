@@ -62,6 +62,22 @@ without the plugin).
   harder to verify). Depends on M3/M4 (a correct static scope first). Once
   the per-cycle cost measured in M3 is known, this plus a settable
   measurement rate (M6) covers both performance and smoothness.
+- **Adaptive measurement rate (CPU compatibility path)** — since the readback
+  `Lock` costs ≈ one host frame-time, its editor impact is self-scaling if the
+  measurement rate adapts to frame-time: throttle so the readback never consumes
+  more than a set fraction of editor time (e.g. "at most one lost frame per
+  second"). On a slow machine this yields ~1 Hz automatically; on a workstation
+  ~2.5 Hz or more — one rule, correct everywhere. Only relevant to the shipped
+  CPU path (the GPU path has no readback). Ties into the settable rate (M6) and
+  answers the M7 "is the CPU fallback tolerable?" question. Prefer expressing the
+  budget in frame-times, not milliseconds.
+- **Buffer readback instead of texture readback (unverified)** — *hypothesis, not
+  a plan.* The Metal GPU-drain lives in `RHIMapStagingSurface` (texture path).
+  Whether `FRHIGPUBufferReadback` + `RHILockStagingBuffer` avoids the
+  `SubmitAndBlockUntilGPUIdle` on Metal is **unknown** and must be read in 5.8
+  source before any work — do not assume. Only relevant to the CPU compatibility
+  path (the GPU path reads nothing back). Low priority; the GPU-resident M5 design
+  makes it moot for normal use.
 - **Cheaper readback retrieval (render-thread cost)** — M3 measured the
   render-thread step that maps the staging texture and copies it to CPU
   (`Lock` + row-by-row copy + `Unlock` in `FTrueScopeAnalyzer::
@@ -86,6 +102,12 @@ without the plugin).
   call rather than of the memcpy, then the GPU path must contain **no readback
   at all** (results stay GPU-resident), because even a few kilobytes would cost
   the same.
+  **Update (readback experiment):** both the "lower capture resolution" and the
+  "Lock-on-render-thread, copy-in-background" options **do not help** — the cost is
+  the GPU-drain inside `Lock` (≈ one frame-time, size-independent), not the memcpy
+  (negligible). Retain them here only as recorded dead ends. The live viability
+  question is now the *adaptive measurement rate* item and the *buffer-readback*
+  hypothesis above.
 - **Density-to-brightness curve tuning ("scopes drowning in dense areas")** —
   observed in the M3 review: TrueScope's parade density is much denser than
   Resolve's, so structure drowns in solid fills. The likely cause is **not**
@@ -119,6 +141,19 @@ without the plugin).
   scope cross-check (architecture.md) currently uses DaVinci Resolve; also
   verify against FCP's scopes before a release (FCP not installed on the dev
   machine yet).
+- **Cross-check automation (option, undecided)** — the Resolve cross-check is
+  currently fully manual. Three levels of possible automation, increasing cost:
+  (1) **frozen reference image** — store one deterministic PNG of the reference
+  scene (TAA off) in the repo and run future scope checks against it, decoupling
+  scope correctness from the renderer (no jitter, no drifting sky, no Lumen
+  convergence). Highest value, lowest cost; natural companion to the synthetic
+  test images. (2) **numeric ground-truth test** — capture Resolve's peak-bin
+  values for that fixed image once (as in M4: 706/674/664 …), assert TrueScope's
+  analysis against them; Resolve itself is not scriptable, so ground-truth
+  collection stays a one-time manual act. (3) **golden-image pixel diff of the
+  drawn scopes** — thorough but fragile (every intentional visual change breaks
+  it; AA/platform false positives); not recommended. Suggested if pursued:
+  level 1 after M4 or within M6, level 2 alongside M6 calibration, skip level 3.
 - **Fab listing (free)** — companion distribution channel to GitHub for
   Blueprint-only users; verify current Fab submission terms at M7 time.
 - **Engine version ports (±1 minor)** — after M6; per-version binaries in
@@ -131,12 +166,18 @@ without the plugin).
   right-click menu on `STrueScopeWidget`) and shipped its first two users — the
   histogram's Separate Channels / RGB Overlay pair and the waveform's RGB /
   Luma pair. Further modes only need the three overrides.
-- **Vectorscope graticule extensions** — the M4 graticule ships the six 75 %
-  targets only. Missing, all standard in Resolve/FCP and all display-only
-  (no new analysis): the **skin-tone line** (I-line, ≈123°), **100 % targets**
-  in addition to the 75 % boxes, and a **2× zoom** for reading low-saturation
-  material. Candidates for the per-scope display-mode mechanism (M4) plus a
-  "Show Guides" toggle.
+- **Minimum panel size / graceful degradation** — below a certain panel size the
+  vectorscope stops being drawn. Reading it there is pointless anyway, so the
+  behaviour is acceptable, but a scope that simply vanishes reads as a bug.
+  **First find the actual cause** (measure, do not assume — intentional guard,
+  clamp on non-positive size, or accident). Then replace the empty panel with a
+  short centred hint, e.g. *"Panel too small — enlarge to use the Vectorscope"*
+  (exact wording M6); below an even smaller threshold, degrade to nothing rather
+  than clipped text. **Build it on the base scope widget**, not in the
+  vectorscope, so every current and future scope inherits it — the vectorscope is
+  just the first to hit the limit because it is aspect-locked.
+  (The detailed vectorscope graticule spec, previously a placeholder here, is now
+  its own section below: "Vectorscope graticule extensions".)
 - **PIE in a separate editor window** — unknown behaviour. PIE launched as
   "New Editor Window" runs inside the editor process, so the SceneViewExtension
   may well see it, but the "last focused **Level Editor** viewport" selection
@@ -146,6 +187,87 @@ without the plugin).
   if it works, it is a bonus for end users; if not, it becomes a documented
   limitation. **Standalone Game is not a candidate** — separate process, no
   editor module, out of scope by construction; document it in the README.
+  **Update (experiment): this is not merely an unsupported source — it currently
+  breaks measurement until an editor restart**, affecting users who never intended
+  to measure PIE. The scopes stop capturing the instant separate-window PIE starts
+  and do not recover on stop/refocus/interaction — only a restart does. Likely a
+  lifecycle wedge in the M2 capture chain (a readback requested for a view that
+  never completes, leaving `bReadbackInFlight` stuck, i.e. the single-buffer
+  skip-if-busy state machine with no recovery path). **Elevated from documentation
+  to a fix — see the M4.1 phase spec.** Filtering PIE views out cures the symptom;
+  giving the state machine a timeout/reset cures the class. Do both, with a
+  regression test (no existing test caught it).
+
+## Vectorscope graticule extensions (M6 polish — display only)
+
+All of this is **drawing only** — no analysis change, no new colour maths beyond
+the existing `RgbToYCbCr`. All of it sits behind a "Show Guides" toggle and is a
+candidate for the M4 per-scope display-mode mechanism. Target milestone: M6
+polish.
+
+**Angular reference frame (settle once, reuse everywhere).** All angles are in
+the **BT.709 Cb/Cr plane**: Cb on x (positive right), Cr on y (positive up),
+angle counter-clockwise from +Cb. This is the frame the M4 vectorscope already
+plots in, and the frame DaVinci Resolve uses — Resolve applies **no** NTSC/YIQ
+rotation. **Measured from a Resolve screenshot** (least-squares circle fit; the
+white skin line gives 123.08°, σ=0.09° over 1546 px). The six target boxes in
+that screenshot measure 48.6 / 102.4 / 175.1 / 230.3 / 283.3 / 354.3° against
+computed 49.7 / 102.9 / 174.8 / 229.7 / 282.9 / 354.8° (offsets are the letter
+labels pulling the centroid). Compute all angles; use this table only as a
+self-check:
+
+| Target | Angle (Cb/Cr, BT.709) |
+|---|---|
+| Magenta | 49.7° |
+| Red | 102.9° |
+| *(skin tone line)* | *123.0°* |
+| Yellow | 174.8° |
+| Green | 229.7° |
+| Cyan | 282.9° |
+| Blue | 354.8° |
+
+- **Skin tone line (flesh tone line).** Centre-to-rim line at **123.0°**, between
+  red and yellow, closer to red; drawn neutral white, full radius. A plausibility
+  guide: human skin of every ethnicity clusters at this hue angle (melanin/
+  haemoglobin physics), which matters here because MetaHumans put photoreal skin
+  into UE viewports. **This angle is a convention, not a standard** — Blackmagic
+  publishes no value; it is the NTSC I-axis direction expressed in Cb/Cr, and it
+  is what Resolve/FCP/Premiere/Media Composer converge on. Three independent
+  confirmations: the NTSC I-axis derivation, a representative skin colour (sRGB
+  0.80/0.60/0.50 → 124.9°), and the direct 123.08° measurement above. Record this
+  next to the constant so nobody "corrects" it.
+- **Hue ring on the rim.** Replace the plain outer circle with a coloured ring
+  showing the fully-saturated hue at each angle (fast angle→hue reading).
+  - Inner edge sits **exactly on today's circle radius**; the ring grows
+    **outward only** and must never enter the plotting area (that circle is the
+    100 % saturation reference — the reading must not change).
+  - Width ≈ half the height of a 75 % target box; scale as a fraction of radius
+    with a pixel min/max; final value by eye.
+  - **Construction:** *not* an HSV/RGB wheel. Sweep fully-saturated RGB hues,
+    convert each to Cb/Cr, place its colour at `atan2(Cr, Cb)`. Non-uniform
+    spacing then falls out by itself (red→yellow 72°, yellow→green 55°), it
+    matches Resolve/FCP, and it is automatically in register with the six
+    targets — it cannot be mis-rotated because it comes from the same formula.
+    Do not hand-place hues.
+  - A fully-saturated ring is visually loud on the dark editor theme; keep it
+    narrow and somewhat muted, behind "Show Guides". Resolve has **no** hue ring
+    — this is a TrueScope addition, not a reproduction.
+- **5° tick marks.** Every 5° (72 ticks), alternating long/short so they are
+  countable. **Measured from Resolve:** ticks point **inward** from the circle —
+  long ≈2.7 % of radius, short ≈1.5 %, alternating. This settles the layout: ticks
+  inward, hue ring outward, no conflict. (Resolve's ticks do enter the plotting
+  area slightly and that is fine; the hue ring must not.) **Ticks will not align
+  with the targets** (102.9°, 49.7° are not multiples of 5) — correct, looks like
+  a bug, add a comment, do not rotate to "fix" it.
+- **100 % targets** in addition to the 75 % boxes, and a **2× zoom** for
+  low-saturation material. **Caution (measured):** the six targets do **not**
+  share one radius — magenta/green at 0.745 R, red/cyan ≈0.64 R, yellow/blue
+  ≈0.63 R. The outer circle is a fixed chroma radius, not a per-hue gamut
+  boundary. Derive each target's radius from its chroma magnitude, as M4 already
+  does for the 75 % boxes; do not place the 100 % targets on a common radius.
+
+All candidates for the M4 per-scope display-mode mechanism plus a "Show Guides"
+toggle.
 
 ## Window layout options (post-M6 feature)
 
