@@ -81,10 +81,13 @@ without the plugin).
 - **Cheaper readback retrieval (render-thread cost)** — M3 measured the
   render-thread step that maps the staging texture and copies it to CPU
   (`Lock` + row-by-row copy + `Unlock` in `FTrueScopeAnalyzer::
-  PollReadback_RenderThread`) at ~41 ms per capture on this machine (Metal,
-  960×540 BGRA8) — the dominant per-cycle CPU cost and far above the ~7 ms
-  analysis. It only runs on throttled capture frames (~2.5 Hz), so the editor
-  stays responsive, but it is a periodic render-thread hitch. Options to
+  PollReadback_RenderThread`). The readback step costs **about one host
+  frame-time per capture** (early millisecond figures on this machine were
+  taken under uncontrolled conditions and have been discarded; the cost is the
+  Metal GPU-drain inside `Lock`, not the copy — see `phase-3.md`,
+  "Correction"). It runs on throttled capture frames (~2.5 Hz), so the editor
+  stays interactive, but it is a periodic render-thread block of roughly one
+  frame-time. Options to
   explore: `Lock` on the render thread but hand the mapped pointer + pitch to
   the background task for the slow copy (then `Unlock`); investigate whether
   the Metal `Lock` itself (not the memcpy) dominates and whether a
@@ -92,16 +95,16 @@ without the plugin).
   resolution. Tie-in with the settable measurement rate (M6) and the GPU path
   (M5, which removes the CPU copy entirely for the GPU analysis result).
   **Status after the M5 path decision:** with the GPU path as the internal
-  default from M5 on, the ~41 ms hitch no longer affects normal use, so this is
+  default from M5 on, the one-frame-time block no longer affects normal use, so this is
   **not a release blocker**. It does still affect the shipped CPU compatibility
   path. **M7 acceptance question:** is the CPU path, as shipped, tolerable for a
   user who has to fall back to it? If not, do the optimization there, or lower
   the capture resolution for the CPU path only. Independently, the
-  instrumentation experiment that precedes `phase-5.md` answers a question that
-  **decides M5's architecture**: if the ~41 ms are a fixed cost of the map/lock
-  call rather than of the memcpy, then the GPU path must contain **no readback
-  at all** (results stay GPU-resident), because even a few kilobytes would cost
-  the same.
+  instrumentation experiment that preceded `phase-5.md` answered a question that
+  **decided M5's architecture**: the cost **is** the GPU-drain in the map/lock
+  call (size-independent), not the memcpy — confirmed in engine source — so the
+  GPU path must contain **no readback at all** (results stay GPU-resident),
+  because even a few kilobytes would cost the same.
   **Update (readback experiment):** both the "lower capture resolution" and the
   "Lock-on-render-thread, copy-in-background" options **do not help** — the cost is
   the GPU-drain inside `Lock` (≈ one frame-time, size-independent), not the memcpy

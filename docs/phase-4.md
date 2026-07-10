@@ -212,7 +212,7 @@ GPU compute path (M5); settings UI / selectable measurement rate (M6);
 interpolated draw rate (backlog); density-curve and opacity finish-tuning
 (M6 — calibrate across all scopes together); HDR / other-color-space scales
 (backlog); window layout options and per-panel scope dropdowns (post-M6); the
-~41 ms render-thread readback optimization (backlog). Ideas →
+one-frame-time render-thread readback optimization (backlog). Ideas →
 `docs/backlog.md`.
 
 ## Verification summary
