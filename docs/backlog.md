@@ -200,6 +200,33 @@ without the plugin).
   to a fix — see the M4.1 phase spec.** Filtering PIE views out cures the symptom;
   giving the state machine a timeout/reset cures the class. Do both, with a
   regression test (no existing test caught it).
+- **Viewport testpattern / colorbar generator** — TrueScope can display
+  standard test patterns (SMPTE/ARIB colorbars, ramps, gradients) *in the
+  viewport* as a known reference signal. Two independent uses:
+  1. **Scope self-validation with known ground truth.** A test pattern has
+     mathematically known target positions, so it validates the scopes without
+     needing numbers out of Resolve (Resolve exposes no readable numeric
+     values — cross-checks against it are by-eye against the graticule, not
+     figures). Colorbars *must* land their density in the six vectorscope
+     targets and draw straight lines between the R/G/B/Cy/Mg/Yl marks; ramps
+     *must* draw the known diagonal on parade/waveform. This is the same
+     principle as the existing headless SMPTE-bars test, but live in the
+     editor for human cross-check — the ground truth comes from the pattern,
+     not from Resolve, which then only has to match the *look*. Reference for
+     the expected vectorscope geometry (colorbars → green lines into each
+     target): videoclarity.com 4kscope vectorscope sample image.
+  2. **Downstream hardware calibration (Virtual Production).** A workstation
+     feeding footage over professional video channels (SDI etc.) to external
+     devices needs a known signal to calibrate that chain. A built-in
+     colorbar generator serves that directly — a real production feature for
+     the artist/VP audience, not just a debug aid.
+  - Display-only, on the same SceneViewExtension the overlays (M8) use, or as
+     a simple emissive fullscreen draw — no level footprint, editor-only, in
+     keeping with the zero-footprint constraint. Scope/priority TBD; likely
+     companions the M8 overlay work since both are viewport-writing features.
+  - Relationship to WYSIWYG: the generator writes into the viewport, so the
+     scopes measure it like any other image — no special path needed. Confirm
+     it sits before the capture hook so the scopes see it.
 
 ## Vectorscope graticule extensions (M6 polish — display only)
 
