@@ -82,10 +82,12 @@ it as follows:
 - **Visual verification is part of done:** after UI-affecting changes, launch
   the editor, take a screenshot of the TrueScope tab via MCP, and inspect it
   before declaring a task complete.
-- Requires the editor running with the MCP server started
-  (`ModelContextProtocol.StartServer` in the editor console; default port
-  8000). If `/mcp` shows `unreal-mcp` disconnected, ask the human to start
-  the editor/server instead of working blind.
+- Requires the editor running with the MCP server started (default port 8000).
+  If the `unreal-mcp` skill harness is unavailable but the **editor is
+  running**, an alternative access path to the same running MCP server (e.g.
+  direct HTTP to the toolsets) is permitted — state in the report which path
+  was used. Only when the **editor/server is not running at all** do you stop
+  and ask the human to start it, rather than working blind.
 - **Security rules (from Epic's README):** never run with
   `--dangerously-skip-permissions` while this plugin is loaded;
   `execute_tool_script` runs arbitrary Python inside the editor — treat every
@@ -145,6 +147,85 @@ strict:
   confirm the test fails, then revert. A test that never failed proves
   nothing. And design cases that *can* fail — a solid-red frame cannot reveal
   channel bleed, because there is no other channel to bleed.
+
+## Benchmark tests — mandatory handshake
+
+Live-editor performance measurement is never run on Claude Code's own
+initiative. This is not subject to judgment and has no exceptions.
+
+1. **Before:** stop, state that a benchmark is due, and **wait for explicit
+   human permission**. Include in that message the reminder of the conditions
+   the human must establish: close other programs (M1 shares RAM/VRAM), set the
+   editor as below, then stop touching viewport and mouse with no other windows
+   in the foreground. Do not start until the human confirms conditions are set.
+2. **During:** the human does not interact with the machine.
+3. **After:** stop again, state the benchmark is complete, and **wait for
+   confirmation** before continuing — so the human knows when other programs may
+   be reopened.
+
+A run without this three-phase handshake is invalid and must be discarded.
+Headless automation tests are exempt (no viewport, no contention).
+
+**Fixed benchmark editor state** (the human keeps these set and does not change
+them; verify, do not silently alter — see the settings-hygiene rule):
+- Scalability preset **Epic**, `r.ScreenPercentage` **100**
+- `t.MaxFPS 0`, editor VSync off, "Use less CPU in Background" off,
+  High DPI **off**
+
+**Step 0 of any benchmark — verify the query commands against 5.8 source.**
+Do not assume console-variable or setting names. Confirm, in the installed
+engine source, the actual variable/INI key that *reads* the editor VSync state
+and the High-DPI state (the human flagged `r.VSyncEditor` as possibly
+non-existent; editor VSync likely lives in `EditorPerProjectUserSettings`, not a
+CVar). Report the verified query commands; only then use them to confirm state.
+
+## Benchmark methodology
+
+- **Measure TrueScope's influence, not the editor's baseline.** Run A/B: run 1
+  with the TrueScope tab **closed and capture provably idle** (confirm in the log
+  that no analysis cycles are firing — closing the tab is not enough if the view
+  extension keeps capturing), run 2 with the tab open. The difference is
+  TrueScope's cost.
+- **Capture two distinct quantities, do not conflate them:**
+  1. *Overall felt impact* — average FPS over ~1 min, tab closed vs. open.
+  2. *The readback `Lock` alone* — the per-`Lock` instrumentation (median + min +
+     max), since the `Lock` does not even exist in the tab-closed baseline.
+- **Express readback costs as frame-times**, not milliseconds (a ms figure from
+  this machine does not transfer; "≈ one frame per capture" does). Record the
+  baseline frame-time alongside every `Lock` figure.
+- **Do not sweep scalability levels.** The `Lock` costs ≈ one frame-time by
+  construction, so a scalability sweep only re-derives a known proportionality.
+  One fixed state (above) suffices; the frame-time rule transfers it to any
+  hardware. (TrueScope samples *after* the tonemapper, so render features —
+  Lumen, TSR, shadows — do not change analysis cost; only frame-time matters,
+  and that is what the fixed state pins.)
+
+## Editor settings during measurement
+
+- **Never silently change editor settings.** If a measurement needs a different
+  setting, ask first, then restore it afterwards and say so in the report. The
+  human's working configuration is theirs; leaving it altered is a side effect,
+  not a result.
+- **Record conditions with every number.** A timing without its conditions
+  (scalability, `ScreenPercentage`, `t.MaxFPS`, VSync, High-DPI, which scene,
+  idle vs. interacting) is not a result.
+
+## Resolve cross-check conditions
+
+The scope cross-check against DaVinci Resolve is a **manual** human step
+(High-Res screenshot → compare by eye/measurement). For it to be valid:
+
+- **Disable temporal AA before comparing:** `r.AntiAliasingMethod 0` (off) or
+  `1` (FXAA — runs *after* the capture hook, harmless). Never TAA (`2`) or TSR
+  (`4`): they jitter the image sub-pixel frame-to-frame, so the scopes and the
+  screenshot are never the same frame. Invisible at coarse correlation, but it
+  will cost hours during M6 density-curve calibration.
+- `r.ScreenPercentage 100` (one screenshot pixel = one measured pixel).
+- **High DPI on** for cross-checks (finer scopes) — this is the *only* setting
+  that differs between cross-check (High-DPI on) and benchmark (High-DPI off).
+- Camera fully still; Lumen converged; auto-exposure settled; no self-animating
+  actors in the reference scene (the VolumetricCloud that used to drift has been
+  removed — keep the reference motionless).
 
 ## Definition of done (every task)
 
