@@ -191,14 +191,23 @@ CVar). Report the verified query commands; only then use them to confirm state.
   2. *The readback `Lock` alone* — the per-`Lock` instrumentation (median + min +
      max), since the `Lock` does not even exist in the tab-closed baseline.
 - **Express readback costs as frame-times**, not milliseconds (a ms figure from
-  this machine does not transfer; "≈ one frame per capture" does). Record the
+  this machine does not transfer; a frame-time multiple does). Record the
   baseline frame-time alongside every `Lock` figure.
-- **Do not sweep scalability levels.** The `Lock` costs ≈ one frame-time by
-  construction, so a scalability sweep only re-derives a known proportionality.
-  One fixed state (above) suffices; the frame-time rule transfers it to any
-  hardware. (TrueScope samples *after* the tonemapper, so render features —
-  Lumen, TSR, shadows — do not change analysis cost; only frame-time matters,
-  and that is what the fixed state pins.)
+- **The frame-time rule (measured, 2026-07-11):** the `Lock` drains the
+  **in-flight GPU queue**, i.e. it costs **1–2× frame-time** — measured **≈2×
+  median frame-time** on this machine (median 65.9 ms against a 33.8 ms median
+  frame; min 1.2×). The older "≈ one frame-time per capture" wording was an
+  estimate and is **superseded**: one frame-time is the floor, not the typical
+  cost, because `SubmitAndBlockUntilGPUIdle` waits out a queue that is normally
+  more than one frame deep. The cost remains **independent of texture size**, so
+  the consequence is unchanged and if anything stronger: the M5 GPU path must
+  contain no runtime readback at all.
+- **Do not sweep scalability levels.** The `Lock` cost is proportional to
+  frame-time by construction, so a scalability sweep only re-derives a known
+  proportionality. One fixed state (above) suffices; the frame-time rule
+  transfers it to any hardware. (TrueScope samples *after* the tonemapper, so
+  render features — Lumen, TSR, shadows — do not change analysis cost; only
+  frame-time matters, and that is what the fixed state pins.)
 
 ## Editor settings during measurement
 

@@ -118,7 +118,7 @@ receives. Consequences, by design:
 | Repo scope | This repo contains **only** `Plugins/TrueScope/`; the host project stays local to each developer | Users clone straight into their own project's `Plugins/` folder. |
 | Menu entry | Window menu only in V1; toolbar button deferred (backlog) | Toolbar space is contested; Window menu is where editor panels are expected. |
 | Cross-platform parity outranks optimization | Windows, macOS and Linux must all work. If an optimization would restrict, degrade or bypass one platform, it is not taken — the portable path is chosen even at a measurable performance cost. Platform-specific measurements (e.g. Metal readback timings) inform the *problem statement*, never the architecture alone; before designing around a number, ask whether the number is platform-specific. | A tool the developer can only test on one of its three target platforms must not depend on that platform's characteristics. Portability is a product promise, performance is a quality. |
-| Analysis path selection | Both paths ship. From M5 on, the **GPU compute path is the internal default**; the CPU path remains available as a user-selectable compatibility option. UI labels in the TrueScope tab: `GPU (performance)` / `CPU (compatibility)` — neither is labelled "default". A console variable exists **in addition** for diagnostics, never as the only access. Both paths must produce identical values on the synthetic test images. The M6 status line shows which path is active. | The shipped path is the path that gets exercised: defaulting to CPU would leave GPU-path bugs undiscovered on the two platforms the developer cannot test. The CPU path's render-thread readback costs about one host frame-time per capture (see `phase-3.md`, "Correction") — a periodic render-thread block, not a free hitch — and must not be the out-of-the-box experience. The compatibility option exists for driver/platform failures, **not** for different results — say so in the README, so "performance" is never read as "less accurate". The GPU path must contain **no readback at all** (results stay GPU-resident): on Metal the readback `Lock` drains the GPU regardless of payload size, so even a few-kilobyte bin readback would pay a full frame-time — measured and verified in engine source (`phase-3.md`, "Correction"). The GPU-resident design is also the portable one, so the platform-specific finding and the parity rule agree. |
+| Analysis path selection | Both paths ship. From M5 on, the **GPU compute path is the internal default**; the CPU path remains available as a user-selectable compatibility option. UI labels in the TrueScope tab: `GPU (performance)` / `CPU (compatibility)` — neither is labelled "default". A console variable exists **in addition** for diagnostics, never as the only access. Both paths must produce identical values on the synthetic test images. The M6 status line shows which path is active. | The shipped path is the path that gets exercised: defaulting to CPU would leave GPU-path bugs undiscovered on the two platforms the developer cannot test. The CPU path's render-thread readback costs **1–2× host frame-time per capture** (measured ≈2× median — see "Measured: controlled readback benchmark" below and `phase-3.md`, "Correction") — a periodic render-thread block, not a free hitch — and must not be the out-of-the-box experience. The compatibility option exists for driver/platform failures, **not** for different results — say so in the README, so "performance" is never read as "less accurate". The GPU path must contain **no readback at all** (results stay GPU-resident): on Metal the readback `Lock` drains the in-flight GPU queue regardless of payload size, so even a few-kilobyte bin readback would pay the same 1–2 frame-time block — measured and verified in engine source (`phase-3.md`, "Correction"). The GPU-resident design is also the portable one, so the platform-specific finding and the parity rule agree. |
 
 ## Architecture overview
 
@@ -278,13 +278,51 @@ copied or transliterated from GPL sources. All math here is textbook-standard
   on a low-end development machine (Apple M1 Mac Mini, 2020, Metal). Treat
   every performance figure as a conservative upper bound — but note that the
   readback `Lock`, the dominant cost, is **not** fixed in the way raw compute
-  is. On Metal it drains the in-flight GPU frame (see `phase-3.md`,
-  "Correction"), so it costs **about one host frame-time** and therefore
-  *shrinks on faster hardware* in proportion to frame rate: ~one frame per
-  capture, whatever that frame costs. A workstation rendering the same scene
-  at 60 fps pays ~16 ms where this machine at ~15 fps pays ~65 ms. Express
-  readback-related costs as *frame-times*, not milliseconds — a millisecond
-  figure from this machine does not transfer; "one frame per capture" does.
+  is. On Metal it drains the **in-flight GPU queue** (see `phase-3.md`,
+  "Correction"), so it costs **1–2× host frame-time** and therefore *shrinks on
+  faster hardware* in proportion to frame rate: roughly the depth of the GPU
+  queue, whatever a frame costs. Express readback-related costs as
+  *frame-times*, not milliseconds — a millisecond figure from this machine does
+  not transfer; the frame-time multiple does.
+
+### Measured: controlled readback benchmark (2026-07-11)
+
+The reference figures for the CPU path, from the controlled A/B benchmark run
+under the `dev-rules.md` handshake. **These supersede all earlier millisecond
+figures**, which were taken under uncontrolled conditions.
+
+*Conditions (verified live, nothing altered):* Apple M1 Mac Mini / Metal, UE
+5.8, reference scene `StartMap` (Viewport 1, Perspective, camera parked on the
+`CineCameraActor`, no interaction during the window). Scalability **Epic**
+(`sg.*Quality=3`, `sg.ResolutionQuality=100`), `r.ScreenPercentage 100`,
+`t.MaxFPS 0`, editor VSync off, "Use less CPU in Background" off, editor-wide
+High DPI **off**. Capture at the shipped ~2.5 Hz throttle (measured 2.38 Hz).
+
+| Quantity | Result |
+|---|---|
+| **A/B felt impact** | Run 1, TrueScope *not loaded* (`-DisablePlugins=TrueScope`, the only provably-idle baseline — see below): 24.15 FPS (2727 frames / 112.90 s), median frame 34.77 ms. Run 2, tab open: 25.68 FPS (3728 frames / 145.19 s), median frame 33.81 ms. **Delta +1.5 FPS in favour of the TrueScope run** — i.e. TrueScope's cost is below this machine's run-to-run noise floor. **No measurable felt impact at 2.5 Hz.** |
+| **Readback `Lock` alone** | 345 samples over the same window: **median 65.92 ms**, min 39.14 ms, max 227.94 ms, mean 71.87 ms. |
+| **`Lock` as frame-time** | Against the 33.81 ms median frame: **median ≈1.95×**, min ≈1.16×, i.e. **1–2× frame-time**. |
+
+*Verdict:* the earlier "≈ one frame-time per capture" estimate **does not hold**
+— one frame-time is the *floor*. The transferable rule is **"the `Lock` drains
+the in-flight GPU queue, i.e. 1–2× frame-time (≈2× median here)"**, still
+independent of texture size. This does not change the M5 decision, it hardens
+it: a GPU path with even a few kilobytes of readback would pay the same block,
+so the GPU path carries **no runtime readback at all**.
+
+*Method note (why the baseline needed a disabled plugin):* the view extension
+gates capture on viewport focus and the capture throttle only — **not** on the
+TrueScope tab's visibility — so closing the tab does not stop the readback and
+cannot serve as an idle baseline. That gap is itself a product bug; it is filed
+in `backlog.md` ("Capture runs at full cost while the tab is closed") for M5,
+where the capture chain is reworked anyway.
+
+*Caveat:* a macOS memory-pressure warning dialog appeared during run-1 *setup*
+and was dismissed before the measurement window opened; run 1 was not otherwise
+disturbed. Run 1's chart also reported an implausible 0.00 ms average
+render-thread frame-time (run 2: 38.80 ms) — unexplained, and not load-bearing:
+neither the FPS delta nor the `Lock` figures depend on it.
 
 ## References
 

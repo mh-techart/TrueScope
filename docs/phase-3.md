@@ -217,3 +217,16 @@ the record.
   thread-copy-in-background) do **not** help, because the cost is the GPU-drain
   in `Lock`, not the copy. The equivalence test that compares GPU vs. CPU results
   *may* read back — it runs in the test harness, not at runtime.
+
+**Addendum (2026-07-11, controlled benchmark):** "about one host frame-time" was
+an estimate and is **too low** — measured under the `dev-rules.md` handshake
+(Epic / SP100 / High-DPI off / `StartMap`, 345 samples), the `Lock` costs a
+median **65.9 ms against a 33.8 ms median frame ≈ 1.95× frame-time** (min 1.2×,
+max 227.9 ms). Corrected rule: **the `Lock` drains the in-flight GPU queue, i.e.
+1–2× frame-time** — one frame-time is the floor, not the typical cost. Everything
+above stands otherwise: still size-independent, still a real render-thread block,
+still mandating a readback-free GPU path in M5. Full figures and conditions:
+`architecture.md`, "Measured: controlled readback benchmark". The same benchmark
+also showed the *felt* impact at 2.5 Hz is below this machine's noise floor
+(A/B delta +1.5 FPS in favour of the TrueScope run) — the block is real, but it
+does not show up as lost frames per second.
