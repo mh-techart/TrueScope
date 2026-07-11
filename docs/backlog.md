@@ -202,6 +202,10 @@ without the plugin).
   indicator. Still deferred, and only if ever wanted: actually *measuring* the
   PIE image itself (would require treating a PIE viewport as a valid source — a
   scene-side concern, low demand since Simulate covers animated content).
+- **README: document Standalone Game is not measured** — Standalone Game runs
+  as a separate process with no editor module, so TrueScope does not load
+  there; state this as a known limitation in the plugin README (M7 release
+  docs). See `architecture.md`, "Behaviour during PIE".
 - **Viewport testpattern / colorbar generator** — TrueScope can display
   standard test patterns (SMPTE/ARIB colorbars, ramps, gradients) *in the
   viewport* as a known reference signal. Two independent uses:
