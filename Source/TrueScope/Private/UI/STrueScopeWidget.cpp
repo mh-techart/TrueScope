@@ -4,12 +4,15 @@
 #include "UI/STrueScopeWidget.h"
 
 #include "Analysis/TrueScopeAnalyzer.h"
+#include "Capture/TrueScopeViewExtension.h"
+#include "Editor.h"
 #include "Framework/Application/MenuStack.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Layout/WidgetPath.h"
 #include "Textures/SlateIcon.h"
+#include "UI/TrueScopeDraw.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopeWidget"
 
@@ -21,6 +24,21 @@ namespace
 	 * serial compare, so an idle tick costs nothing.
 	 */
 	constexpr float ResultPollPeriodSeconds = 0.1f;
+
+	/**
+	 * The three things the user needs: that the scopes are paused, why, and how to
+	 * resume. Deliberately says "another viewport", not "another *suitable*
+	 * viewport" — whether the next one is in a scope-friendly view mode is the
+	 * user's call, and TrueScope never switches source on its own
+	 * (architecture.md, "No automatic fallback").
+	 */
+	FText GetPausedHintText()
+	{
+		// — is the em dash: written as an escape so the source stays ASCII and
+		// cannot be mangled by a compiler's source charset.
+		return LOCTEXT("PausedInPie",
+			"Paused \u2014 viewport in Play (PIE).\nYou may also focus another viewport.");
+	}
 }
 
 void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
@@ -43,10 +61,59 @@ EActiveTimerReturnType STrueScopeWidget::PollAnalyzer(double InCurrentTime, floa
 	{
 		LastSeenSerial = Serial;
 		CachedResult = Analyzer->GetLatestResult();
+		LastResultTimeSeconds = InCurrentTime;
 		OnAnalysisResultChanged();
 		Invalidate(EInvalidateWidgetReason::Paint);
 	}
+	else if (LastResultTimeSeconds < 0.0)
+	{
+		// No result yet: start the staleness clock on the first tick, so a scope
+		// that has never measured anything does not count as stale from time zero.
+		LastResultTimeSeconds = InCurrentTime;
+	}
+
+	if (UpdateScopeState(InCurrentTime))
+	{
+		Invalidate(EInvalidateWidgetReason::Paint);
+	}
+
 	return EActiveTimerReturnType::Continue;
+}
+
+bool STrueScopeWidget::IsPlayInEditorActive() const
+{
+	// Simulate drives runtime objects while the scopes keep measuring, so it is
+	// not a paused state (architecture.md, "Behaviour during PIE").
+	return GEditor != nullptr && GEditor->IsPlayingSessionInEditor() && !GEditor->IsSimulatingInEditor();
+}
+
+bool STrueScopeWidget::UpdateScopeState(double NowSeconds)
+{
+	const double SecondsSinceLastResult =
+		LastResultTimeSeconds >= 0.0 ? NowSeconds - LastResultTimeSeconds : 0.0;
+
+	const TrueScope::EScopeState NewState = TrueScope::DetermineScopeState(
+		IsPlayInEditorActive(), SecondsSinceLastResult, TrueScope::CaptureIntervalSeconds);
+
+	if (NewState == ScopeState)
+	{
+		return false;
+	}
+
+	ScopeState = NewState;
+	return true;
+}
+
+int32 STrueScopeWidget::DrawPausedHint(FSlateWindowElementList& OutDrawElements, int32 LayerId,
+	const FGeometry& AllottedGeometry, const FSlateRect& Content) const
+{
+	if (!ShouldDrawPausedHint())
+	{
+		return LayerId;
+	}
+
+	return TrueScope::Draw::DrawCenteredHint(OutDrawElements, LayerId, AllottedGeometry, Content,
+		GetPausedHintText());
 }
 
 FVector2D STrueScopeWidget::ComputeDesiredSize(float) const

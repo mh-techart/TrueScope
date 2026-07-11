@@ -120,7 +120,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		Content.Right - PlotPadding, Content.Bottom - PlotPadding - ValueLabelStripHeight);
 	if (Plot.GetSize().X < 16.0f || Plot.GetSize().Y < 16.0f)
 	{
-		return LayerId;
+		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	// One 0-1023 value axis spanning all channel sub-plots.
@@ -129,7 +129,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
 	if (!Result.IsValid() || Result->SourceSize.X <= 0)
 	{
-		return LayerId;
+		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	// One shared vertical scale across the channels, so their relative heights
@@ -137,7 +137,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	const uint32 MaxCount = GetSharedMaxCount(*Result);
 	if (MaxCount == 0)
 	{
-		return LayerId;
+		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	const FSlateBrush* WhiteBrush = FAppStyle::Get().GetBrush("WhiteBrush");
@@ -192,7 +192,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	}
 	LayerId += 2;
 
-	return LayerId;
+	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 }
 
 #undef LOCTEXT_NAMESPACE

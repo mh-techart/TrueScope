@@ -6,6 +6,7 @@
 #include "Analysis/TrueScopeAnalysisResult.h"
 #include "Containers/ArrayView.h"
 #include "CoreMinimal.h"
+#include "UI/TrueScopeScopeState.h"
 #include "Widgets/SLeafWidget.h"
 
 class FTrueScopeAnalyzer;
@@ -41,6 +42,11 @@ struct FTrueScopeDisplayMode
  *   overrides GetDisplayModes()/GetDisplayModeId()/SetDisplayModeId() and gets
  *   a right-click menu to switch between them for free. Scopes without modes
  *   have no menu.
+ *
+ * - Paused state (M4.1): when the measured viewport enters PIE it drops out as
+ *   a source and the scopes hold their last frame — intended, but silent, so
+ *   every scope draws a hint over the held values. Subclasses get this for free
+ *   by calling DrawPausedHint() at the end of their OnPaint.
  */
 class STrueScopeWidget : public SLeafWidget
 {
@@ -49,6 +55,20 @@ public:
 
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+
+	/** Recompute the scope state from the current inputs; true if it changed. */
+	bool UpdateScopeState(double NowSeconds);
+
+	TrueScope::EScopeState GetScopeState() const
+	{
+		return ScopeState;
+	}
+
+	/** The exact condition DrawPausedHint() branches on. */
+	bool ShouldDrawPausedHint() const
+	{
+		return ScopeState == TrueScope::EScopeState::PausedInPie;
+	}
 
 protected:
 	/** Call from the subclass's Construct. */
@@ -71,6 +91,25 @@ protected:
 	 * space-usage policy to the allotted geometry.
 	 */
 	FSlateRect GetScopeContentRect(const FGeometry& AllottedGeometry) const;
+
+	/**
+	 * Draws the paused hint over the held scope when paused, nothing otherwise.
+	 * Call last in OnPaint so it sits above the trace. Returns the next free layer.
+	 */
+	int32 DrawPausedHint(FSlateWindowElementList& OutDrawElements, int32 LayerId,
+		const FGeometry& AllottedGeometry, const FSlateRect& Content) const;
+
+	/**
+	 * Is a PIE session (not Simulate) running? Virtual so a test can drive the
+	 * paused state without an editor play session.
+	 */
+	virtual bool IsPlayInEditorActive() const;
+
+	/** Test seam: pretend the last result arrived at this time. */
+	void SetLastResultTimeSecondsForTesting(double InSeconds)
+	{
+		LastResultTimeSeconds = InSeconds;
+	}
 
 	/** Display variants this scope offers; empty (default) means no menu. */
 	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const
@@ -100,4 +139,8 @@ private:
 	TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> CachedResult;
 	uint64 LastSeenSerial = 0;
 	bool bMaintainSquareAspect = false;
+
+	/** When the last result arrived; negative until the staleness clock starts. */
+	double LastResultTimeSeconds = -1.0;
+	TrueScope::EScopeState ScopeState = TrueScope::EScopeState::Live;
 };

@@ -108,7 +108,7 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 		Content.Right - PlotPadding, Content.Bottom - PlotPadding);
 	if (Plot.GetSize().X < 32.0f || Plot.GetSize().Y < 16.0f)
 	{
-		return LayerId;
+		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	// Density sections, drawn under the graticule. Each section samples only
@@ -136,5 +136,5 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 	// Graticule + fixed-size 10-bit scale labels, every 128 code values.
 	LayerId = DrawValueAxisY(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetWaveformGraticuleLevels());
 
-	return LayerId;
+	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 }

@@ -126,7 +126,7 @@ int32 STrueScopeWaveform::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
 		Content.Right - PlotPadding, Content.Bottom - PlotPadding);
 	if (Plot.GetSize().X < 32.0f || Plot.GetSize().Y < 16.0f)
 	{
-		return LayerId;
+		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	// The trace already carries its colour per texel; a white tint passes it
@@ -142,7 +142,7 @@ int32 STrueScopeWaveform::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
 	// Graticule + fixed-size 10-bit scale labels, every 128 code values.
 	LayerId = DrawValueAxisY(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetWaveformGraticuleLevels());
 
-	return LayerId;
+	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -32,6 +32,11 @@ FSlateFontInfo GetLabelFont()
 	return FCoreStyle::GetDefaultFontStyle("Regular", 8);
 }
 
+FSlateFontInfo GetHintFont()
+{
+	return FCoreStyle::GetDefaultFontStyle("Regular", 10);
+}
+
 TArrayView<const int32> GetWaveformGraticuleLevels()
 {
 	return WaveformLevels;
@@ -103,6 +108,61 @@ int32 DrawValueAxisX(FSlateWindowElementList& OutDrawElements, int32 LayerId,
 		FSlateDrawElement::MakeText(OutDrawElements, LayerId,
 			AllottedGeometry.ToPaintGeometry(LabelSize, FSlateLayoutTransform(FVector2f(LabelX, Plot.Bottom + 2.0f))),
 			LabelString, LabelFont, ESlateDrawEffect::None, LabelColor);
+	}
+
+	return LayerId + 1;
+}
+
+int32 DrawCenteredHint(FSlateWindowElementList& OutDrawElements, int32 LayerId,
+	const FGeometry& AllottedGeometry, const FSlateRect& Rect, const FText& Hint)
+{
+	TArray<FString> Lines;
+	Hint.ToString().ParseIntoArray(Lines, TEXT("\n"), /*InCullEmpty*/ true);
+	if (Lines.IsEmpty())
+	{
+		return LayerId;
+	}
+
+	const TSharedRef<FSlateFontMeasure> FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+	const FSlateFontInfo HintFont = GetHintFont();
+	const float LineHeight = FontMeasure->GetMaxCharacterHeight(HintFont);
+
+	TArray<float, TInlineAllocator<2>> LineWidths;
+	float TextWidth = 0.0f;
+	for (const FString& Line : Lines)
+	{
+		const float Width = static_cast<float>(FontMeasure->Measure(Line, HintFont).X);
+		LineWidths.Add(Width);
+		TextWidth = FMath::Max(TextWidth, Width);
+	}
+	const float TextHeight = LineHeight * Lines.Num();
+
+	// A hint that does not fit is worse than none: it would overdraw the scope it
+	// is trying to annotate. Stay silent instead (the panel-size hint is backlog).
+	const float PlateWidth = TextWidth + 2.0f * HintPlatePaddingX;
+	const float PlateHeight = TextHeight + 2.0f * HintPlatePaddingY;
+	if (PlateWidth > Rect.GetSize().X || PlateHeight > Rect.GetSize().Y)
+	{
+		return LayerId;
+	}
+
+	const FVector2f Center((Rect.Left + Rect.Right) * 0.5f, (Rect.Top + Rect.Bottom) * 0.5f);
+	const FVector2f PlateTopLeft(Center.X - PlateWidth * 0.5f, Center.Y - PlateHeight * 0.5f);
+
+	FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
+		AllottedGeometry.ToPaintGeometry(FVector2f(PlateWidth, PlateHeight), FSlateLayoutTransform(PlateTopLeft)),
+		FAppStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None, HintPlateColor);
+	++LayerId;
+
+	float LineY = Center.Y - TextHeight * 0.5f;
+	for (int32 Index = 0; Index < Lines.Num(); ++Index)
+	{
+		const FVector2f LineTopLeft(Center.X - LineWidths[Index] * 0.5f, LineY);
+		FSlateDrawElement::MakeText(OutDrawElements, LayerId,
+			AllottedGeometry.ToPaintGeometry(FVector2f(LineWidths[Index], LineHeight),
+				FSlateLayoutTransform(LineTopLeft)),
+			Lines[Index], HintFont, ESlateDrawEffect::None, HintTextColor);
+		LineY += LineHeight;
 	}
 
 	return LayerId + 1;

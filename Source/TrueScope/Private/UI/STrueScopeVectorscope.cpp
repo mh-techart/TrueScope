@@ -111,7 +111,7 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 	const float PlotSide = Content.GetSize().X - 2.0f * GraticulePadding;
 	if (PlotSide < MinPlotSide)
 	{
-		return LayerId;
+		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	const FVector2f Center(Content.Left + Content.GetSize().X * 0.5f, Content.Top + Content.GetSize().Y * 0.5f);
@@ -176,5 +176,5 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 	}
 	++LayerId;
 
-	return LayerId;
+	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 }
