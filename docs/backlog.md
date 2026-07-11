@@ -111,6 +111,17 @@ without the plugin).
   (negligible). Retain them here only as recorded dead ends. The live viability
   question is now the *adaptive measurement rate* item and the *buffer-readback*
   hypothesis above.
+- **Readback state-machine recovery net (robustness; tie to M5)** — the
+  single-buffer skip-if-busy readback has no timeout: a readback whose fence
+  never signals would leave `bReadbackInFlight` stuck and freeze capture. The
+  PIE investigation proved this does **not** happen for PIE (nothing hangs; the
+  freeze is the selection logic holding the last frame, not a stuck readback),
+  so it is not a current bug — but a genuine viewport/world teardown could in
+  principle trip it. Add a recovery path (abandon-and-reset after N capture
+  intervals, N in intervals so it scales with the settable rate) **when M5
+  reworks the readback machine anyway**, rather than as speculative work now.
+  Include a regression test that drives an in-flight readback whose fence never
+  signals and asserts the reset restores capture.
 - **Density-to-brightness curve tuning ("scopes drowning in dense areas")** —
   observed in the M3 review: TrueScope's parade density is much denser than
   Resolve's, so structure drowns in solid fills. The likely cause is **not**
@@ -181,25 +192,16 @@ without the plugin).
   just the first to hit the limit because it is aspect-locked.
   (The detailed vectorscope graticule spec, previously a placeholder here, is now
   its own section below: "Vectorscope graticule extensions".)
-- **PIE in a separate editor window** — unknown behaviour. PIE launched as
-  "New Editor Window" runs inside the editor process, so the SceneViewExtension
-  may well see it, but the "last focused **Level Editor** viewport" selection
-  likely filters it out — meaning TrueScope would keep measuring the level
-  viewport while the user looks at the PIE window. To be verified by
-  experiment (see the readback/PIE work order). Not a deal-breaker either way:
-  if it works, it is a bonus for end users; if not, it becomes a documented
-  limitation. **Standalone Game is not a candidate** — separate process, no
-  editor module, out of scope by construction; document it in the README.
-  **Update (experiment): this is not merely an unsupported source — it currently
-  breaks measurement until an editor restart**, affecting users who never intended
-  to measure PIE. The scopes stop capturing the instant separate-window PIE starts
-  and do not recover on stop/refocus/interaction — only a restart does. Likely a
-  lifecycle wedge in the M2 capture chain (a readback requested for a view that
-  never completes, leaving `bReadbackInFlight` stuck, i.e. the single-buffer
-  skip-if-busy state machine with no recovery path). **Elevated from documentation
-  to a fix — see the M4.1 phase spec.** Filtering PIE views out cures the symptom;
-  giving the state machine a timeout/reset cures the class. Do both, with a
-  regression test (no existing test caught it).
+- **Richer PIE handling (deferred; behaviour otherwise resolved).** The former
+  "PIE breaks capture until restart" concern was a measurement artifact
+  (separate-window PIE captures input; nothing hangs) — see `architecture.md`,
+  "Behaviour during PIE". Current behaviour is correct and intended: a PIE
+  viewport is never adopted as a source; the scopes hold the last frame only
+  when the measured viewport itself enters PIE, and there is deliberately no
+  auto-fallback to another viewport. Phase 4.1 adds the visible paused
+  indicator. Still deferred, and only if ever wanted: actually *measuring* the
+  PIE image itself (would require treating a PIE viewport as a valid source — a
+  scene-side concern, low demand since Simulate covers animated content).
 - **Viewport testpattern / colorbar generator** — TrueScope can display
   standard test patterns (SMPTE/ARIB colorbars, ramps, gradients) *in the
   viewport* as a known reference signal. Two independent uses:

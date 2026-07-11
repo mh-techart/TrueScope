@@ -32,8 +32,26 @@ instruction conflicts with them, flag it.
   measurement is achieved by piloting a Cine Camera or using the Cinematic
   Viewport.
 - **Standalone Game is out of scope by construction:** it is a separate
-  process without the editor module, so TrueScope does not load there. PIE in
-  a *separate editor window* is currently **untested** — see `backlog.md`.
+  process without the editor module, so TrueScope does not load there.
+- **Behaviour during PIE (understood and intended).** The selection logic
+  measures the last valid **non-PIE** level-editor viewport and never adopts a
+  PIE viewport as a source. Focusing a PIE viewport while another valid viewport
+  exists changes nothing — the existing source keeps updating. The scopes hold
+  their last frame in exactly one case: the viewport **currently being measured**
+  itself enters PIE and thus drops out as a source. All PIE variants
+  (in-viewport, undocked window, "New Editor Window") behave identically;
+  separate-window PIE captures mouse/keyboard input (Shift+F1 releases it — an
+  Unreal behaviour, not TrueScope's). **Simulate** (rather than Play) drives
+  animated/runtime objects while the scopes keep measuring normally.
+- **No automatic fallback (deliberate).** When the measured source falls away,
+  TrueScope does **not** auto-switch to another open viewport. Another viewport
+  may be in a scope-unsuitable view mode (Unlit, Wireframe, Lighting-Only), so a
+  silent switch could measure a meaningless image; and WYSIWYG requires TrueScope
+  never measure a source the user did not consciously focus. The held last frame
+  is intended and useful (the lighting baseline stays visible during PIE). Phase
+  4.1 adds only a visible paused indicator over the held frame, telling the user
+  it is paused, that the measured viewport is in PIE, and that focusing another
+  viewport resumes measurement — leaving the choice to the user.
 - Refresh rate ~2–3 Hz by default (configurable); resource-friendly.
 - Smooth, anti-aliased rendering — no blocky/pixelated scopes.
 - Distribution: GitHub (this repo, source + prebuilt binaries per release);
@@ -84,7 +102,7 @@ receives. Consequences, by design:
 | UI framework | **Slate**, dockable **Nomad Tab** (registered via `FGlobalTabmanager`), menu entry under *Window → TrueScope* | Native editor integration, docking + layout persistence for free, anti-aliased line/polygon drawing solves the "no pixelated look" requirement. No content assets needed → clean code-only plugin. |
 | UMG / Editor Utility Widgets | Rejected for the scopes UI | Would still need a C++ backend, and lacks crisp vector drawing; a Slate tab already docks next to any Editor Utility Widget. |
 | Common UI plugin | Not used | Runtime/game UI framework (input routing, gamepad); irrelevant for editor tools. |
-| Image source | **Active Viewport via `FSceneViewExtensionBase`**, subscribed after the tonemap pass; the post-tonemap image is copied/downsampled into a plugin render target. Single source in V1. | Zero level footprint; WYSIWYG for the last focused Level Editor viewport, which covers the Cinematic Viewport and PIE running inside a level viewport (PIE in a separate editor window untested, Standalone Game out of scope — see the product constraints); camera measurement via piloting. Engine reference for the pattern: the OpenColorIO plugin (post-tonemap view-extension pass) and other in-engine `SceneViewExtension` users. |
+| Image source | **Active Viewport via `FSceneViewExtensionBase`**, subscribed after the tonemap pass; the post-tonemap image is copied/downsampled into a plugin render target. Single source in V1. | Zero level footprint; WYSIWYG for the last focused Level Editor viewport, which covers the Cinematic Viewport and PIE running inside a level viewport (Standalone Game out of scope, PIE source behaviour understood and intended — see the product constraints, "Behaviour during PIE"); camera measurement via piloting. Engine reference for the pattern: the OpenColorIO plugin (post-tonemap view-extension pass) and other in-engine `SceneViewExtension` users. |
 | Cine Camera via SceneCapture | **Deferred to backlog** (optional convenience: measure a camera without piloting it) | Original MVP path; superseded as primary source by the decision above. Would reintroduce a scene-side component — acceptable only as an opt-in extra, never a requirement. |
 | Viewport overlays | Not in the scopes window scope of V1, **but planned (M8)**: Zebra, over/under-exposure warning (red/blue), False Color — implemented as a *writing* pass on the same SceneViewExtension, per-viewport toggle from the TrueScope tab | Reuses M2 (view extension) + M5 (plugin shader) infrastructure; thresholds are display-referred % and therefore consistent with the waveform. No PostProcessVolume, no material asset, no level changes. |
 | Analysis, stage 1 (MVP) | **CPU**: async GPU readback (`FRHIGPUTextureReadback`) of the downsampled capture, C++ histogram building in a background task | No shaders → fully debuggable and unit-testable in text; at 2–3 Hz and ~0.5 MPix per update the cost is negligible. Becomes the ground truth for the GPU path. |
