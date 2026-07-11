@@ -206,18 +206,27 @@ without the plugin).
   as a separate process with no editor module, so TrueScope does not load
   there; state this as a known limitation in the plugin README (M7 release
   docs). See `architecture.md`, "Behaviour during PIE".
-- **Orthographic viewports are never measured (found during M4.1)** — with the
-  level viewport in an ortho view (Top/Front/Left…), no capture ever happens:
-  the log shows no "First viewport capture" at all, and the scopes stay blank
-  until the viewport is switched back to Perspective, at which point capture
-  starts immediately. The post-tonemap hook (`EPostProcessingPass::Tonemap`)
-  evidently does not run on the ortho path. Not a paused state — the scopes are
-  simply never fed, so M4.1's hint correctly stays silent (no PIE). Decide
-  later whether this is (a) documented as a limitation ("scopes measure
-  perspective viewports"), or (b) fixed by hooking a pass that also runs in
-  ortho. Investigate against 5.8 source before assuming a cause. A user in an
-  ortho view currently sees empty scopes with no explanation, so this is also a
-  candidate for a second base-widget hint once the mechanism exists.
+- **Orthographic viewports are never measured — tell the user (deferred UX gap;
+  belongs to the M6 status line).** Found during M4.1: with the level viewport in
+  an ortho view (Top/Front/Left…), no capture ever happens — the log shows no
+  "First viewport capture" at all and the scopes stay blank, until the viewport
+  is switched back to Perspective, at which point capture starts immediately. The
+  post-tonemap hook (`EPostProcessingPass::Tonemap`) evidently does not run on the
+  ortho path; investigate against 5.8 source before assuming a cause.
+
+  **This is not a bug, it is the same class as the M4.1 paused indicator:** the
+  source delivers nothing and the user is not told why. The scopes are simply never
+  fed, so M4.1's paused hint correctly stays silent (no play session is running).
+  What is missing is the *explanation*, and explaining what is (or is not) being
+  measured is precisely the job of the **M6 measurement status line** (see
+  `architecture.md`, M6: "measurement status line showing what is being measured").
+  So consolidate it there rather than building a piecemeal one-off hint now — while
+  reusing the base-widget hint mechanism that phase 4.1 introduced
+  (`DrawCenteredHint` / `DrawPausedHint`, which the minimum-panel-size hint will
+  also reuse). At M6, decide additionally whether ortho is (a) documented as a
+  limitation ("scopes measure perspective viewports") or (b) actually fixed by
+  hooking a pass that runs in ortho too — the status line is worth having either
+  way.
 - **Viewport testpattern / colorbar generator** — TrueScope can display
   standard test patterns (SMPTE/ARIB colorbars, ramps, gradients) *in the
   viewport* as a known reference signal. Two independent uses:

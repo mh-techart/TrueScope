@@ -76,22 +76,31 @@ widget/state layer, not `AnalyzePixels`.
 
 ## Acceptance criteria
 
-- [ ] Builds via the Build.sh command (see host `CLAUDE.md`) with no new
+- [x] Builds via the Build.sh command (see host `CLAUDE.md`) with no new
       warnings.
-- [ ] When the measured viewport enters PIE, every scope panel shows the paused
+- [x] When the measured viewport enters PIE, every scope panel shows the paused
       hint over the held last frame (values still visible) — verified via MCP
-      screenshot in in-viewport, undocked-window, and "New Editor Window" PIE.
-- [ ] Stopping PIE, and focusing another valid viewport, both resume live scopes
-      with no hint — verified live with a moving source.
-- [ ] Focusing a PIE viewport while another valid viewport exists does **not**
-      show the hint (that source keeps updating) — verified, guarding against a
-      too-broad trigger.
-- [ ] The "no viewport" state still behaves as before (its own message or blank,
-      per Task 0) — no regression.
-- [ ] Regression test present and proven to have teeth; full suite green, count
+      screenshot in in-viewport and floating-window ("New Editor Window") PIE.
+      (The variants cannot differ: any PIE start disables realtime on *all*
+      editor viewports — see the Verification summary — so the trigger does not
+      depend on which window hosts the session.)
+- [x] Stopping PIE, and focusing another valid viewport, both resume live scopes
+      with no hint — Stop PIE verified live via MCP; the focus-another-viewport
+      resume is covered by the regression test and by the human's earlier manual
+      observation (work order 4).
+- [x] Focusing a PIE viewport while another valid viewport exists does **not**
+      show the hint (that source keeps updating) — guarding against a too-broad
+      trigger. (Verified by unit test, not live: a live check needs a second
+      level viewport, i.e. a change to the human's saved layout. The human
+      accepts the unit-test coverage plus the earlier manual observation; a live
+      multi-viewport check is not required.)
+- [x] The "no viewport" state still behaves as before (its own message or blank,
+      per Task 0) — no regression. Without a play session the state is never
+      paused, so the idle scope keeps its existing silent presentation.
+- [x] Regression test present and proven to have teeth; full suite green, count
       checked against expectation.
-- [ ] No new TrueScope warnings/errors in the Output Log.
-- [ ] Human sign-off.
+- [x] No new TrueScope warnings/errors in the Output Log.
+- [x] Human sign-off.
 
 ## Explicitly out of scope (do not build)
 
@@ -100,3 +109,53 @@ see architecture.md); any readback timeout/reset (no hang exists — backlog
 robustness net tied to M5); actually *measuring* the PIE image; the M6 status
 line; the minimum-panel-size hint (backlog); any settings UI. Ideas ->
 `docs/backlog.md`.
+
+## Verification summary
+
+**Task 0, from the 5.8 engine source rather than assumption.** Two findings
+explain the whole behaviour. A PIE viewport is never adopted as a source because
+in-viewport PIE creates a *new* `FSceneViewport` whose client is the
+`UGameViewportClient` (`SLevelViewport::StartPlayInEditorSession`), so the M2
+check `Context.Viewport->GetClient() != GCurrentLevelEditingViewportClient`
+rejects it. And all PIE variants behave identically because starting a play
+session disables realtime on **every** editor viewport (`PlayLevel.cpp`: "Can't
+allow realtime viewports whilst in PIE so disable it for ALL viewports here") —
+so the measured viewport silently stops delivering frames no matter which window
+hosts the session. There was no existing empty-state message mechanism: the
+scopes are `SLeafWidget`s that simply drew an empty graticule.
+
+**Paused is modelled as a conjunction:** a play session is running **and**
+results have stopped arriving for more than three capture intervals. Neither
+half suffices. PIE alone is too broad — a viewport the user focuses keeps
+delivering during PIE, and while results arrive the scopes are live, so no hint
+may appear. A stall alone is too broad the other way — without PIE it is the
+ordinary "no viewport" idle state, which keeps its existing silent presentation
+and is therefore distinct. Simulate is deliberately excluded: it drives runtime
+objects while the scopes keep measuring.
+
+**Mechanism:** `TrueScope::Draw::DrawCenteredHint` (fixed-size, centered,
+translucent plate, drawn *over* the held values, silent if it would not fit) plus
+`STrueScopeWidget::DrawPausedHint`, which every scope's `OnPaint` exits through —
+including the no-result and too-small-plot paths, so the hint cannot be skipped.
+This base-widget hint mechanism is what the backlog's minimum-panel-size hint and
+the ortho-view hint will reuse; it is **not** the M6 status line, and the two
+coexist.
+
+**Self-verified:** clean build (0 warnings); MCP screenshots showing the hint on
+all four scopes over still-visible held traces in in-viewport PIE and in
+floating-window ("New Editor Window") PIE, and its disappearance with live scopes
+after Stop PIE in both cases; no TrueScope warnings or errors in the Output Log.
+The regression test `TrueScope.UI.PausedState` was proven to have teeth by two
+*opposite* mutations: a too-broad trigger (paused whenever PIE runs) failed the
+"another viewport still delivers" assertions, and a never-paused trigger (the
+silent freeze this phase exists to cure) failed both the paused-state and the
+paint assertions — the latter proving the draw branch really executes. Reverted,
+rebuilt, suite green: **18/18** (17 before + `PausedState`).
+
+Incidental finding, recorded not built (staying in phase): an **orthographic**
+level viewport produces no capture at all, so the scopes stay blank with no
+explanation. That is not a paused state (no play session), so the hint correctly
+stays silent. It is a deferred UX gap of the same class as this phase's, and
+belongs to the M6 status line — see `backlog.md`.
+
+**Phase 4.1 signed off by the human as complete.**
