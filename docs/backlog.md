@@ -30,6 +30,37 @@ without the plugin).
 - Log-profile zebra levels (e.g. S-Log targets) belong to the
   scene-referred/OCIO item below, not to the first overlay release.
 
+## Capture runs at full cost while the tab is closed (product gap — decide in M5)
+
+**Found 2026-07-11** while establishing the idle baseline for the controlled
+benchmark. `FTrueScopeViewExtension::IsActiveThisFrame_Internal`
+(`Capture/TrueScopeViewExtension.cpp`) gates capture on **two things only**: the
+focused level-editor viewport, and the ~0.4 s capture throttle. There is **no
+tab-state check and no kill-switch CVar**, and the view extension is registered
+unconditionally at `OnPostEngineInit` (`TrueScopeModule.cpp`) — independent of
+whether the TrueScope tab exists. So with the tab closed, TrueScope keeps
+capturing, keeps reading back, and keeps analyzing at full price: a **1–2×
+frame-time render-thread block every capture interval, for a result nobody can
+see**. (This is also why the benchmark's run-1 baseline had to be taken with
+`-DisablePlugins=TrueScope`: the tab-closed baseline the methodology asks for is
+not reachable from the UI.)
+
+This is a **real product gap**, not a benchmark inconvenience — a user who closes
+the tab reasonably expects the cost to go away, and an installed-but-unused
+plugin silently taxing every editor session is exactly the reputation an editor
+plugin cannot afford.
+
+- *Fix candidate:* gate capture on tab visibility — the view extension asks
+  whether a live TrueScope panel is actually presenting results (widget/tab
+  existence, not just window focus), and returns false otherwise. Cheap in
+  principle; the subtlety is defining "visible" correctly (tab docked but hidden
+  behind another tab still counts as closed; a floating tab does not).
+- *Placement:* **decide in M5**, which reworks the capture/readback chain anyway
+  (GPU path, no runtime readback) — building the gate now would only be redone
+  there. Flag it explicitly in **phase-5 planning** so it is decided, not
+  forgotten: even with the GPU path there is no reason to run analysis for a
+  closed tab.
+
 ## Deferred features
 
 - **Cine Camera source via SceneCaptureComponent2D** — measure a selected
@@ -63,14 +94,15 @@ without the plugin).
   the per-cycle cost measured in M3 is known, this plus a settable
   measurement rate (M6) covers both performance and smoothness.
 - **Adaptive measurement rate (CPU compatibility path)** — since the readback
-  `Lock` costs ≈ one host frame-time, its editor impact is self-scaling if the
-  measurement rate adapts to frame-time: throttle so the readback never consumes
-  more than a set fraction of editor time (e.g. "at most one lost frame per
-  second"). On a slow machine this yields ~1 Hz automatically; on a workstation
-  ~2.5 Hz or more — one rule, correct everywhere. Only relevant to the shipped
-  CPU path (the GPU path has no readback). Ties into the settable rate (M6) and
-  answers the M7 "is the CPU fallback tolerable?" question. Prefer expressing the
-  budget in frame-times, not milliseconds.
+  `Lock` costs **1–2× host frame-time** (measured ≈2× median, 2026-07-11), its
+  editor impact is self-scaling if the measurement rate adapts to frame-time:
+  throttle so the readback never consumes more than a set fraction of editor time
+  (e.g. "at most two lost frames per second"). On a slow machine this yields
+  ~1 Hz automatically; on a workstation ~2.5 Hz or more — one rule, correct
+  everywhere. Only relevant to the shipped CPU path (the GPU path has no
+  readback). Ties into the settable rate (M6) and answers the M7 "is the CPU
+  fallback tolerable?" question. Budget in frame-times, not milliseconds, and
+  budget **two** per capture, not one.
 - **Buffer readback instead of texture readback (unverified)** — *hypothesis, not
   a plan.* The Metal GPU-drain lives in `RHIMapStagingSurface` (texture path).
   Whether `FRHIGPUBufferReadback` + `RHILockStagingBuffer` avoids the
@@ -81,13 +113,15 @@ without the plugin).
 - **Cheaper readback retrieval (render-thread cost)** — M3 measured the
   render-thread step that maps the staging texture and copies it to CPU
   (`Lock` + row-by-row copy + `Unlock` in `FTrueScopeAnalyzer::
-  PollReadback_RenderThread`). The readback step costs **about one host
-  frame-time per capture** (early millisecond figures on this machine were
-  taken under uncontrolled conditions and have been discarded; the cost is the
+  PollReadback_RenderThread`). The readback step costs **1–2× host frame-time
+  per capture** — measured ≈2× median in the controlled benchmark (2026-07-11;
+  earlier millisecond figures were taken under uncontrolled conditions and have
+  been discarded; see `architecture.md`, "Measured: controlled readback
+  benchmark"). The cost is the
   Metal GPU-drain inside `Lock`, not the copy — see `phase-3.md`,
   "Correction"). It runs on throttled capture frames (~2.5 Hz), so the editor
-  stays interactive, but it is a periodic render-thread block of roughly one
-  frame-time. Options to
+  stays interactive — the same benchmark measured **no felt FPS impact** — but it
+  is a periodic render-thread block of one to two frame-times. Options to
   explore: `Lock` on the render thread but hand the mapped pointer + pitch to
   the background task for the slow copy (then `Unlock`); investigate whether
   the Metal `Lock` itself (not the memcpy) dominates and whether a
@@ -95,7 +129,7 @@ without the plugin).
   resolution. Tie-in with the settable measurement rate (M6) and the GPU path
   (M5, which removes the CPU copy entirely for the GPU analysis result).
   **Status after the M5 path decision:** with the GPU path as the internal
-  default from M5 on, the one-frame-time block no longer affects normal use, so this is
+  default from M5 on, the readback block no longer affects normal use, so this is
   **not a release blocker**. It does still affect the shipped CPU compatibility
   path. **M7 acceptance question:** is the CPU path, as shipped, tolerable for a
   user who has to fall back to it? If not, do the optimization there, or lower
@@ -107,7 +141,7 @@ without the plugin).
   because even a few kilobytes would cost the same.
   **Update (readback experiment):** both the "lower capture resolution" and the
   "Lock-on-render-thread, copy-in-background" options **do not help** — the cost is
-  the GPU-drain inside `Lock` (≈ one frame-time, size-independent), not the memcpy
+  the GPU-drain inside `Lock` (1–2× frame-time, size-independent), not the memcpy
   (negligible). Retain them here only as recorded dead ends. The live viability
   question is now the *adaptive measurement rate* item and the *buffer-readback*
   hypothesis above.
