@@ -1,110 +1,102 @@
-# Phase 4.1 — Fix the PIE-window capture wedge
+# Phase 4.1 — Paused indicator when the measured viewport enters PIE
 
-Read `architecture.md` first (the "Image source" settled decision and the M2
-capture chain), and `backlog.md` → "PIE in a separate editor window". This is a
-small, self-contained fix phase between M4 and M5. It adds **no scope, no
-analysis, no GPU work** — it makes the M2 capture pipeline robust against
-viewport/world lifecycle transitions so it can never wedge.
+Read `architecture.md` first ("Behaviour during PIE" and "No automatic
+fallback"). This is a minimal UI phase between M4 and M5. It adds **one thing**:
+a visible indication that the scopes are paused because the measured viewport is
+in Play mode, and that the user can resume by focusing another viewport. No
+scope, no analysis, no GPU work, no settings, no change to capture behaviour, and
+**no automatic viewport fallback** (a deliberate decision — see architecture.md).
 
-**Why now, before M5:** the pre-M5 readback experiment found that starting PIE
-as a **separate editor window** ("New Editor Window (PIE)") freezes the scopes
-the instant PIE starts, and they do not recover on stop, refocus, or viewport
-interaction — only an editor restart brings capture back. That affects users who
-never intended to measure PIE at all, so it is a robustness bug, not a missing
-feature. The M5 GPU path builds on exactly this capture chain; the pipeline must
-be sound before more is layered on it.
+**Why this exists, and why it is small.** Investigation established there is no
+capture wedge: the selection logic measures the last valid non-PIE viewport and
+never adopts a PIE viewport as a source. The scopes hold their last frame in
+exactly one case — the measured viewport itself enters PIE and drops out as a
+source, with no auto-fallback (intended). That held frame is useful (the lighting
+baseline stays visible), but it is silent and can be mistaken for a freeze. This
+phase closes exactly that gap.
 
 If a decision-level surprise appears, stop and ask per the `dev-rules.md`
 Rule 3 self-check.
 
-## Goal
+## Task 0 — Confirm the ground truth before drawing anything
 
-The capture pipeline must **never wedge**. Starting and stopping PIE in a
-separate editor window, entering and leaving PIE in-viewport, and losing or
-regaining the target viewport must all leave the scopes in one of two valid
-states — measuring a valid viewport, or cleanly idle — and never permanently
-frozen requiring an editor restart.
+- **Confirm the behaviour** as the test baseline, using a live change-source (a
+  moving Niagara effect, viewport Realtime on) so "held" is distinguishable from
+  "still updating but static": measured viewport enters PIE -> scopes freeze;
+  Stop PIE -> resume; focus another valid viewport -> resume. Reproduce across at
+  least in-viewport and separate-window PIE.
+- **Identify the paused state internally:** determine how the selection logic can
+  detect "the measured source became invalid because its viewport entered PIE"
+  and hold the last frame. Read how the current selection
+  (`GCurrentLevelEditingViewportClient` / `IsActiveThisFrame`) classifies this;
+  do not assume.
+- **Distinguish from "no viewport":** determine whether this paused state is
+  distinguishable from the generic "no level-editor viewport focused at all"
+  (M2's no-viewport state). This decides whether the indicator is one message or
+  two.
+- **Existing empty-state rendering:** find what the scope widgets currently draw
+  when there is no capture (is there already a centered message on the widget, or
+  is it blank?). If a message mechanism exists, the paused indicator is a second
+  message on it; if not, build a minimal one. Record which.
 
-This phase does **not** make the scopes *measure* the separate-window PIE image
-(that stays the backlog feature). It only guarantees the pipeline recovers.
+## Task 1 — Minimal centered indicator on the base scope widget
 
-## Task 0 — Research first (mandatory): reproduce and diagnose
+- Add (or reuse) a **fixed-size, centered text hint** on the base scope widget
+  (`STrueScopeWidget` / the shared base the four scopes derive from), shown over
+  the held last frame when in the paused state. Fixed-size UI element, legible at
+  any panel size, same discipline as the axis labels. The held scope values stay
+  visible behind/around the hint — they are useful, not to be blanked.
+- Wire up the **paused case**: measured viewport entered PIE, last frame held ->
+  show the hint. The hint communicates three things: (1) paused, (2) because the
+  measured viewport is in Play (PIE), (3) focus another viewport to resume.
+  Suggested text: **"Paused — measured viewport is in Play (PIE). Focus another
+  viewport to resume."** Single localized `LOCTEXT`; a two-line variant is fine
+  if a narrow panel needs it. Final wording may be refined with the M6 status
+  line.
+- **Word message (3) generically** — "focus another viewport", not "focus a
+  level viewport" or similar. Whether the next viewport is scope-suitable (not
+  Unlit/Wireframe) is the user's call; the hint promises *resume*, not *resume
+  with a meaningful image*. This matches the no-fallback decision: the choice
+  stays with the user.
+- If Task 0 found the paused state distinguishable from "no viewport", keep the
+  two messages distinct; if not, one clear message covering both is acceptable
+  for now — note the limitation.
+- **Forward-compatibility (state it, do not build it):** this in-panel hint is
+  **not** the M6 status line (a persistent bar showing *what* is being measured);
+  the two coexist. The same base-widget hint mechanism is also what the backlog
+  "minimum panel size" hint will use later. **Do not build the minimum-panel-size
+  hint in this phase** — only the paused case. Staying in phase.
 
-Do not fix from the current hypothesis alone. First reproduce the wedge and
-establish its true mechanism:
+## Regression test
 
-- **Reproduce:** TrueScope tab open and capturing; start PIE as "New Editor
-  Window"; observe the scopes freeze; confirm they stay frozen after Stop PIE,
-  on refocusing the level viewport, and on interacting with it. (This much was
-  seen in the experiment; reproduce it deliberately as the test baseline.)
-- **Diagnose:** confirm whether `bReadbackInFlight` (or the equivalent
-  single-buffer "skip-if-busy" state in `FTrueScopeAnalyzer`) is stuck because a
-  readback was enqueued for a view/RDG that never completes once PIE takes over
-  the render path — or whether the cause is elsewhere. Instrument the state
-  machine (which flag is stuck; when `PollReadback_RenderThread` last ran; does
-  `IsReady()` ever return true again) rather than guessing.
-- **Read the engine:** how does an `FSceneViewExtension` see world/PIE
-  transitions, and how do the view family / RDG signal teardown when a world
-  switches? Find where the never-completing readback's fence ends up. Record the
-  true cause in a short note (commit or appended here) **before** writing the
-  fix.
-
-## Task 1 — Cure the class: give the readback state machine a recovery path
-
-The single-buffer, skip-if-busy readback has no way out of a stuck in-flight
-state: if a readback never completes, capture is frozen forever. Add a recovery
-path — a **timeout** (a readback in flight longer than N capture intervals is
-abandoned and the buffer reset) and/or an **explicit reset** on
-world/PIE/viewport transition — so a never-completing readback cannot wedge
-capture permanently. This cures the whole class of "in-flight readback never
-lands", of which the PIE window is only one instance.
-
-## Task 2 — Cure the symptom too: handle the separate-window PIE viewport
-
-The separate-window PIE viewport is **not** a Level Editor viewport, so the M2
-"last focused Level Editor viewport" selection should handle its appearance and
-disappearance gracefully: either keep measuring a valid level viewport if one
-remains, or drop to the clean "no viewport" idle state. **Decide which, and
-record the decision** here and in `architecture.md`. Filtering the PIE view out
-at the `IsActiveThisFrame` selection is the likely mechanism (it already filters
-on `GCurrentLevelEditingViewportClient`); verify it actually prevents the wedge
-rather than only hiding the symptom while the stuck readback remains.
-
-## Regression test with teeth
-
-A test that **fails on the reintroduced wedge and passes after the fix** — proven
-to fail first (reintroduce the bug, watch it fail, revert), per the
-build-and-test-hygiene rule. This is the hard part: the bug lives in the
-lifecycle/state machine, not in `AnalyzePixels`, so the test must exercise the
-readback state machine directly (e.g. drive it into an in-flight state whose
-readback never completes, then assert the recovery path resets it and capture
-resumes) rather than feeding pixels. Design the test against the layer where the
-bug lives — no existing test caught this, precisely because they all sit at the
-analysis layer.
+A widget-level test asserting the base scope widget shows the paused hint in the
+paused state and the live scope otherwise — proven to have teeth by crossing the
+states (assert it fails if the paused branch is bypassed). This sits at the
+widget/state layer, not `AnalyzePixels`.
 
 ## Acceptance criteria
 
 - [ ] Builds via the Build.sh command (see host `CLAUDE.md`) with no new
       warnings.
-- [ ] Starting and stopping separate-window PIE leaves the scopes either
-      measuring a valid viewport or cleanly idle — never frozen. **No editor
-      restart is ever required to recover capture.**
-- [ ] The readback state machine provably recovers from a stuck in-flight
-      readback (recovery path exercised and verified, not just observed once).
-- [ ] In-viewport PIE and ordinary viewport focus changes still work as before —
-      no regression in the M2/M3/M4 capture path.
-- [ ] Regression test present and **proven to have teeth** (fails on the
-      reintroduced wedge, passes after the fix); the full automation suite still
-      green, count checked against expectation.
-- [ ] Verified live via MCP: screenshot evidence of the scopes recovering after
-      a separate-window PIE start/stop cycle.
+- [ ] When the measured viewport enters PIE, every scope panel shows the paused
+      hint over the held last frame (values still visible) — verified via MCP
+      screenshot in in-viewport, undocked-window, and "New Editor Window" PIE.
+- [ ] Stopping PIE, and focusing another valid viewport, both resume live scopes
+      with no hint — verified live with a moving source.
+- [ ] Focusing a PIE viewport while another valid viewport exists does **not**
+      show the hint (that source keeps updating) — verified, guarding against a
+      too-broad trigger.
+- [ ] The "no viewport" state still behaves as before (its own message or blank,
+      per Task 0) — no regression.
+- [ ] Regression test present and proven to have teeth; full suite green, count
+      checked against expectation.
 - [ ] No new TrueScope warnings/errors in the Output Log.
 - [ ] Human sign-off.
 
 ## Explicitly out of scope (do not build)
 
-Actually **measuring** the separate-window PIE image (stays the backlog feature —
-this phase only prevents the wedge); the GPU compute path and any M5+ work;
-double-buffered readback as a performance/throughput feature (the recovery path
-here is for correctness, not throughput); settings UI. Ideas →
+Automatic viewport fallback when the source falls away (deliberately rejected —
+see architecture.md); any readback timeout/reset (no hang exists — backlog
+robustness net tied to M5); actually *measuring* the PIE image; the M6 status
+line; the minimum-panel-size hint (backlog); any settings UI. Ideas ->
 `docs/backlog.md`.
