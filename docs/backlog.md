@@ -206,6 +206,18 @@ without the plugin).
   as a separate process with no editor module, so TrueScope does not load
   there; state this as a known limitation in the plugin README (M7 release
   docs). See `architecture.md`, "Behaviour during PIE".
+- **Orthographic viewports are never measured (found during M4.1)** — with the
+  level viewport in an ortho view (Top/Front/Left…), no capture ever happens:
+  the log shows no "First viewport capture" at all, and the scopes stay blank
+  until the viewport is switched back to Perspective, at which point capture
+  starts immediately. The post-tonemap hook (`EPostProcessingPass::Tonemap`)
+  evidently does not run on the ortho path. Not a paused state — the scopes are
+  simply never fed, so M4.1's hint correctly stays silent (no PIE). Decide
+  later whether this is (a) documented as a limitation ("scopes measure
+  perspective viewports"), or (b) fixed by hooking a pass that also runs in
+  ortho. Investigate against 5.8 source before assuming a cause. A user in an
+  ortho view currently sees empty scopes with no explanation, so this is also a
+  candidate for a second base-widget hint once the mechanism exists.
 - **Viewport testpattern / colorbar generator** — TrueScope can display
   standard test patterns (SMPTE/ARIB colorbars, ramps, gradients) *in the
   viewport* as a known reference signal. Two independent uses:
