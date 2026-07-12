@@ -220,12 +220,11 @@ Verification record 2026-07-12 (self-verified except where marked human):
       second, resume immediately on re-foregrounding) and the fully-closed case
       (cycles stop; reopening is covered by the first-paint rule and the
       regression test `TrueScope.Capture.TabVisibilityGate`).
-- [ ] **Human visual sign-off:** the human compares GPU vs. CPU parade on a real
+- [x] **Human visual sign-off:** the human compares GPU vs. CPU parade on a real
       viewport and confirms they are "the same enough" for artists (the second,
       human half of the two-part acceptance; the equivalence test is the first).
-      *Please also right-click the parade once and switch Analysis Path →
-      GPU (performance) / CPU (compatibility) — the menu could not be clicked
-      by UI automation (see above).*
+      *Confirmed by the human 2026-07-12 (including the parade's right-click
+      Analysis Path menu, which UI automation could not exercise). M5 accepted.*
 - [x] No new TrueScope warnings/errors in the Output Log. *(The two
       startup-time `LogAutomationTest: Error: Condition failed` lines predate
       M5 — present in every editor log since at least 2026-07-11 — and are not
