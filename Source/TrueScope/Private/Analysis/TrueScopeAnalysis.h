@@ -14,6 +14,14 @@
 namespace TrueScope
 {
 	/**
+	 * Gain applied inside the log density mapping; lifts low densities (a single
+	 * pixel in a 540-row column) into clear visibility. Shared by the CPU
+	 * mapping (CountToIntensity) and the M5 GPU intensity pass, so both paths
+	 * carry the same density curve. Tuning constant, revisited in M6.
+	 */
+	inline constexpr float DensityIntensityGain = 16.0f;
+
+	/**
 	 * Builds histogram, parade, luma and vectorscope counts from an 8-bit BGRA
 	 * pixel array (FColor layout, row-major, tightly packed). Fills Histogram,
 	 * Parade, LumaParade, Vectorscope and SourceSize of OutResult; does not

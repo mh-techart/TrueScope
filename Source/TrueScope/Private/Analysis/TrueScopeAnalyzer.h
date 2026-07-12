@@ -54,10 +54,16 @@ public:
 	/** Monotonic counter bumped on every published result. Any thread. */
 	uint64 GetResultSerial() const { return ResultSerial.load(std::memory_order_acquire); }
 
+	/**
+	 * Publishes a result to the widgets. Any thread. Called by the CPU
+	 * analysis task and by the M5 GPU producer — one publication channel, so
+	 * widgets never know which producer ran.
+	 */
+	void PublishResult(TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result);
+
 private:
 	void PollReadback_RenderThread();
 	void RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size, double InCaptureStartSeconds, double InCopyMs);
-	void PublishResult(TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result);
 	void LogCycleCost(const FTrueScopeAnalysisResult& Result, double TotalCycleMs, double CopyMs);
 
 	// --- Render thread state ---

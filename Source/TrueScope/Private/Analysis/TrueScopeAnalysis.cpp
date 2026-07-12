@@ -8,11 +8,8 @@
 namespace TrueScope
 {
 
-/**
- * Gain applied inside the log mapping; lifts low densities (a single pixel in
- * a 540-row column) into clear visibility. Tuning constant, revisited in M4/M6.
- */
-static constexpr float IntensityGain = 16.0f;
+// The gain constant lives in the header (DensityIntensityGain) so the M5 GPU
+// intensity pass provably applies the same density curve.
 
 void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, FTrueScopeAnalysisResult& OutResult)
 {
@@ -68,8 +65,8 @@ float CountToIntensity(uint32 Count, uint32 MaxCount)
 	{
 		return 0.0f;
 	}
-	return FMath::Loge(1.0f + IntensityGain * static_cast<float>(Count))
-		/ FMath::Loge(1.0f + IntensityGain * static_cast<float>(MaxCount));
+	return FMath::Loge(1.0f + DensityIntensityGain * static_cast<float>(Count))
+		/ FMath::Loge(1.0f + DensityIntensityGain * static_cast<float>(MaxCount));
 }
 
 namespace

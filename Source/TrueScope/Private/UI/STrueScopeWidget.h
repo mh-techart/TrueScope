@@ -117,6 +117,20 @@ protected:
 		return TArrayView<const FTrueScopeDisplayMode>();
 	}
 
+	/**
+	 * Scope-specific context-menu sections beyond the display modes (M5 first
+	 * user: the parade's analysis-path option). Return true from
+	 * HasContextMenuExtensions to get the menu even without display modes.
+	 */
+	virtual void ExtendContextMenu(class FMenuBuilder& MenuBuilder)
+	{
+	}
+
+	virtual bool HasContextMenuExtensions() const
+	{
+		return false;
+	}
+
 	/** Id of the active display mode. */
 	virtual int32 GetDisplayModeId() const
 	{
@@ -131,7 +145,12 @@ protected:
 private:
 	EActiveTimerReturnType PollAnalyzer(double InCurrentTime, float InDeltaTime);
 
-	TSharedRef<SWidget> BuildDisplayModeMenu();
+	bool HasContextMenu() const
+	{
+		return !GetDisplayModes().IsEmpty() || HasContextMenuExtensions();
+	}
+
+	TSharedRef<SWidget> BuildContextMenu();
 	void HandleSetDisplayMode(int32 ModeId);
 	bool IsDisplayModeActive(int32 ModeId) const;
 

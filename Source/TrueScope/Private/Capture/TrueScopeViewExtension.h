@@ -8,9 +8,12 @@
 #include "UObject/GCObject.h"
 #include "UObject/ObjectPtr.h"
 
+#include <atomic>
+
 class FRDGBuilder;
 class FTextureRenderTargetResource;
 class FTrueScopeAnalyzer;
+class FTrueScopeGpuParade;
 class UTextureRenderTarget2D;
 struct FPostProcessMaterialInputs;
 struct FScreenPassTexture;
@@ -49,7 +52,8 @@ class FTrueScopeViewExtension : public FSceneViewExtensionBase, public FGCObject
 {
 public:
 	FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
-		const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer);
+		const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
+		const TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe>& InGpuParade);
 
 	//~ Begin ISceneViewExtension interface
 	virtual int32 GetPriority() const override { return TrueScope::CaptureExtensionPriority; }
@@ -67,6 +71,15 @@ public:
 	/** The render target receiving the captured image. Game thread. */
 	UTextureRenderTarget2D* GetCaptureRenderTarget() const { return CaptureRenderTarget; }
 
+	/**
+	 * UI-selected analysis path (M5): true = GPU parade compute, false = CPU
+	 * readback (default this phase). Set from the game thread, read on the
+	 * render thread per capture. The TrueScope.AnalysisPath console variable
+	 * overrides this for diagnostics.
+	 */
+	void SetUseGpuParade(bool bInUseGpuParade) { bUseGpuParade.store(bInUseGpuParade, std::memory_order_relaxed); }
+	bool GetUseGpuParade() const { return bUseGpuParade.load(std::memory_order_relaxed); }
+
 private:
 	FScreenPassTexture AfterTonemapPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& View,
 		const FPostProcessMaterialInputs& Inputs);
@@ -76,6 +89,12 @@ private:
 
 	/** Receives the captured texture for async readback + analysis (M3). */
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
+
+	/** GPU parade producer (M5); runs instead of the readback on the GPU path. */
+	TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe> GpuParade;
+
+	/** See SetUseGpuParade. */
+	std::atomic<bool> bUseGpuParade{false};
 
 	/** Render target resource, cached for the render thread. Render thread only. */
 	FTextureRenderTargetResource* CaptureResourceRenderThread = nullptr;

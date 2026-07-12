@@ -22,6 +22,7 @@ public class TrueScope : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"InputCore",
+				"Projects",
 				"RHI",
 				"RenderCore",
 				"Renderer",

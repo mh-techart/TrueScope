@@ -41,8 +41,23 @@ public:
 protected:
 	virtual void OnAnalysisResultChanged() override;
 
+	/** Analysis-path selection (M5): GPU (performance) / CPU (compatibility). */
+	virtual void ExtendContextMenu(FMenuBuilder& MenuBuilder) override;
+	virtual bool HasContextMenuExtensions() const override
+	{
+		return true;
+	}
+
 private:
-	/** Per-channel density textures, recreated on size change, updated per result. */
+	void HandleSetUseGpuParade(bool bUseGpu);
+	bool IsAnalysisPathActive(bool bGpu) const;
+
+	/**
+	 * CPU path: per-channel density textures built from the result's intensity
+	 * arrays, recreated on size change, updated per result. Unused (reset)
+	 * while a GPU result is displayed — there the brushes point directly at
+	 * the producer's render targets.
+	 */
 	TStrongObjectPtr<UTexture2D> ChannelTexture[FTrueScopeAnalysisResult::NumChannels];
 
 	/** Brushes wrapping the per-channel textures for MakeBox. */

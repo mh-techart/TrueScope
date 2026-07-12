@@ -4,8 +4,14 @@
 #include "UI/STrueScopeParade.h"
 
 #include "Engine/Texture2D.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Rendering/DrawElements.h"
+#include "Textures/SlateIcon.h"
+#include "TrueScopeModule.h"
 #include "UI/TrueScopeDraw.h"
+
+#define LOCTEXT_NAMESPACE "STrueScopeParade"
 
 namespace
 {
@@ -48,6 +54,23 @@ void STrueScopeParade::OnAnalysisResultChanged()
 	}
 	const FIntPoint Size = Result->ParadeImageSize;
 	const int32 NumTexels = Size.X * Size.Y;
+
+	// GPU path (M5): the result carries the producer's density render targets;
+	// point the brushes at them — no texture build, no upload, no readback.
+	if (Result->bHasGpuParade)
+	{
+		for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
+		{
+			UTextureRenderTarget2D* Target = Result->ParadeChannelTarget[Channel].Get();
+			if (Target && ChannelBrush[Channel].GetResourceObject() != Target)
+			{
+				ChannelBrush[Channel].SetResourceObject(Target);
+				ChannelBrush[Channel].ImageSize = FVector2f(Size.X, Size.Y);
+				ChannelTexture[Channel].Reset(); // CPU-path texture no longer drawn
+			}
+		}
+		return;
+	}
 
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
@@ -120,7 +143,9 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 			/ FTrueScopeAnalysisResult::NumChannels;
 		for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 		{
-			if (!ChannelTexture[Channel].IsValid())
+			// The brush holds whichever producer's texture is current: the
+			// CPU path's transient texture or the GPU path's render target.
+			if (!ChannelBrush[Channel].GetResourceObject())
 			{
 				continue;
 			}
@@ -138,3 +163,36 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 
 	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 }
+
+void STrueScopeParade::ExtendContextMenu(FMenuBuilder& MenuBuilder)
+{
+	// Neither entry is labelled "default" (architecture, "Analysis path
+	// selection"): performance vs. compatibility is the user-facing contrast,
+	// and both must produce identical values.
+	MenuBuilder.BeginSection(TEXT("TrueScopeAnalysisPath"), LOCTEXT("AnalysisPathSection", "Analysis Path"));
+	MenuBuilder.AddMenuEntry(LOCTEXT("AnalysisPathGpu", "GPU (performance)"), FText::GetEmpty(), FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateSP(this, &STrueScopeParade::HandleSetUseGpuParade, true),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP(this, &STrueScopeParade::IsAnalysisPathActive, true)),
+		NAME_None, EUserInterfaceActionType::RadioButton);
+	MenuBuilder.AddMenuEntry(LOCTEXT("AnalysisPathCpu", "CPU (compatibility)"), FText::GetEmpty(), FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateSP(this, &STrueScopeParade::HandleSetUseGpuParade, false),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP(this, &STrueScopeParade::IsAnalysisPathActive, false)),
+		NAME_None, EUserInterfaceActionType::RadioButton);
+	MenuBuilder.EndSection();
+}
+
+void STrueScopeParade::HandleSetUseGpuParade(bool bUseGpu)
+{
+	FTrueScopeModule::Get().SetUseGpuParade(bUseGpu);
+}
+
+bool STrueScopeParade::IsAnalysisPathActive(bool bGpu) const
+{
+	return FTrueScopeModule::Get().GetUseGpuParade() == bGpu;
+}
+
+#undef LOCTEXT_NAMESPACE

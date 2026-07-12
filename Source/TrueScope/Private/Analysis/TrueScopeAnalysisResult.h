@@ -4,12 +4,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/WeakObjectPtrTemplates.h"
+
+class UTextureRenderTarget2D;
 
 /**
- * Result of one CPU analysis pass over a captured frame — the data interface
+ * Result of one analysis pass over a captured frame — the data interface
  * between analysis producers and scope widgets. Widgets draw exclusively from
- * this struct; the M5 GPU path will produce the same data (bin arrays and/or
- * textures) without any UI change.
+ * this struct and never know which producer ran: the CPU path fills the bin
+ * count and intensity arrays; the M5 GPU path publishes GPU-resident parade
+ * textures instead (bHasGpuParade) and leaves the arrays empty — its data
+ * never exists in CPU memory, by design (no-readback constraint).
  *
  * Published as TSharedPtr<const FTrueScopeAnalysisResult> and treated as
  * immutable after publication, so any thread may read it without locking.
@@ -87,4 +92,17 @@ struct FTrueScopeAnalysisResult
 
 	/** Cost of the CPU analysis (background task), for the M3 measurement. */
 	double AnalysisDurationMs = 0.0;
+
+	/**
+	 * GPU-resident parade (M5 GPU path): the per-channel density render
+	 * targets written by the intensity compute pass, sized ParadeImageSize and
+	 * carrying the same single-channel-per-texture layout as
+	 * ParadeChannelIntensity — the parade widget points its brushes at them
+	 * and draws with no CPU round-trip. Weak: the producer owns the targets;
+	 * a stale result after producer teardown resolves to null and is skipped.
+	 */
+	TWeakObjectPtr<UTextureRenderTarget2D> ParadeChannelTarget[NumChannels];
+
+	/** True when this result was produced by the GPU path (targets set, arrays empty). */
+	bool bHasGpuParade = false;
 };

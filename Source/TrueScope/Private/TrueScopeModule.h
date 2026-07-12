@@ -8,6 +8,7 @@
 #include "Modules/ModuleManager.h"
 
 class FTrueScopeAnalyzer;
+class FTrueScopeGpuParade;
 class FTrueScopeViewExtension;
 
 class FTrueScopeModule : public IModuleInterface
@@ -27,10 +28,20 @@ public:
 	/** Async readback + CPU analysis; valid after engine init, null in commandlets. */
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> GetAnalyzer() const { return Analyzer; }
 
+	/**
+	 * UI-selected analysis path (M5): true = GPU (performance), false = CPU
+	 * (compatibility). Default CPU through M5/M5.x; the flip to GPU-default is
+	 * an M7 decision. Not persisted yet (settings persistence is M6). Game
+	 * thread.
+	 */
+	void SetUseGpuParade(bool bUseGpuParade);
+	bool GetUseGpuParade() const;
+
 private:
 	void OnPostEngineInit();
 	TSharedRef<class SDockTab> SpawnTrueScopeTab(const class FSpawnTabArgs& SpawnTabArgs);
 
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
+	TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe> GpuParade;
 	TSharedPtr<FTrueScopeViewExtension, ESPMode::ThreadSafe> ViewExtension;
 };

@@ -4,8 +4,10 @@
 #include "Capture/TrueScopeViewExtension.h"
 
 #include "Analysis/TrueScopeAnalyzer.h"
+#include "Analysis/TrueScopeGpuParade.h"
 #include "CommonRenderResources.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "HAL/IConsoleManager.h"
 #include "LevelEditorViewport.h"
 #include "PostProcess/PostProcessMaterialInputs.h"
 #include "RHIStaticStates.h"
@@ -18,10 +20,25 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogTrueScope, Log, All);
 
+/**
+ * Diagnostic override of the analysis path — the user-facing control is the
+ * parade's right-click "Analysis Path" option, never this CVar alone
+ * (architecture: CVars are a developer channel in addition to the UI).
+ */
+static TAutoConsoleVariable<int32> CVarTrueScopeAnalysisPath(
+	TEXT("TrueScope.AnalysisPath"), -1,
+	TEXT("Diagnostic override of the TrueScope analysis path.\n")
+	TEXT(" -1: use the UI setting (default)\n")
+	TEXT("  0: force the CPU (compatibility) path\n")
+	TEXT("  1: force the GPU (performance) path (M5: parade only)"),
+	ECVF_RenderThreadSafe);
+
 FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
-	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
+	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
+	const TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe>& InGpuParade)
 	: FSceneViewExtensionBase(AutoRegister)
 	, Analyzer(InAnalyzer)
+	, GpuParade(InGpuParade)
 {
 	CaptureRenderTarget = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
 	// Non-sRGB: the after-tonemap scene color already holds display-encoded
@@ -59,6 +76,11 @@ void FTrueScopeViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFami
 	// render thread (same pattern as the OCIO display extension's resource cache).
 	FTextureRenderTargetResource* Resource =
 		CaptureRenderTarget ? CaptureRenderTarget->GameThread_GetRenderTargetResource() : nullptr;
+
+	if (GpuParade)
+	{
+		GpuParade->CacheResources_GameThread();
+	}
 
 	ENQUEUE_RENDER_COMMAND(TrueScopeCacheCaptureResource)(
 		[WeakThis = AsWeak(), Resource](FRHICommandListImmediate&)
@@ -125,9 +147,16 @@ FScreenPassTexture FTrueScopeViewExtension::AfterTonemapPass_RenderThread(FRDGBu
 				TStaticBlendState<CW_RGB>::GetRHI(),
 				Parameters);
 
-			// M3: enqueue the async CPU readback of the freshly written
-			// capture in the same graph (RDG orders it after the draw).
-			if (Analyzer)
+			// Analysis producer, in the same graph (RDG orders it after the
+			// draw). GPU path (M5): compute passes, the data never leaves the
+			// GPU. CPU path (M3, default this phase): async readback.
+			const int32 PathOverride = CVarTrueScopeAnalysisPath.GetValueOnRenderThread();
+			const bool bUseGpu = PathOverride < 0 ? GetUseGpuParade() : PathOverride == 1;
+			if (bUseGpu && GpuParade)
+			{
+				GpuParade->AddAnalysisPasses_RenderThread(GraphBuilder, OutputTexture);
+			}
+			else if (Analyzer)
 			{
 				Analyzer->EnqueueReadback_RenderThread(GraphBuilder, OutputTexture);
 			}
