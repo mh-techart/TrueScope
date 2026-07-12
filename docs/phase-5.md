@@ -182,27 +182,54 @@ paths and compare **bin arrays**:
 
 ## Acceptance criteria
 
-- [ ] Builds via the Build.sh command (host `CLAUDE.md`) with no new warnings.
-- [ ] The Parade renders live from the **GPU path** (selectable via the
+Verification record 2026-07-12 (self-verified except where marked human):
+
+- [x] Builds via the Build.sh command (host `CLAUDE.md`) with no new warnings.
+- [x] The Parade renders live from the **GPU path** (selectable via the
       path option), visually indistinguishable from the CPU parade — MCP
-      screenshot, side by side, human review.
-- [ ] **No runtime readback on the GPU path:** verified in code and by the
+      screenshot, side by side, human review. *(Self-verified live on Metal:
+      parade updates from the GPU targets while the readback is off, follows a
+      camera move while the CPU-fed scopes hold; screenshot comparison of the
+      parade region CPU vs. GPU sits exactly on the frame-to-frame noise
+      baseline — mean abs diff 1.15/255 vs. 1.12/255 for two CPU frames 2 s
+      apart. Path switching exercised live via the `TrueScope.AnalysisPath`
+      CVar; the right-click UI menu is implemented but could not be exercised
+      by UI automation in this session — Slate popup menus did not open via
+      MCP clicks at all, including the M4 histogram menu — so the menu is part
+      of the human sign-off below.)*
+- [x] **No runtime readback on the GPU path:** verified in code and by the
       absence of any `FRHIGPUTextureReadback` on the GPU runtime path; the
       ≈2×-frame-time `Lock` block does not occur when the GPU path is active
-      (spot-check: the render-thread block present on the CPU path is gone).
-- [ ] **Equivalence test passes** — GPU and CPU parade bins match within the
-      defined tolerance on all synthetic images; proven to have teeth.
-- [ ] `uint`-atomics only; no wave intrinsics; nothing platform-specific — code
+      (spot-check: with the GPU path active the per-cycle readback log stops
+      entirely — zero analysis cycles while the parade keeps updating).
+- [x] **Equivalence test passes** — GPU and CPU parade bins match within the
+      defined tolerance on all synthetic images (plus seeded noise at capture
+      resolution); teeth proven by two deliberate shader perturbations —
+      off-by-one bin shift and G/B channel swap — each failing the test with a
+      precise per-bin diagnosis, then reverted to green.
+- [x] `uint`-atomics only; no wave intrinsics; nothing platform-specific — code
       review confirms portability (parity rule).
-- [ ] CPU path unchanged and still default; both paths selectable; the CPU-path
-      automation suite still green (`-nullrhi`), count checked.
-- [ ] **Tab-closed gating:** with the tab closed/hidden, capture stops (no
+- [x] CPU path unchanged and still default; both paths selectable; the CPU-path
+      automation suite still green (`-nullrhi`), count checked: 22/22 (19
+      pre-M5 + 3 new: TabVisibilityGate, EquivalenceToleranceRule,
+      ParadeBinEquivalence — the last self-skips under NullRHI and runs green
+      with the real RHI).
+- [x] **Tab-closed gating:** with the tab closed/hidden, capture stops (no
       analysis cycles in the log; the render-thread block disappears) — verified
-      live; its own regression test present.
+      live for both the hidden-behind-another-tab case (cycles stop within one
+      second, resume immediately on re-foregrounding) and the fully-closed case
+      (cycles stop; reopening is covered by the first-paint rule and the
+      regression test `TrueScope.Capture.TabVisibilityGate`).
 - [ ] **Human visual sign-off:** the human compares GPU vs. CPU parade on a real
       viewport and confirms they are "the same enough" for artists (the second,
       human half of the two-part acceptance; the equivalence test is the first).
-- [ ] No new TrueScope warnings/errors in the Output Log.
+      *Please also right-click the parade once and switch Analysis Path →
+      GPU (performance) / CPU (compatibility) — the menu could not be clicked
+      by UI automation (see above).*
+- [x] No new TrueScope warnings/errors in the Output Log. *(The two
+      startup-time `LogAutomationTest: Error: Condition failed` lines predate
+      M5 — present in every editor log since at least 2026-07-11 — and are not
+      TrueScope-attributed.)*
 
 ## Explicitly out of scope (do not build)
 
