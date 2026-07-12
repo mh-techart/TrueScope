@@ -65,6 +65,66 @@ Do not write the compute path from memory. In the installed 5.8 source:
 - Record findings in a short note (commit or appended here) **before** writing
   the pass.
 
+### Task 0 findings (recorded 2026-07-12, verified in the installed 5.8 source)
+
+All spec assumptions hold; no decision-level surprise. Implementation follows
+these verified engine patterns:
+
+- **In-engine GPU binning precedent:** the eye-adaptation histogram
+  (`FHistogramAtomicCS`, `Renderer/Private/PostProcess/PostProcessHistogram.cpp`,
+  `Shaders/Private/Histogram.usf` `MainAtomicCS`) — `InterlockedAdd` scatter,
+  `AddClearUAVPass` to zero the bins, `FComputeShaderUtils::AddPass` dispatch.
+  `RWBuffer<uint>` UAVs are engine-wide practice
+  (`SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, …)`, e.g.
+  `DistanceFieldAmbientOcclusion.h`). The engine's wave-intrinsic fast path in
+  `Histogram.usf` is deliberately **not** copied (parity rule); at our scale
+  (960×540 at ~2.5 Hz) the simplest fully portable form — one thread per pixel,
+  three global `InterlockedAdd`s — is sufficient.
+- **Plugin shader setup:** OCIO pattern (`OpenColorIOModule.cpp`):
+  `AddShaderSourceDirectoryMapping(TEXT("/Plugin/TrueScope"), <plugin>/Shaders)`
+  directly in `StartupModule()`; our module already loads at `PostConfigInit`.
+  Shader classes via `DECLARE_GLOBAL_SHADER` / `IMPLEMENT_GLOBAL_SHADER` with
+  the virtual `.usf` path. Needs the `Projects` module for `IPluginManager`.
+- **Insertion point:** the same `FRDGBuilder` inside
+  `AfterTonemapPass_RenderThread`, immediately after the downscale draw,
+  consuming the registered external capture RT texture — the image never
+  leaves the GPU, and the existing throttle/viewport selection
+  (`IsActiveThisFrame_Internal`) applies to the GPU path unchanged.
+- **Slate draws the compute output with no round-trip:**
+  `UTextureRenderTarget2D` with `bCanCreateUAV = true` (adds
+  `ETextureCreateFlags::UAV`, `TextureRenderTarget2D.cpp`; exactly the Niagara
+  render-target data-interface pattern,
+  `NiagaraDataInterfaceRenderTarget2D.cpp`) → registered in RDG via
+  `RegisterExternalTexture` → compute writes its UAV → the widget's
+  `FSlateBrush::SetResourceObject(RT)` draws it (Slate wraps any `UTexture`
+  via `FSlateUTextureResource`, `SlateRHIResourceManager.cpp`). Format note:
+  `RTF_RGBA8` maps to `PF_B8G8R8A8`, whose typed-UAV store is not guaranteed
+  on all RHIs — the parade output RTs therefore use
+  `InitCustomFormat(…, PF_R8G8B8A8, /*bForceLinearGamma*/ true)` (RGBA8 unorm
+  UAV store is universally supported; linear gamma matches the CPU path's
+  `SRGB = false` transient textures drawn with `NoGamma`).
+- **Bin parity:** the capture is 8-bit unorm; `Texture2D.Load` returns exactly
+  `byte / 255`, and `uint(v * 255 + 0.5)` recovers the byte, so GPU bins are
+  expected to match the CPU's byte-indexed bins **exactly**; the spec's ±1
+  boundary tolerance stays as a safety net only.
+- **Test-only readback:** `FRHIGPUBufferReadback` +
+  `AddEnqueueCopyPass(GraphBuilder, Readback, Buffer, NumBytes)`
+  (`RenderGraphUtils.h`); synthetic input uploaded with
+  `RHICmdList.UpdateTexture2D` into a `PF_B8G8R8A8` texture.
+- **Tab-gating signal (Task 5):** Slate executes widget active timers inside
+  `SWidget::Paint` (`SWidget.cpp`), pending timers keep Slate awake
+  (`FSlateApplication::UpdateAnyActiveTimersArePending`), and a dock stack
+  paints only its foreground tab's content — so "the TrueScope panel painted
+  within the last second" is a truthful visible-and-drawn signal: a
+  hidden-behind-tabs or closed panel stops painting, and re-foregrounding
+  paints immediately, resuming capture within one throttle interval.
+- **Consequence of no-readback while GPU path is active (intermediate, until
+  M5.x):** with the readback off, the CPU analysis never runs, so the other
+  three scopes receive no fresh data (waveform/vectorscope hold their last
+  trace, the histogram shows only its axis; verified against the widgets'
+  existing empty-result guards — no crash path). Acceptable for an opt-in
+  diagnostic path; M5.x removes the gap by moving all scopes to the GPU path.
+
 ## Tasks
 
 1. **Compute binning pass (Parade):** an RDG compute pass consuming the capture
