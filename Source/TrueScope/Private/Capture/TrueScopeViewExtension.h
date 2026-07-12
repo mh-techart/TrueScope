@@ -13,6 +13,7 @@
 class FRDGBuilder;
 class FTextureRenderTargetResource;
 class FTrueScopeAnalyzer;
+class FTrueScopeCaptureGate;
 class FTrueScopeGpuParade;
 class UTextureRenderTarget2D;
 struct FPostProcessMaterialInputs;
@@ -53,7 +54,8 @@ class FTrueScopeViewExtension : public FSceneViewExtensionBase, public FGCObject
 public:
 	FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
 		const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-		const TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe>& InGpuParade);
+		const TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe>& InGpuParade,
+		const TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe>& InCaptureGate);
 
 	//~ Begin ISceneViewExtension interface
 	virtual int32 GetPriority() const override { return TrueScope::CaptureExtensionPriority; }
@@ -92,6 +94,12 @@ private:
 
 	/** GPU parade producer (M5); runs instead of the readback on the GPU path. */
 	TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe> GpuParade;
+
+	/**
+	 * Tab-visibility gate (M5): capture runs only while a TrueScope panel is
+	 * actually painted — a closed or hidden tab pays no capture cost.
+	 */
+	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> CaptureGate;
 
 	/** See SetUseGpuParade. */
 	std::atomic<bool> bUseGpuParade{false};

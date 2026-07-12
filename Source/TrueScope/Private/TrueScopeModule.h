@@ -8,6 +8,7 @@
 #include "Modules/ModuleManager.h"
 
 class FTrueScopeAnalyzer;
+class FTrueScopeCaptureGate;
 class FTrueScopeGpuParade;
 class FTrueScopeViewExtension;
 
@@ -28,6 +29,9 @@ public:
 	/** Async readback + CPU analysis; valid after engine init, null in commandlets. */
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> GetAnalyzer() const { return Analyzer; }
 
+	/** Tab-visibility capture gate; the panel reports its paints here (M5). */
+	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> GetCaptureGate() const { return CaptureGate; }
+
 	/**
 	 * UI-selected analysis path (M5): true = GPU (performance), false = CPU
 	 * (compatibility). Default CPU through M5/M5.x; the flip to GPU-default is
@@ -42,6 +46,7 @@ private:
 	TSharedRef<class SDockTab> SpawnTrueScopeTab(const class FSpawnTabArgs& SpawnTabArgs);
 
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
+	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> CaptureGate;
 	TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe> GpuParade;
 	TSharedPtr<FTrueScopeViewExtension, ESPMode::ThreadSafe> ViewExtension;
 };

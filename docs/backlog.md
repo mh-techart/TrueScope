@@ -30,7 +30,19 @@ without the plugin).
 - Log-profile zebra levels (e.g. S-Log targets) belong to the
   scene-referred/OCIO item below, not to the first overlay release.
 
-## Capture runs at full cost while the tab is closed (product gap — decide in M5)
+## [resolved in M5] Capture runs at full cost while the tab is closed
+
+**Resolved 2026-07-12 (M5 Task 5):** capture is now gated on the TrueScope
+panel actually painting (`FTrueScopeCaptureGate`, reported from
+`STrueScopePanel::OnPaint`, checked in `IsActiveThisFrame_Internal`). Paint is
+the truthful "visible and drawn" signal: a closed tab, a tab hidden behind
+another docked tab and a minimized floating window all stop painting, so
+capture (and with it readback/analysis on either path) stops entirely;
+re-showing the tab resumes within one throttle interval. Regression test:
+`TrueScope.Capture.TabVisibilityGate`. Original analysis kept below for the
+record.
+
+### Original record (2026-07-11)
 
 **Found 2026-07-11** while establishing the idle baseline for the controlled
 benchmark. `FTrueScopeViewExtension::IsActiveThisFrame_Internal`
@@ -60,6 +72,18 @@ plugin cannot afford.
   there. Flag it explicitly in **phase-5 planning** so it is decided, not
   forgotten: even with the GPU path there is no reason to run analysis for a
   closed tab.
+
+## While the GPU path is selected, the other three scopes show no fresh data (M5 interim — resolved by M5.x)
+
+With the M5 GPU path active (opt-in; CPU stays the default), the readback is
+off by design, so the CPU analysis never runs: the waveform and vectorscope
+hold their last CPU-produced trace, the histogram shows only its axis. No
+crash path (verified against the widgets' empty-result guards), but a user who
+flips the parade to GPU gets silently stale neighbours — acceptable only while
+the path is a validation option. M5.x (all scopes on the GPU path) removes the
+gap; if M5.x ships display modes per scope instead of all four at once, add a
+per-scope "no data on this path" hint via the existing DrawCenteredHint
+mechanism rather than leaving stale traces.
 
 ## Deferred features
 

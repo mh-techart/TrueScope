@@ -5,6 +5,7 @@
 
 #include "Analysis/TrueScopeAnalyzer.h"
 #include "Analysis/TrueScopeGpuParade.h"
+#include "Capture/TrueScopeCaptureGate.h"
 #include "Capture/TrueScopeViewExtension.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
@@ -56,6 +57,7 @@ void FTrueScopeModule::ShutdownModule()
 		Analyzer.Reset();
 	}
 	GpuParade.Reset();
+	CaptureGate.Reset();
 
 	if (FSlateApplication::IsInitialized())
 	{
@@ -73,8 +75,9 @@ void FTrueScopeModule::OnPostEngineInit()
 	}
 
 	Analyzer = MakeShared<FTrueScopeAnalyzer, ESPMode::ThreadSafe>();
+	CaptureGate = MakeShared<FTrueScopeCaptureGate, ESPMode::ThreadSafe>();
 	GpuParade = MakeShared<FTrueScopeGpuParade, ESPMode::ThreadSafe>(Analyzer);
-	ViewExtension = FSceneViewExtensions::NewExtension<FTrueScopeViewExtension>(Analyzer, GpuParade);
+	ViewExtension = FSceneViewExtensions::NewExtension<FTrueScopeViewExtension>(Analyzer, GpuParade, CaptureGate);
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TrueScopeTabName,
 			FOnSpawnTab::CreateRaw(this, &FTrueScopeModule::SpawnTrueScopeTab))

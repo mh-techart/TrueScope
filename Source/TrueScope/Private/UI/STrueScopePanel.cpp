@@ -3,6 +3,7 @@
 
 #include "UI/STrueScopePanel.h"
 
+#include "Capture/TrueScopeCaptureGate.h"
 #include "TrueScopeModule.h"
 #include "UI/TrueScopeType.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -12,6 +13,7 @@
 void STrueScopePanel::Construct(const FArguments& InArgs)
 {
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer = FTrueScopeModule::Get().GetAnalyzer();
+	CaptureGate = FTrueScopeModule::Get().GetCaptureGate();
 
 	ChildSlot
 	[
@@ -56,6 +58,21 @@ void STrueScopePanel::Construct(const FArguments& InArgs)
 			]
 		]
 	];
+}
+
+int32 STrueScopePanel::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+{
+	// Paint == visible and drawn: a closed tab, a tab behind another docked
+	// tab and a minimized window all stop painting, which gates capture off.
+	if (CaptureGate)
+	{
+		CaptureGate->NotifyPanelPainted(FPlatformTime::Seconds());
+	}
+
+	return SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId,
+		InWidgetStyle, bParentEnabled);
 }
 
 #undef LOCTEXT_NAMESPACE

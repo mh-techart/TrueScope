@@ -5,6 +5,7 @@
 
 #include "Analysis/TrueScopeAnalyzer.h"
 #include "Analysis/TrueScopeGpuParade.h"
+#include "Capture/TrueScopeCaptureGate.h"
 #include "CommonRenderResources.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "HAL/IConsoleManager.h"
@@ -35,10 +36,12 @@ static TAutoConsoleVariable<int32> CVarTrueScopeAnalysisPath(
 
 FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-	const TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe>& InGpuParade)
+	const TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe>& InGpuParade,
+	const TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe>& InCaptureGate)
 	: FSceneViewExtensionBase(AutoRegister)
 	, Analyzer(InAnalyzer)
 	, GpuParade(InGpuParade)
+	, CaptureGate(InCaptureGate)
 {
 	CaptureRenderTarget = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
 	// Non-sRGB: the after-tonemap scene color already holds display-encoded
@@ -59,8 +62,18 @@ bool FTrueScopeViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensi
 		return false;
 	}
 
-	// Throttle: skipping activation entirely makes a skipped frame cost nothing.
 	const double Now = FPlatformTime::Seconds();
+
+	// Tab-visibility gate (M5): a closed/hidden TrueScope tab stops painting,
+	// so capture stops paying its cost entirely; re-showing the tab paints
+	// immediately and capture resumes within one throttle interval. Checked
+	// before the throttle so gated frames do not consume the interval.
+	if (CaptureGate && !CaptureGate->ShouldCapture(Now))
+	{
+		return false;
+	}
+
+	// Throttle: skipping activation entirely makes a skipped frame cost nothing.
 	if (Now - LastCaptureTimeSeconds < TrueScope::CaptureIntervalSeconds)
 	{
 		return false;
