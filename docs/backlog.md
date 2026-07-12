@@ -288,6 +288,24 @@ plugin cannot afford.
   - Relationship to WYSIWYG: the generator writes into the viewport, so the
      scopes measure it like any other image — no special path needed. Confirm
      it sits before the capture hook so the scopes see it.
+- **Perceptual scope comparison (ΔE2000)** — an automated, perception-based
+  way to confirm two *rendered* scopes look the same, complementing the strict
+  bin-count equivalence test (which compares counts, not appearance). Render
+  two scope images (e.g. GPU vs. CPU parade, or TrueScope vs. a stored
+  reference), convert both to CIELAB, compute **ΔE2000 per pixel**, and assert
+  a percentile bound rather than a mean (a mean hides local outliers). Target
+  **ΔE2000 < 1** (below the trained eye's threshold) for, say, ≥99 % of pixels;
+  **< 2** as the practical ceiling. Rationale: ΔE is the standard perceptual
+  colour-difference measure; sub-1 is "barely perceptible even to a trained
+  eye", >2 starts to read as a difference. Caveat to honour: Lab/ΔE is only
+  approximately perceptually uniform (blue region is weakest), so use ΔE2000
+  (not ΔE76) and a percentile, not a single average. Uses: the GPU-vs-CPU check
+  for the M5.x scopes, and a future automated leg of the DaVinci Resolve
+  cross-check (pairs naturally with the "frozen reference image" idea and the
+  testpattern generator). Small standalone infra (Lab conversion + ΔE2000 +
+  image-diff harness); deliberately kept out of M5 to not bloat the GPU phase.
+  Not a substitute for the strict bin test — the two answer different questions
+  (counts vs. appearance).
 
 ## Vectorscope graticule extensions (M6 polish — display only)
 
