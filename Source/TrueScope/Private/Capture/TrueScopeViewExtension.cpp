@@ -25,6 +25,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogTrueScope, Log, All);
  * Diagnostic override of the analysis path — the user-facing control is the
  * parade's right-click "Analysis Path" option, never this CVar alone
  * (architecture: CVars are a developer channel in addition to the UI).
+ * Changes are routed through the same prompt-switch handling as the UI
+ * setting (BindAnalysisPathCVarSink), so both channels take effect promptly.
  */
 static TAutoConsoleVariable<int32> CVarTrueScopeAnalysisPath(
 	TEXT("TrueScope.AnalysisPath"), -1,
@@ -50,6 +52,111 @@ FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegist
 	CaptureRenderTarget->ClearColor = FLinearColor::Black;
 	CaptureRenderTarget->InitAutoFormat(TrueScope::CaptureWidth, TrueScope::CaptureHeight);
 	CaptureRenderTarget->UpdateResourceImmediate(/*bClearRenderTarget*/ true);
+}
+
+void FTrueScopeViewExtension::SetUseGpuParade(bool bInUseGpuParade)
+{
+	bUseGpuParade.store(bInUseGpuParade, std::memory_order_relaxed);
+	HandleAnalysisPathChanged();
+}
+
+void FTrueScopeViewExtension::BindAnalysisPathCVarSink()
+{
+	CVarTrueScopeAnalysisPath.AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateSP(
+		this, &FTrueScopeViewExtension::HandleAnalysisPathCVarChanged));
+}
+
+void FTrueScopeViewExtension::HandleAnalysisPathCVarChanged(IConsoleVariable*)
+{
+	HandleAnalysisPathChanged();
+}
+
+bool FTrueScopeViewExtension::ResolveEffectiveUseGpu() const
+{
+	const int32 PathOverride = CVarTrueScopeAnalysisPath.GetValueOnGameThread();
+	return PathOverride < 0 ? GetUseGpuParade() : PathOverride == 1;
+}
+
+void FTrueScopeViewExtension::HandleAnalysisPathChanged()
+{
+	check(IsInGameThread());
+
+	const bool bNewGpu = ResolveEffectiveUseGpu();
+	const bool bOldGpu = bLastEffectiveGpu;
+	bLastEffectiveGpu = bNewGpu;
+
+	const TrueScope::EPathSwitchAction Action = TrueScope::DecidePathSwitchAction(
+		bOldGpu, bNewGpu, bHasCapturedFrame.load(std::memory_order_acquire));
+	if (Action == TrueScope::EPathSwitchAction::None)
+	{
+		if (bOldGpu != bNewGpu)
+		{
+			UE_LOG(LogTrueScope, Log, TEXT("Analysis path switched to %s; no frame captured yet — nothing to re-analyse"),
+				bNewGpu ? TEXT("GPU") : TEXT("CPU"));
+		}
+		return;
+	}
+	ReanalyzeLastCapture(Action);
+}
+
+void FTrueScopeViewExtension::ReanalyzeLastCapture(TrueScope::EPathSwitchAction Action)
+{
+	// Approach A (phase-5.1 Task 1): run the already-captured last frame
+	// through the newly selected path once, so the switch takes visible effect
+	// promptly even while the viewport is not Realtime — no redraw, no new
+	// capture, no change to the user's viewport settings. Because this
+	// re-analyses the identical frame, it is also the cleanest possible
+	// CPU-vs-GPU comparison (same input, no temporal jitter).
+	FTextureRenderTargetResource* Resource =
+		CaptureRenderTarget ? CaptureRenderTarget->GameThread_GetRenderTargetResource() : nullptr;
+	if (!Resource)
+	{
+		return;
+	}
+
+	if (Action == TrueScope::EPathSwitchAction::ReanalyzeGpu && GpuParade)
+	{
+		// FIFO render commands: the resource cache lands before the passes below.
+		GpuParade->CacheResources_GameThread();
+	}
+
+	UE_LOG(LogTrueScope, Log, TEXT("Analysis path switched to %s — re-analysing the last capture (%s)"),
+		Action == TrueScope::EPathSwitchAction::ReanalyzeGpu ? TEXT("GPU") : TEXT("CPU"),
+		Action == TrueScope::EPathSwitchAction::ReanalyzeGpu
+			? TEXT("GPU compute on the resident capture RT, no readback")
+			: TEXT("one-time readback seeding the CPU path — the sole documented exception"));
+
+	ENQUEUE_RENDER_COMMAND(TrueScopeReanalyzeLastCapture)(
+		[WeakThis = AsWeak(), Resource, Action](FRHICommandListImmediate& RHICmdList)
+		{
+			TSharedPtr<FTrueScopeViewExtension> This =
+				StaticCastWeakPtr<FTrueScopeViewExtension>(WeakThis).Pin();
+			if (!This)
+			{
+				return;
+			}
+			FRHITexture* CaptureTexture = Resource->GetRenderTargetTexture();
+			if (!CaptureTexture)
+			{
+				return;
+			}
+
+			// Standalone graph outside the capture pass — the engine's own
+			// pattern for one-off RT work (FTextureRenderTarget2DResource::
+			// UpdateDeferredResource).
+			FRDGBuilder GraphBuilder(RHICmdList);
+			FRDGTextureRef Texture =
+				RegisterExternalTexture(GraphBuilder, CaptureTexture, TEXT("TrueScope.CaptureRT"));
+			if (Action == TrueScope::EPathSwitchAction::ReanalyzeGpu && This->GpuParade)
+			{
+				This->GpuParade->AddAnalysisPasses_RenderThread(GraphBuilder, Texture);
+			}
+			else if (Action == TrueScope::EPathSwitchAction::SeedCpuReadback && This->Analyzer)
+			{
+				This->Analyzer->EnqueueReadback_RenderThread(GraphBuilder, Texture);
+			}
+			GraphBuilder.Execute();
+		});
 }
 
 bool FTrueScopeViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
@@ -173,6 +280,9 @@ FScreenPassTexture FTrueScopeViewExtension::AfterTonemapPass_RenderThread(FRDGBu
 			{
 				Analyzer->EnqueueReadback_RenderThread(GraphBuilder, OutputTexture);
 			}
+
+			// The switch re-analysis (cold-start guard) may now trust the RT.
+			bHasCapturedFrame.store(true, std::memory_order_release);
 
 			if (!bFirstCaptureLogged)
 			{

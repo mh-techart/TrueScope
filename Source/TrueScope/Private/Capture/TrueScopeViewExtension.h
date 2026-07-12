@@ -3,12 +3,15 @@
 
 #pragma once
 
+#include "Capture/TrueScopePathSwitch.h"
 #include "CoreMinimal.h"
 #include "SceneViewExtension.h"
 #include "UObject/GCObject.h"
 #include "UObject/ObjectPtr.h"
 
 #include <atomic>
+
+class IConsoleVariable;
 
 class FRDGBuilder;
 class FTextureRenderTargetResource;
@@ -78,13 +81,39 @@ public:
 	 * readback (default this phase). Set from the game thread, read on the
 	 * render thread per capture. The TrueScope.AnalysisPath console variable
 	 * overrides this for diagnostics.
+	 *
+	 * A switch takes effect promptly regardless of the viewport's Realtime
+	 * setting (phase-5.1 Task 1): the last captured frame is re-analysed
+	 * through the newly selected path — see HandleAnalysisPathChanged.
 	 */
-	void SetUseGpuParade(bool bInUseGpuParade) { bUseGpuParade.store(bInUseGpuParade, std::memory_order_relaxed); }
+	void SetUseGpuParade(bool bInUseGpuParade);
 	bool GetUseGpuParade() const { return bUseGpuParade.load(std::memory_order_relaxed); }
+
+	/**
+	 * Routes changes of the TrueScope.AnalysisPath diagnostic CVar through the
+	 * same prompt-switch handling as the UI setting. Call once after creation
+	 * (game thread); the SP binding unbinds itself with this object.
+	 */
+	void BindAnalysisPathCVarSink();
 
 private:
 	FScreenPassTexture AfterTonemapPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& View,
 		const FPostProcessMaterialInputs& Inputs);
+
+	/** Effective path after the diagnostic CVar override. Game thread. */
+	bool ResolveEffectiveUseGpu() const;
+
+	/**
+	 * Compares the effective path against the last one seen and, on a change,
+	 * makes the switch take effect promptly by re-analysing the resident last
+	 * capture (approach A) — no redraw, no new capture, and the user's
+	 * Realtime-Viewport setting is never touched. Game thread.
+	 */
+	void HandleAnalysisPathChanged();
+	void HandleAnalysisPathCVarChanged(IConsoleVariable*);
+
+	/** Executes the decided switch action on the resident capture RT. */
+	void ReanalyzeLastCapture(TrueScope::EPathSwitchAction Action);
 
 	/** Plugin-owned capture target, kept alive via AddReferencedObjects. */
 	TObjectPtr<UTextureRenderTarget2D> CaptureRenderTarget;
@@ -103,6 +132,16 @@ private:
 
 	/** See SetUseGpuParade. */
 	std::atomic<bool> bUseGpuParade{false};
+
+	/**
+	 * Whether at least one capture pass has run — the cold-start guard of the
+	 * switch re-analysis (before the first capture the RT holds only its
+	 * initial clear). Written on the render thread, read on the game thread.
+	 */
+	std::atomic<bool> bHasCapturedFrame{false};
+
+	/** Effective path last seen by HandleAnalysisPathChanged. Game thread only. */
+	bool bLastEffectiveGpu = false;
 
 	/** Render target resource, cached for the render thread. Render thread only. */
 	FTextureRenderTargetResource* CaptureResourceRenderThread = nullptr;

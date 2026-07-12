@@ -78,6 +78,7 @@ void FTrueScopeModule::OnPostEngineInit()
 	CaptureGate = MakeShared<FTrueScopeCaptureGate, ESPMode::ThreadSafe>();
 	GpuParade = MakeShared<FTrueScopeGpuParade, ESPMode::ThreadSafe>(Analyzer);
 	ViewExtension = FSceneViewExtensions::NewExtension<FTrueScopeViewExtension>(Analyzer, GpuParade, CaptureGate);
+	ViewExtension->BindAnalysisPathCVarSink();
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TrueScopeTabName,
 			FOnSpawnTab::CreateRaw(this, &FTrueScopeModule::SpawnTrueScopeTab))
