@@ -173,12 +173,13 @@ namespace
 
 	/**
 	 * Uploads Pixels into a capture-format texture, runs exactly the runtime
-	 * binning pass (TrueScope::AddParadeBinningPass) and reads the bin buffer
-	 * back. Blocking is fine here — test harness, not the runtime path.
+	 * binning pass (TrueScope::AddColumnBinningPass — parade R/G/B plus the
+	 * phase-5.2 luma channel) and reads the bin buffer back. Blocking is fine
+	 * here — test harness, not the runtime path.
 	 */
-	bool RunGpuParadeBinning(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins)
+	bool RunGpuColumnBinning(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins)
 	{
-		const int32 NumCells = FResult::NumChannels * Size.X * FResult::NumBins;
+		const int32 NumCells = TrueScope::ColumnBinChannels * Size.X * FResult::NumBins;
 		const uint32 NumBytes = NumCells * sizeof(uint32);
 
 		bool bReadbackOk = false;
@@ -199,7 +200,7 @@ namespace
 					FRDGBuilder GraphBuilder(RHICmdList);
 					FRDGTextureRef Input =
 						RegisterExternalTexture(GraphBuilder, InputTexture, TEXT("TrueScope.EquivalenceInput"));
-					FRDGBufferRef Bins = TrueScope::AddParadeBinningPass(GraphBuilder, Input, Size);
+					FRDGBufferRef Bins = TrueScope::AddColumnBinningPass(GraphBuilder, Input, Size);
 					AddEnqueueCopyPass(GraphBuilder, &Readback, Bins, NumBytes);
 					GraphBuilder.Execute();
 				}
@@ -350,6 +351,18 @@ namespace
 			Image.Name = TEXT("FlatMidGray64x64");
 			Image.Size = FIntPoint(64, 64);
 			Image.Pixels.Init(FColor(128, 128, 128, 255), Image.Size.X * Image.Size.Y);
+		}
+
+		// Solid black: the harshest bin-boundary frame — neutral (chroma 0, ON
+		// the boundary between the two center vectorscope bins) and value 0
+		// (the bottom edge of every value/luma axis). A float-binned path
+		// flips this frame's entire population between adjacent bins
+		// (phase-5.1's actual failure); integer-exact binning must not.
+		{
+			FSyntheticImage& Image = Images.Emplace_GetRef();
+			Image.Name = TEXT("SolidBlack960x540");
+			Image.Size = FIntPoint(960, 540);
+			Image.Pixels.Init(FColor(0, 0, 0, 255), Image.Size.X * Image.Size.Y);
 		}
 
 		// Deterministic noise at capture resolution: every channel and bin
@@ -551,7 +564,7 @@ bool FTrueScopeGpuParadeBinEquivalenceTest::RunTest(const FString&)
 
 		// The runtime GPU binning pass, read back (test-only round trip).
 		TArray<uint32> GpuBins;
-		if (!RunGpuParadeBinning(Image.Pixels, Image.Size, GpuBins))
+		if (!RunGpuColumnBinning(Image.Pixels, Image.Size, GpuBins))
 		{
 			AddError(FString::Printf(TEXT("%s: GPU binning readback failed"), *Image.Name));
 			continue;
@@ -570,6 +583,58 @@ bool FTrueScopeGpuParadeBinEquivalenceTest::RunTest(const FString&)
 			{
 				AddError(FString::Printf(TEXT("%s: %s"), *Image.Name, *Error));
 			}
+		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Waveform equivalence (phase-5.2): the GPU luma channel of the same column
+// binning pass against the CPU luma waveform as ground truth. The binning is
+// integer-exact on both paths (PixelToLumaBin and its shader mirror), so the
+// expectation is bit-identical counts; the comparator's compensating-±1 rule
+// stays as a safety net only. The gradients and the solid-black frame are the
+// key images: every neutral pixel's luma sits exactly on its code value's
+// bin, where float binning flips whole populations (the phase-5.1 failure
+// class this phase must not reintroduce).
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeGpuWaveformBinEquivalenceTest,
+	"TrueScope.GPU.WaveformBinEquivalence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeGpuWaveformBinEquivalenceTest::RunTest(const FString&)
+{
+	if (GUsingNullRHI)
+	{
+		AddInfo(TEXT("Skipped: GPU equivalence needs a real RHI (run without -nullrhi)."));
+		return true;
+	}
+
+	for (const FSyntheticImage& Image : MakeSyntheticImages())
+	{
+		// CPU ground truth.
+		FResult CpuResult;
+		TrueScope::AnalyzePixels(Image.Pixels, Image.Size.X, Image.Size.Y, CpuResult);
+
+		// The runtime GPU binning pass, read back (test-only round trip).
+		TArray<uint32> GpuBins;
+		if (!RunGpuColumnBinning(Image.Pixels, Image.Size, GpuBins))
+		{
+			AddError(FString::Printf(TEXT("%s: GPU binning readback failed"), *Image.Name));
+			continue;
+		}
+
+		const int32 ChannelStride = Image.Size.X * FResult::NumBins;
+		FString Error;
+		const bool bEqual = CompareParadeChannel(CpuResult.LumaParade,
+			TArrayView<const uint32>(GpuBins.GetData() + TrueScope::LumaBinChannel * ChannelStride, ChannelStride),
+			Image.Size.X, TrueScope::LumaBinChannel, Error);
+		TestTrue(*FString::Printf(TEXT("%s: GPU luma bins match the CPU luma waveform"), *Image.Name), bEqual);
+		if (!bEqual)
+		{
+			AddError(FString::Printf(TEXT("%s: %s"), *Image.Name, *Error));
 		}
 	}
 

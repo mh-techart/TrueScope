@@ -5,6 +5,7 @@
 
 #include "Analysis/TrueScopeAnalysis.h"
 #include "Engine/Texture2D.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "Rendering/DrawElements.h"
 #include "UI/TrueScopeDraw.h"
 
@@ -75,6 +76,24 @@ void STrueScopeWaveform::UpdateTraceTexture()
 	}
 	const FIntPoint Size = Result->ParadeImageSize;
 	const int32 NumTexels = GetTexelCount(*Result);
+
+	// GPU path (phase-5.2): the result carries the producer's trace render
+	// targets; point the brush at the one matching the display mode — no
+	// texture build, no upload, no readback (same pattern as the parade
+	// widget). A mode switch re-enters here and just swaps the brush.
+	if (Result->bHasGpuWaveform)
+	{
+		UTextureRenderTarget2D* Target = Mode == ETrueScopeWaveformMode::Luma
+			? Result->WaveformLumaTarget.Get()
+			: Result->WaveformRgbTarget.Get();
+		if (Target && TraceBrush.GetResourceObject() != Target)
+		{
+			TraceBrush.SetResourceObject(Target);
+			TraceBrush.ImageSize = FVector2f(Size.X, Size.Y);
+			TraceTexture.Reset(); // CPU-path texture no longer drawn
+		}
+		return;
+	}
 
 	// Both intensity images come out of the same analysis pass; if either is
 	// missing, keep the last good trace rather than upload a half-built one.

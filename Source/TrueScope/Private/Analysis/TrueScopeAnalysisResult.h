@@ -117,4 +117,19 @@ struct FTrueScopeAnalysisResult
 
 	/** True when the GPU path produced the vectorscope target above. */
 	bool bHasGpuVectorscope = false;
+
+	/**
+	 * GPU-resident waveform (phase-5.2 GPU path): the two full-width trace
+	 * render targets written by the column intensity pass, sized
+	 * ParadeImageSize — RGB (the three channel densities superimposed, the
+	 * CPU path's BuildRgbWaveformTexels) and Luma (neutral trace,
+	 * BuildLumaWaveformTexels). The waveform widget points its brush at the
+	 * one matching its display mode. Same weak-ownership contract as
+	 * ParadeChannelTarget.
+	 */
+	TWeakObjectPtr<UTextureRenderTarget2D> WaveformRgbTarget;
+	TWeakObjectPtr<UTextureRenderTarget2D> WaveformLumaTarget;
+
+	/** True when the GPU path produced the waveform targets above. */
+	bool bHasGpuWaveform = false;
 };

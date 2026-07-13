@@ -2,26 +2,47 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /*
-	GPU parade analysis (M5) — two passes, result stays GPU-resident:
+	GPU parade + waveform analysis (M5, phase-5.2) — two passes, result stays
+	GPU-resident:
 
-	1. ParadeBinCS: one thread per capture pixel, three InterlockedAdds into a
-	   per-channel column x value-bin count buffer. uint atomics only — no
-	   float atomics, no wave/subgroup intrinsics (cross-platform parity rule).
-	2. ParadeIntensityCS: one thread per output texel, maps counts to display
+	1. ColumnBinCS: one thread per capture pixel, four InterlockedAdds into a
+	   per-channel column x value-bin count buffer (R, G, B and BT.709 luma).
+	   uint atomics only — no float atomics, no wave/subgroup intrinsics
+	   (cross-platform parity rule).
+	2. ColumnIntensityCS: one thread per output texel, maps counts to display
 	   brightness with the LOG density mapping (count -> texel brightness; the
 	   linear count -> curve-height mapping is the histogram's, never this
 	   one), writing one single-channel density texture per channel — a block
-	   physically cannot contain another channel's trace, same as the CPU path.
+	   physically cannot contain another channel's trace, same as the CPU
+	   path — plus the two full-width waveform traces built from the same
+	   counts: RGB (three channel densities superimposed) and Luma (neutral).
 
-	Bin buffer layout, identical to FTrueScopeAnalysisResult::Parade with the
-	channel as the outer index:
+	Bin buffer layout, identical to FTrueScopeAnalysisResult::Parade (channels
+	0-2) and ::LumaParade (channel 3) with the channel as the outer index:
 	    [Channel * (Width * NUM_BINS) + Column * NUM_BINS + Bin]
 
 	NUM_BINS and THREADGROUP_SIZE are set by the host code from
-	FTrueScopeAnalysisResult::NumBins so shader and CPU layout cannot drift.
+	FTrueScopeAnalysisResult so shader and CPU layout cannot drift; the four
+	channel indices below are mirrored by TrueScope::ColumnBinChannels /
+	LumaBinChannel in the host code (TrueScopeGpuParade.h).
+
+	The luma binning is INTEGER-EXACT, mirroring TrueScope::PixelToLumaBin
+	(TrueScopeColor.cpp) constant for constant — same class of bin-boundary
+	instability the vectorscope fixed in phase-5.1: every neutral pixel's luma
+	is its own code value, floats land it ON a bin boundary, and CPU-vs-Metal
+	FMA/ordering differences flip whole populations between adjacent bins.
 */
 
 #include "/Engine/Public/Platform.ush"
+
+// BT.709 coefficients as exact rationals over 10000 (TrueScopeColor.cpp,
+// PixelToLumaBin — keep in lockstep).
+#define K_SCALE 10000
+#define K_R 2126
+#define K_G 7152
+#define K_B 722
+// Denominator of the luma bin rational for byte-valued pixels.
+#define LUMA_DEN (K_SCALE * 255)
 
 // ---------------------------------------------------------------------------
 // Pass 1: binning
@@ -29,10 +50,10 @@
 
 Texture2D<float4> InputTexture;
 int2 InputSize;
-RWBuffer<uint> ParadeBinsOut;
+RWBuffer<uint> ColumnBinsOut;
 
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
-void ParadeBinCS(uint3 Thread : SV_DispatchThreadID)
+void ColumnBinCS(uint3 Thread : SV_DispatchThreadID)
 {
 	if (any(int2(Thread.xy) >= InputSize))
 	{
@@ -43,26 +64,35 @@ void ParadeBinCS(uint3 Thread : SV_DispatchThreadID)
 	// round-tripping recovers the byte, so the GPU bin index equals the CPU
 	// path's byte-valued bin index (the equivalence test pins this).
 	const float4 Color = InputTexture.Load(int3(Thread.xy, 0));
-	const uint3 Bin = uint3(saturate(Color.rgb) * 255.0 + 0.5);
+	const uint3 Byte = uint3(saturate(Color.rgb) * 255.0 + 0.5);
+
+	// Integer-exact luma bin, identical to TrueScope::PixelToLumaBin: rounded,
+	// not floored (a neutral pixel of code value v must land in bin v);
+	// numerator max ~651M < 2^32, so uint arithmetic is exact.
+	const uint LumaN = K_R * Byte.r + K_G * Byte.g + K_B * Byte.b;
+	const uint LumaBin = min((LumaN * uint(NUM_BINS - 1) + LUMA_DEN / 2) / LUMA_DEN, uint(NUM_BINS - 1));
 
 	const uint ChannelStride = uint(InputSize.x) * NUM_BINS;
 	const uint ColumnBase = Thread.x * NUM_BINS;
-	InterlockedAdd(ParadeBinsOut[0u * ChannelStride + ColumnBase + Bin.r], 1u);
-	InterlockedAdd(ParadeBinsOut[1u * ChannelStride + ColumnBase + Bin.g], 1u);
-	InterlockedAdd(ParadeBinsOut[2u * ChannelStride + ColumnBase + Bin.b], 1u);
+	InterlockedAdd(ColumnBinsOut[0u * ChannelStride + ColumnBase + Byte.r], 1u);
+	InterlockedAdd(ColumnBinsOut[1u * ChannelStride + ColumnBase + Byte.g], 1u);
+	InterlockedAdd(ColumnBinsOut[2u * ChannelStride + ColumnBase + Byte.b], 1u);
+	InterlockedAdd(ColumnBinsOut[3u * ChannelStride + ColumnBase + LumaBin], 1u);
 }
 
 // ---------------------------------------------------------------------------
-// Pass 2: counts -> per-channel density textures
+// Pass 2: counts -> per-channel parade density textures + waveform traces
 // ---------------------------------------------------------------------------
 
-Buffer<uint> ParadeBinsIn;
+Buffer<uint> ColumnBinsIn;
 int2 OutputSize;     // (capture width, NUM_BINS)
 uint MaxCount;       // max possible count per cell: the capture height
 float IntensityGain;
 RWTexture2D<float4> RedOut;
 RWTexture2D<float4> GreenOut;
 RWTexture2D<float4> BlueOut;
+RWTexture2D<float4> WaveformRgbOut;
+RWTexture2D<float4> WaveformLumaOut;
 
 // Same log density mapping as TrueScope::CountToIntensity on the CPU path:
 // count -> texel BRIGHTNESS, lifting sparse cells into visibility.
@@ -76,7 +106,7 @@ float CountToIntensity(uint Count)
 }
 
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
-void ParadeIntensityCS(uint3 Thread : SV_DispatchThreadID)
+void ColumnIntensityCS(uint3 Thread : SV_DispatchThreadID)
 {
 	if (any(int2(Thread.xy) >= OutputSize))
 	{
@@ -88,9 +118,21 @@ void ParadeIntensityCS(uint3 Thread : SV_DispatchThreadID)
 	const uint ChannelStride = uint(OutputSize.x) * NUM_BINS;
 	const uint Cell = Thread.x * NUM_BINS + Bin;
 
-	// One single-channel texture per channel: the intensity goes into exactly
-	// the channel's own component, zero elsewhere (no cross-channel bleed).
-	RedOut[Thread.xy]   = float4(CountToIntensity(ParadeBinsIn[0u * ChannelStride + Cell]), 0.0, 0.0, 1.0);
-	GreenOut[Thread.xy] = float4(0.0, CountToIntensity(ParadeBinsIn[1u * ChannelStride + Cell]), 0.0, 1.0);
-	BlueOut[Thread.xy]  = float4(0.0, 0.0, CountToIntensity(ParadeBinsIn[2u * ChannelStride + Cell]), 1.0);
+	const float R = CountToIntensity(ColumnBinsIn[0u * ChannelStride + Cell]);
+	const float G = CountToIntensity(ColumnBinsIn[1u * ChannelStride + Cell]);
+	const float B = CountToIntensity(ColumnBinsIn[2u * ChannelStride + Cell]);
+	const float L = CountToIntensity(ColumnBinsIn[3u * ChannelStride + Cell]);
+
+	// One single-channel texture per parade channel: the intensity goes into
+	// exactly the channel's own component, zero elsewhere (no cross-channel
+	// bleed).
+	RedOut[Thread.xy]   = float4(R, 0.0, 0.0, 1.0);
+	GreenOut[Thread.xy] = float4(0.0, G, 0.0, 1.0);
+	BlueOut[Thread.xy]  = float4(0.0, 0.0, B, 1.0);
+
+	// Waveform traces from the same counts (the CPU path's BuildRgbWaveform-
+	// Texels / BuildLumaWaveformTexels): RGB superimposes the three channel
+	// densities in one full-width plot, Luma is a neutral trace.
+	WaveformRgbOut[Thread.xy] = float4(R, G, B, 1.0);
+	WaveformLumaOut[Thread.xy] = float4(L, L, L, 1.0);
 }
