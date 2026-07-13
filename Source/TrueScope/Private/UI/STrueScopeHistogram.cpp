@@ -3,6 +3,7 @@
 
 #include "UI/STrueScopeHistogram.h"
 
+#include "Engine/TextureRenderTarget2D.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/AppStyle.h"
 #include "UI/TrueScopeDraw.h"
@@ -13,23 +14,48 @@ namespace
 {
 	/** Fixed-size gap between the stacked channel sub-plots. */
 	constexpr float ChannelGap = 3.0f;
-
-	const FLinearColor ChannelFillColors[FTrueScopeAnalysisResult::NumChannels] = {
-		FLinearColor(0.9f, 0.08f, 0.08f, 0.38f),
-		FLinearColor(0.08f, 0.9f, 0.08f, 0.38f),
-		FLinearColor(0.15f, 0.35f, 1.0f, 0.38f),
-	};
-	const FLinearColor ChannelLineColors[FTrueScopeAnalysisResult::NumChannels] = {
-		FLinearColor(1.0f, 0.25f, 0.25f, 0.9f),
-		FLinearColor(0.25f, 1.0f, 0.25f, 0.9f),
-		FLinearColor(0.35f, 0.55f, 1.0f, 0.9f),
-	};
 }
 
 void STrueScopeHistogram::Construct(const FArguments& InArgs,
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
 {
+	for (FSlateBrush& Brush : StackedBrush)
+	{
+		Brush.DrawAs = ESlateBrushDrawType::Image;
+		Brush.Tiling = ESlateBrushTileType::NoTile;
+	}
+	OverlayBrush.DrawAs = ESlateBrushDrawType::Image;
+	OverlayBrush.Tiling = ESlateBrushTileType::NoTile;
 	InitializeScopeWidget(InAnalyzer, /*bMaintainSquareAspect*/ false);
+}
+
+void STrueScopeHistogram::OnAnalysisResultChanged()
+{
+	// GPU path (phase-5.2): point the brushes at the producer's curve raster
+	// targets — no texture build, no upload, no readback (the parade widget's
+	// pattern). A CPU result needs nothing here: OnPaint draws the vector
+	// curves directly from its bin arrays.
+	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
+	if (!Result.IsValid() || !Result->bHasGpuHistogram)
+	{
+		return;
+	}
+
+	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
+	{
+		UTextureRenderTarget2D* Target = Result->HistogramStackedTarget[Channel].Get();
+		if (Target && StackedBrush[Channel].GetResourceObject() != Target)
+		{
+			StackedBrush[Channel].SetResourceObject(Target);
+			StackedBrush[Channel].ImageSize = FVector2f(Target->SizeX, Target->SizeY);
+		}
+	}
+	UTextureRenderTarget2D* OverlayTarget = Result->HistogramOverlayTarget.Get();
+	if (OverlayTarget && OverlayBrush.GetResourceObject() != OverlayTarget)
+	{
+		OverlayBrush.SetResourceObject(OverlayTarget);
+		OverlayBrush.ImageSize = FVector2f(OverlayTarget->SizeX, OverlayTarget->SizeY);
+	}
 }
 
 FSlateRect STrueScopeHistogram::GetChannelPlotRect(const FSlateRect& Plot, ETrueScopeHistogramMode InMode, int32 Channel)
@@ -54,12 +80,14 @@ TArrayView<const uint32> STrueScopeHistogram::GetChannelBins(const FTrueScopeAna
 
 FLinearColor STrueScopeHistogram::GetChannelFillColor(int32 Channel)
 {
-	return ChannelFillColors[Channel];
+	// Shared with the GPU raster pass (TrueScopeDraw.h) so both paths draw
+	// pixel-identical colours.
+	return TrueScope::Draw::HistogramFillColors[Channel];
 }
 
 FLinearColor STrueScopeHistogram::GetChannelLineColor(int32 Channel)
 {
-	return ChannelLineColors[Channel];
+	return TrueScope::Draw::HistogramLineColors[Channel];
 }
 
 uint32 STrueScopeHistogram::GetSharedMaxCount(const FTrueScopeAnalysisResult& Result)
@@ -129,6 +157,37 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
 	if (!Result.IsValid() || Result->SourceSize.X <= 0)
 	{
+		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+	}
+
+	// GPU path (phase-5.2): the curves arrive pre-rasterized (fill + outline,
+	// exact colours and layer order, linear count -> height on the shared
+	// scale); draw the mode's raster into the same rects the vector draw
+	// uses. The transparent background keeps the gridlines visible.
+	if (Result->bHasGpuHistogram)
+	{
+		auto DrawCurveBox = [&](const FSlateBrush& Brush, const FSlateRect& Rect)
+		{
+			if (Brush.GetResourceObject())
+			{
+				FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
+					AllottedGeometry.ToPaintGeometry(FVector2f(Rect.GetSize()),
+						FSlateLayoutTransform(FVector2f(Rect.GetTopLeft()))),
+					&Brush, ESlateDrawEffect::None, FLinearColor::White);
+			}
+		};
+		if (Mode == ETrueScopeHistogramMode::RgbOverlay)
+		{
+			DrawCurveBox(OverlayBrush, Plot);
+		}
+		else
+		{
+			for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
+			{
+				DrawCurveBox(StackedBrush[Channel], GetChannelPlotRect(Plot, Mode, Channel));
+			}
+		}
+		++LayerId;
 		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 

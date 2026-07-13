@@ -21,6 +21,7 @@
 #include "Analysis/TrueScopeAnalysisResult.h"
 #include "Analysis/TrueScopeGpuParade.h"
 #include "Math/RandomStream.h"
+#include "UI/STrueScopeHistogram.h"
 #include "Misc/AutomationTest.h"
 #include "RHI.h"
 #include "RHICommandList.h"
@@ -215,6 +216,63 @@ namespace
 						bReadbackOk = true;
 					}
 					Readback.Unlock();
+				}
+			});
+		FlushRenderingCommands();
+		return bReadbackOk;
+	}
+
+	/**
+	 * Test-only round trip for the histogram (phase-5.2): uploads Pixels, runs
+	 * exactly the runtime chain — column binning, then the histogram reduce —
+	 * and reads back the 1D per-channel histogram plus the shared maximum.
+	 */
+	bool RunGpuHistogramReduce(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins,
+		uint32& OutSharedMax)
+	{
+		constexpr int32 NumCells = FResult::NumChannels * FResult::NumBins;
+		constexpr uint32 NumBytes = NumCells * sizeof(uint32);
+
+		bool bReadbackOk = false;
+		ENQUEUE_RENDER_COMMAND(TrueScopeGpuHistogramEquivalenceRun)(
+			[&Pixels, Size, &OutBins, &OutSharedMax, &bReadbackOk](FRHICommandListImmediate& RHICmdList)
+			{
+				const FRHITextureCreateDesc Desc =
+					FRHITextureCreateDesc::Create2D(TEXT("TrueScope.EquivalenceInput"), Size.X, Size.Y, PF_B8G8R8A8)
+						.SetFlags(ETextureCreateFlags::ShaderResource);
+				FTextureRHIRef InputTexture = RHICmdList.CreateTexture(Desc);
+				RHICmdList.UpdateTexture2D(InputTexture, 0,
+					FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y),
+					Size.X * sizeof(FColor), reinterpret_cast<const uint8*>(Pixels.GetData()));
+
+				FRHIGPUBufferReadback BinsReadback(TEXT("TrueScope.EquivalenceReadback"));
+				FRHIGPUBufferReadback MaxReadback(TEXT("TrueScope.EquivalenceMaxReadback"));
+				{
+					FRDGBuilder GraphBuilder(RHICmdList);
+					FRDGTextureRef Input =
+						RegisterExternalTexture(GraphBuilder, InputTexture, TEXT("TrueScope.EquivalenceInput"));
+					FRDGBufferRef ColumnBins = TrueScope::AddColumnBinningPass(GraphBuilder, Input, Size);
+					const TrueScope::FHistogramReduceOutputs Outputs =
+						TrueScope::AddHistogramReducePass(GraphBuilder, ColumnBins, Size.X);
+					AddEnqueueCopyPass(GraphBuilder, &BinsReadback, Outputs.Bins, NumBytes);
+					AddEnqueueCopyPass(GraphBuilder, &MaxReadback, Outputs.SharedMax, sizeof(uint32));
+					GraphBuilder.Execute();
+				}
+
+				RHICmdList.SubmitAndBlockUntilGPUIdle();
+				if (BinsReadback.IsReady() && MaxReadback.IsReady())
+				{
+					const uint32* BinsData = static_cast<const uint32*>(BinsReadback.Lock(NumBytes));
+					const uint32* MaxData = static_cast<const uint32*>(MaxReadback.Lock(sizeof(uint32)));
+					if (BinsData && MaxData)
+					{
+						OutBins.SetNumUninitialized(NumCells);
+						FMemory::Memcpy(OutBins.GetData(), BinsData, NumBytes);
+						OutSharedMax = *MaxData;
+						bReadbackOk = true;
+					}
+					BinsReadback.Unlock();
+					MaxReadback.Unlock();
 				}
 			});
 		FlushRenderingCommands();
@@ -636,6 +694,64 @@ bool FTrueScopeGpuWaveformBinEquivalenceTest::RunTest(const FString&)
 		{
 			AddError(FString::Printf(TEXT("%s: %s"), *Image.Name, *Error));
 		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Histogram equivalence (phase-5.2): the GPU reduce chain (column binning ->
+// histogram reduce) against the CPU histogram as ground truth, bin counts and
+// the shared strongest-channel maximum — the one scale all three curves share.
+// The histogram is a deterministic column sum, so the expectation is exact.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeGpuHistogramBinEquivalenceTest,
+	"TrueScope.GPU.HistogramBinEquivalence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeGpuHistogramBinEquivalenceTest::RunTest(const FString&)
+{
+	if (GUsingNullRHI)
+	{
+		AddInfo(TEXT("Skipped: GPU equivalence needs a real RHI (run without -nullrhi)."));
+		return true;
+	}
+
+	for (const FSyntheticImage& Image : MakeSyntheticImages())
+	{
+		// CPU ground truth.
+		FResult CpuResult;
+		TrueScope::AnalyzePixels(Image.Pixels, Image.Size.X, Image.Size.Y, CpuResult);
+
+		// The runtime GPU binning + reduce, read back (test-only round trip).
+		TArray<uint32> GpuBins;
+		uint32 GpuSharedMax = 0;
+		if (!RunGpuHistogramReduce(Image.Pixels, Image.Size, GpuBins, GpuSharedMax))
+		{
+			AddError(FString::Printf(TEXT("%s: GPU histogram readback failed"), *Image.Name));
+			continue;
+		}
+
+		// The 1D histogram is one 256-bin column per channel, so the parade
+		// comparator applies with Width = 1.
+		for (int32 Channel = 0; Channel < FResult::NumChannels; ++Channel)
+		{
+			FString Error;
+			const bool bEqual = CompareParadeChannel(CpuResult.Histogram[Channel],
+				TArrayView<const uint32>(GpuBins.GetData() + Channel * FResult::NumBins, FResult::NumBins),
+				/*Width*/ 1, Channel, Error);
+			TestTrue(*FString::Printf(TEXT("%s: GPU histogram matches CPU ground truth (channel %d)"),
+				*Image.Name, Channel), bEqual);
+			if (!bEqual)
+			{
+				AddError(FString::Printf(TEXT("%s: %s"), *Image.Name, *Error));
+			}
+		}
+
+		// The shared curve scale must be the same number the CPU draw derives.
+		TestEqual(*FString::Printf(TEXT("%s: GPU shared maximum matches the CPU shared scale"), *Image.Name),
+			GpuSharedMax, STrueScopeHistogram::GetSharedMaxCount(CpuResult));
 	}
 
 	return true;

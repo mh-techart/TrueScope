@@ -6,6 +6,7 @@
 #include "Analysis/TrueScopeAnalysisResult.h"
 #include "Containers/ArrayView.h"
 #include "CoreMinimal.h"
+#include "Styling/SlateBrush.h"
 #include "UI/STrueScopeWidget.h"
 
 class FTrueScopeAnalyzer;
@@ -92,10 +93,25 @@ public:
 	static float GetCurveHeight(uint32 Count, uint32 MaxCount);
 
 protected:
+	virtual void OnAnalysisResultChanged() override;
+
 	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const override;
 	virtual int32 GetDisplayModeId() const override;
 	virtual void SetDisplayModeId(int32 InModeId) override;
 
 private:
 	ETrueScopeHistogramMode Mode = ETrueScopeHistogramMode::SeparateChannels;
+
+	/**
+	 * GPU path (phase-5.2): brushes pointing at the producer's curve raster
+	 * targets — per-channel textures for Separate Channels, one combined
+	 * texture for RGB Overlay. Colours and layer order are baked by the draw
+	 * pass from the same shared constants the CPU vector draw uses; the
+	 * count -> height mapping stays linear on the shared scale (the raster
+	 * only replaces the rasterizer, never the mapping). Unused (no resource)
+	 * while a CPU result is displayed — there OnPaint draws the vector curves
+	 * from the result's bin arrays as before.
+	 */
+	FSlateBrush StackedBrush[FTrueScopeAnalysisResult::NumChannels];
+	FSlateBrush OverlayBrush;
 };

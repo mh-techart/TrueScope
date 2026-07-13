@@ -132,4 +132,22 @@ struct FTrueScopeAnalysisResult
 
 	/** True when the GPU path produced the waveform targets above. */
 	bool bHasGpuWaveform = false;
+
+	/**
+	 * GPU-resident histogram (phase-5.2 GPU path): curve rasterizations
+	 * written by the histogram draw passes, carrying the widget's exact fill
+	 * and outline colours with coverage-scaled alpha. One texture per channel
+	 * for the Separate Channels mode (the bands are disjoint, so per-channel
+	 * compositing is exact) and one combined texture for the RGB Overlay mode
+	 * (composited in the CPU vector draw's exact layer order). The curve
+	 * HEIGHT is linear against the shared strongest-channel maximum
+	 * (CountToCurveHeight in TrueScopeHistogram.usf) — NOT the log density
+	 * brightness mapping (architecture, "Two distinct count mappings"). Same
+	 * weak-ownership contract as ParadeChannelTarget.
+	 */
+	TWeakObjectPtr<UTextureRenderTarget2D> HistogramStackedTarget[NumChannels];
+	TWeakObjectPtr<UTextureRenderTarget2D> HistogramOverlayTarget;
+
+	/** True when the GPU path produced the histogram targets above. */
+	bool bHasGpuHistogram = false;
 };

@@ -1,0 +1,244 @@
+// Copyright 2026 TrueScope contributors
+// SPDX-License-Identifier: Apache-2.0
+
+/*
+	GPU histogram analysis (phase-5.2) — reduce + draw, result stays
+	GPU-resident:
+
+	1. HistogramReduceCS: one thread per (channel, bin) cell, sums the parade's
+	   column x value-bin counts over all columns into the 1D per-channel
+	   histogram (exactly the CPU histogram's numbers, since the CPU histogram
+	   is by definition the column sum of the CPU parade). Also folds the
+	   shared maximum over the three channels into a 1-uint buffer via
+	   InterlockedMax — uint atomics only, no wave/subgroup intrinsics
+	   (cross-platform parity rule).
+	2. HistogramDrawStackedCS / HistogramDrawOverlayCS: rasterize the filled
+	   curves + outlines the histogram widget draws, as coverage textures.
+	   Stacked writes one texture per channel (the Separate Channels bands are
+	   disjoint, so per-channel fill-under-line compositing is exact); Overlay
+	   writes one texture with all six elements composited in exactly the CPU
+	   vector draw's layer order (fills R, G, B, then lines R, G, B).
+
+	THE MAPPING (the M4 bug class this phase must not reintroduce):
+	count -> curve HEIGHT is LINEAR against the shared strongest-channel
+	maximum — CountToCurveHeight below, the shader mirror of
+	STrueScopeHistogram::GetCurveHeight. It is deliberately NOT the log
+	CountToIntensity density mapping of the parade/waveform/vectorscope
+	shaders: used as a height, the log curve flat-tops every curve and lets a
+	channel's rarest outlier pixels decide where it appears to end. The two
+	mappings stay separately named in code (architecture, "Two distinct count
+	mappings"). The three curves share ONE scale (the strongest channel's
+	peak), never per-channel (settled decision; the M6 gain option is out of
+	scope here — this is M4's exact shared-scale behaviour, gain 1.0).
+
+	NUM_BINS, REDUCE_GROUP_SIZE and THREADGROUP_SIZE are set by the host code
+	from FTrueScopeAnalysisResult so shader and CPU layout cannot drift. The
+	histogram covers the three colour channels only — the column-bin buffer's
+	fourth (luma) channel feeds the waveform, not the histogram.
+*/
+
+#include "/Engine/Public/Platform.ush"
+
+#define NUM_HIST_CHANNELS 3
+
+// ---------------------------------------------------------------------------
+// Pass 1: column bins -> per-channel histogram + shared maximum
+// ---------------------------------------------------------------------------
+
+Buffer<uint> ColumnBinsIn;   // [Channel * (Width * NUM_BINS) + Column * NUM_BINS + Bin]
+int SourceWidth;
+RWBuffer<uint> HistogramOut; // [Channel * NUM_BINS + Bin], NUM_HIST_CHANNELS channels
+RWBuffer<uint> SharedMaxOut; // one uint: max count over all three channels
+
+[numthreads(REDUCE_GROUP_SIZE, 1, 1)]
+void HistogramReduceCS(uint3 Thread : SV_DispatchThreadID)
+{
+	const uint Cell = Thread.x;
+	if (Cell >= uint(NUM_HIST_CHANNELS * NUM_BINS))
+	{
+		return;
+	}
+
+	const uint Channel = Cell / NUM_BINS;
+	const uint Bin = Cell % NUM_BINS;
+	const uint ChannelStride = uint(SourceWidth) * NUM_BINS;
+
+	// Deterministic serial sum per cell — no atomics needed for the sum
+	// itself, so the counts are exact by construction.
+	uint Sum = 0u;
+	for (uint Column = 0u; Column < uint(SourceWidth); ++Column)
+	{
+		Sum += ColumnBinsIn[Channel * ChannelStride + Column * NUM_BINS + Bin];
+	}
+
+	HistogramOut[Cell] = Sum;
+	InterlockedMax(SharedMaxOut[0], Sum);
+}
+
+// ---------------------------------------------------------------------------
+// Pass 2: histogram -> curve coverage textures
+// ---------------------------------------------------------------------------
+
+Buffer<uint> HistogramIn;
+Buffer<uint> SharedMaxIn;
+int2 OutputSize;
+float LineHalfWidth;     // outline half-thickness in output texels
+// The widget's exact curve colours (fill translucent, line stronger), passed
+// from the shared TrueScope::Draw constants so both paths draw identically.
+float4 FillColorR;
+float4 FillColorG;
+float4 FillColorB;
+float4 LineColorR;
+float4 LineColorG;
+float4 LineColorB;
+RWTexture2D<float4> StackedROut;
+RWTexture2D<float4> StackedGOut;
+RWTexture2D<float4> StackedBOut;
+RWTexture2D<float4> OverlayOut;
+
+// The LINEAR count -> curve height mapping against the shared maximum — the
+// shader mirror of STrueScopeHistogram::GetCurveHeight. NOT CountToIntensity:
+// that log curve maps counts to density-texel BRIGHTNESS and must never be
+// used as a height (the M4 flat-topping bug).
+float CountToCurveHeight(uint Count, uint SharedMax)
+{
+	if (Count == 0u || SharedMax == 0u)
+	{
+		return 0.0;
+	}
+	return float(Count) / float(SharedMax);
+}
+
+float ChannelHeight(uint Channel, uint Bin)
+{
+	return CountToCurveHeight(HistogramIn[Channel * NUM_BINS + Bin], SharedMaxIn[0]);
+}
+
+float DistanceToSegment(float2 P, float2 A, float2 B)
+{
+	const float2 AB = B - A;
+	const float T = saturate(dot(P - A, AB) / max(dot(AB, AB), 1e-6));
+	return length(P - (A + T * AB));
+}
+
+/**
+ * Fill and line coverage of one channel's curve at one texel, in [0,1].
+ * Geometry matches the CPU vector draw: bin b sits at fraction b/(NUM_BINS-1)
+ * of the plot width, heights interpolate linearly between bins, the fill
+ * reaches from the curve down to the plot bottom, the outline runs along the
+ * curve. X/Y are the texel center in output texel space.
+ */
+void CurveCoverage(uint Channel, float2 TexelCenter, out float FillCoverage, out float LineCoverage)
+{
+	const float W = float(OutputSize.x);
+	const float H = float(OutputSize.y);
+
+	// Fill: vertical coverage against the interpolated curve height.
+	const float BinCoord = TexelCenter.x * float(NUM_BINS - 1) / W;
+	const int Segment = clamp(int(BinCoord), 0, NUM_BINS - 2);
+	const float T = BinCoord - float(Segment);
+	const float Height = lerp(ChannelHeight(Channel, uint(Segment)), ChannelHeight(Channel, uint(Segment + 1)), T);
+	const float CurveY = (1.0 - Height) * H;
+	FillCoverage = saturate(TexelCenter.y - CurveY + 0.5);
+
+	// Line: distance to the nearby polyline segments (a steep segment can pass
+	// this column from a neighbouring bin, so look one bin further each way).
+	float Distance = 1e6;
+	const int FirstSegment = max(Segment - 2, 0);
+	const int LastSegment = min(Segment + 2, NUM_BINS - 2);
+	for (int Index = FirstSegment; Index <= LastSegment; ++Index)
+	{
+		const float2 A = float2(float(Index) * W / float(NUM_BINS - 1),
+			(1.0 - ChannelHeight(Channel, uint(Index))) * H);
+		const float2 B = float2(float(Index + 1) * W / float(NUM_BINS - 1),
+			(1.0 - ChannelHeight(Channel, uint(Index + 1))) * H);
+		Distance = min(Distance, DistanceToSegment(TexelCenter, A, B));
+	}
+	LineCoverage = saturate(LineHalfWidth + 0.5 - Distance);
+}
+
+/** Src-over one element onto a premultiplied accumulator. */
+float4 CompositeOver(float4 Accumulated, float4 Color, float Coverage)
+{
+	const float Alpha = Color.a * Coverage;
+	return float4(Color.rgb * Alpha + (1.0 - Alpha) * Accumulated.rgb,
+		Alpha + (1.0 - Alpha) * Accumulated.a);
+}
+
+/** Premultiplied accumulator -> straight RGBA for Slate's standard blending. */
+float4 ResolveComposite(float4 Accumulated)
+{
+	return Accumulated.a > 0.0 ? float4(Accumulated.rgb / Accumulated.a, Accumulated.a) : float4(0.0, 0.0, 0.0, 0.0);
+}
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void HistogramDrawStackedCS(uint3 Thread : SV_DispatchThreadID)
+{
+	if (any(int2(Thread.xy) >= OutputSize))
+	{
+		return;
+	}
+	const float2 TexelCenter = float2(Thread.xy) + 0.5;
+
+	// The Separate Channels bands are disjoint rects, so within one band the
+	// only ordering is the channel's own fill under its own line — composited
+	// here exactly as the CPU draw layers them.
+	const float4 FillColors[NUM_HIST_CHANNELS] = {FillColorR, FillColorG, FillColorB};
+	const float4 LineColors[NUM_HIST_CHANNELS] = {LineColorR, LineColorG, LineColorB};
+	float4 Composite[NUM_HIST_CHANNELS];
+
+	UNROLL
+	for (uint Channel = 0u; Channel < uint(NUM_HIST_CHANNELS); ++Channel)
+	{
+		float FillCoverage;
+		float LineCoverage;
+		CurveCoverage(Channel, TexelCenter, FillCoverage, LineCoverage);
+
+		float4 Accumulated = float4(0.0, 0.0, 0.0, 0.0);
+		Accumulated = CompositeOver(Accumulated, FillColors[Channel], FillCoverage);
+		Accumulated = CompositeOver(Accumulated, LineColors[Channel], LineCoverage);
+		Composite[Channel] = ResolveComposite(Accumulated);
+	}
+
+	StackedROut[Thread.xy] = Composite[0];
+	StackedGOut[Thread.xy] = Composite[1];
+	StackedBOut[Thread.xy] = Composite[2];
+}
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void HistogramDrawOverlayCS(uint3 Thread : SV_DispatchThreadID)
+{
+	if (any(int2(Thread.xy) >= OutputSize))
+	{
+		return;
+	}
+	const float2 TexelCenter = float2(Thread.xy) + 0.5;
+
+	const float4 FillColors[NUM_HIST_CHANNELS] = {FillColorR, FillColorG, FillColorB};
+	const float4 LineColors[NUM_HIST_CHANNELS] = {LineColorR, LineColorG, LineColorB};
+	float FillCoverage[NUM_HIST_CHANNELS];
+	float LineCoverage[NUM_HIST_CHANNELS];
+
+	UNROLL
+	for (uint Channel = 0u; Channel < uint(NUM_HIST_CHANNELS); ++Channel)
+	{
+		CurveCoverage(Channel, TexelCenter, FillCoverage[Channel], LineCoverage[Channel]);
+	}
+
+	// All three channels share the plot: composite in exactly the CPU vector
+	// draw's layer order — the three fills (one Slate layer), then the three
+	// lines (the layer above), each in R, G, B submission order.
+	float4 Accumulated = float4(0.0, 0.0, 0.0, 0.0);
+	UNROLL
+	for (uint FillChannel = 0u; FillChannel < uint(NUM_HIST_CHANNELS); ++FillChannel)
+	{
+		Accumulated = CompositeOver(Accumulated, FillColors[FillChannel], FillCoverage[FillChannel]);
+	}
+	UNROLL
+	for (uint LineChannel = 0u; LineChannel < uint(NUM_HIST_CHANNELS); ++LineChannel)
+	{
+		Accumulated = CompositeOver(Accumulated, LineColors[LineChannel], LineCoverage[LineChannel]);
+	}
+
+	OverlayOut[Thread.xy] = ResolveComposite(Accumulated);
+}

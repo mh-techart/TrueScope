@@ -29,6 +29,23 @@ namespace TrueScope::Draw
 	inline const FLinearColor HintTextColor(0.98f, 0.78f, 0.30f, 1.0f);
 	inline const FLinearColor HintPlateColor(0.02f, 0.02f, 0.02f, 0.78f);
 
+	/**
+	 * Histogram curve colours: translucent fill under a stronger outline, per
+	 * channel. Shared between the widget's CPU vector draw and the phase-5.2
+	 * GPU raster pass (which receives them as shader parameters), so both
+	 * paths draw pixel-identical colours by construction.
+	 */
+	inline const FLinearColor HistogramFillColors[3] = {
+		FLinearColor(0.9f, 0.08f, 0.08f, 0.38f),
+		FLinearColor(0.08f, 0.9f, 0.08f, 0.38f),
+		FLinearColor(0.15f, 0.35f, 1.0f, 0.38f),
+	};
+	inline const FLinearColor HistogramLineColors[3] = {
+		FLinearColor(1.0f, 0.25f, 0.25f, 0.9f),
+		FLinearColor(0.25f, 1.0f, 0.25f, 0.9f),
+		FLinearColor(0.35f, 0.55f, 1.0f, 0.9f),
+	};
+
 	/** Fixed-size chrome around the plot area. */
 	inline constexpr float PlotPadding = 6.0f;
 	inline constexpr float ValueLabelStripWidth = 30.0f;

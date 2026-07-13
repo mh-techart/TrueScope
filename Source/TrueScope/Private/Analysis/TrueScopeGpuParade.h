@@ -43,10 +43,30 @@ namespace TrueScope
 	 * into a transient NumVectorBins^2 count grid laid out
 	 * [CrBin * NumVectorBins + CbBin] — the layout of
 	 * FTrueScopeAnalysisResult::Vectorscope. Exposed for the equivalence test,
-	 * same contract as AddParadeBinningPass.
+	 * same contract as AddColumnBinningPass.
 	 */
 	FRDGBufferRef AddVectorscopeBinningPass(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture,
 		FIntPoint InputSize);
+
+	/** Outputs of the histogram reduce pass (phase-5.2). */
+	struct FHistogramReduceOutputs
+	{
+		/** [Channel * NumBins + Bin] over the three colour channels. */
+		FRDGBufferRef Bins = nullptr;
+
+		/** One uint: the strongest channel's peak — the shared curve scale. */
+		FRDGBufferRef SharedMax = nullptr;
+	};
+
+	/**
+	 * Adds the histogram reduce compute pass (phase-5.2 GPU path): sums the
+	 * column bins over all columns into the per-channel 1D histogram — by
+	 * definition the CPU histogram's exact numbers — and folds the shared
+	 * three-channel maximum. Exposed for the equivalence test, same contract
+	 * as AddColumnBinningPass.
+	 */
+	FHistogramReduceOutputs AddHistogramReducePass(FRDGBuilder& GraphBuilder, FRDGBufferRef ColumnBins,
+		int32 SourceWidth);
 }
 
 /**
@@ -110,6 +130,20 @@ private:
 	TWeakObjectPtr<UTextureRenderTarget2D> WaveformLumaTargetWeak;
 	FTextureRenderTargetResource* WaveformRgbResourceRenderThread = nullptr;
 	FTextureRenderTargetResource* WaveformLumaResourceRenderThread = nullptr;
+
+	/**
+	 * Histogram curve targets (phase-5.2): one per channel for the stacked
+	 * Separate Channels mode plus one combined RGB Overlay texture. The two
+	 * sets are rasterized at different heights because the modes draw into
+	 * bands of very different heights — each stays near 1:1 sampling, keeping
+	 * the outline width faithful to the CPU draw's 1 px line.
+	 */
+	TObjectPtr<UTextureRenderTarget2D> HistogramStackedTarget[FTrueScopeAnalysisResult::NumChannels];
+	TObjectPtr<UTextureRenderTarget2D> HistogramOverlayTarget;
+	TWeakObjectPtr<UTextureRenderTarget2D> HistogramStackedTargetWeak[FTrueScopeAnalysisResult::NumChannels];
+	TWeakObjectPtr<UTextureRenderTarget2D> HistogramOverlayTargetWeak;
+	FTextureRenderTargetResource* HistogramStackedResourceRenderThread[FTrueScopeAnalysisResult::NumChannels] = {};
+	FTextureRenderTargetResource* HistogramOverlayResourceRenderThread = nullptr;
 
 	/** Receives the published GPU results (same channel as the CPU analysis). */
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
