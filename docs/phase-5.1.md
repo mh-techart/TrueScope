@@ -116,8 +116,8 @@ its scatter is into a 2D **Cb/Cr** plane, not column x luma.
 ### Task 2 acceptance
 
 - [x] Vectorscope renders live from the GPU path (selectable), visually
-      indistinguishable from the CPU vectorscope — MCP screenshot done (pixel
-      diff below the same-path temporal control); human review at sign-off.
+      indistinguishable from the CPU vectorscope — MCP screenshot (pixel diff
+      below the same-path temporal control) plus human review at sign-off.
 - [x] Circular/aspect-locked at extreme panel shapes, graticule unchanged — no
       regression from the CPU vectorscope (MCP wide-panel screenshot; the
       aspect-lock draw path is untouched by this phase).
@@ -141,8 +141,8 @@ bug.
 - [x] Task 1 and Task 2 acceptance met.
 - [x] Full automation suite green (CPU headless + GPU-RHI tests), count checked.
 - [x] No new TrueScope warnings/errors in the Output Log.
-- [ ] Human sign-off: visual CPU-vs-GPU vectorscope comparison + a switch test
-      with Realtime Viewport off.
+- [x] Human sign-off: visual CPU-vs-GPU vectorscope comparison + a switch test
+      with Realtime Viewport off — signed off 2026-07-13, no issues found.
 
 ## Verification results (2026-07-13, this machine)
 
