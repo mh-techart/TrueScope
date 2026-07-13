@@ -35,8 +35,8 @@ namespace TrueScope
 
 	/**
 	 * Full BT.709 Y'CbCr of one pixel: luma in [0,1], chroma in [-0.5, 0.5].
-	 * Luma is the vectorscope's own intermediate, so the analysis loop gets the
-	 * luma waveform's data for free by taking it rather than recomputing it.
+	 * Float reference conversion (tests, graticule geometry); the pixel
+	 * analysis bins through the integer-exact PixelTo*Bin functions instead.
 	 */
 	struct FYCbCr
 	{
@@ -86,11 +86,15 @@ namespace TrueScope
 	FIntPoint PixelToChromaBins(const FColor& Color);
 
 	/**
-	 * Value bin of a luma in [0,1] on the same NumBins axis the R/G/B channels
-	 * use, so a neutral pixel bins on its own code value and the luma waveform
-	 * reads on the shared 0-1023 scale.
+	 * Integer-exact luma waveform bin of one 8-bit pixel on the same NumBins
+	 * axis the R/G/B channels use, so a neutral pixel bins on its own code
+	 * value and the luma waveform reads on the shared 0-1023 scale. Same
+	 * technique and rationale as PixelToChromaBins (phase-5.2: the waveform's
+	 * GPU port must bin identically by construction — float luma is unstable
+	 * exactly at bin boundaries, which every neutral pixel sits on). Mirrored
+	 * by TrueScopeParade.usf; the GPU equivalence test pins the agreement.
 	 */
-	int32 LumaToBin(float Luma);
+	int32 PixelToLumaBin(const FColor& Color);
 
 	/** One graticule target of the vectorscope: a 75 % color-bar position. */
 	struct FVectorscopeTarget

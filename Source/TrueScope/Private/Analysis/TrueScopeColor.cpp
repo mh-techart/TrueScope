@@ -89,12 +89,29 @@ FIntPoint PixelToChromaBins(const FColor& Color)
 	return FIntPoint(CbBin, CrBin);
 }
 
-int32 LumaToBin(float Luma)
+int32 PixelToLumaBin(const FColor& Color)
 {
-	// Rounded, not floored: a neutral pixel of code value v must land in bin v,
+	// The BT.709 luma as an exact rational over 10000 (the PixelToChromaBins
+	// coefficients), so CPU and GPU bin identically by construction. With byte
+	// values, luma' = N / (10000 * 255) and the rounded bin
+	// round(luma' * (NumBins-1)) becomes one non-negative integer division —
+	// rounded, not floored: a neutral pixel of code value v must land in bin v,
 	// exactly where the R/G/B channels put it.
-	const int32 Bin = FMath::RoundToInt32(Luma * (FTrueScopeAnalysisResult::NumBins - 1));
-	return FMath::Clamp(Bin, 0, FTrueScopeAnalysisResult::NumBins - 1);
+	constexpr int32 Scale = 10000;
+	constexpr int32 KR = 2126;
+	constexpr int32 KG = 7152;
+	constexpr int32 KB = 722;
+	static_assert(LumaR == static_cast<float>(KR) / Scale && LumaG == static_cast<float>(KG) / Scale
+			&& LumaB == static_cast<float>(KB) / Scale,
+		"integer and float BT.709 coefficients must agree");
+
+	constexpr int32 NumBins = FTrueScopeAnalysisResult::NumBins;
+	constexpr int32 Den = Scale * 255;
+	static_assert(Scale * 255LL * (NumBins - 1) + Den / 2 <= INT32_MAX,
+		"luma bin computation must fit 32-bit integer arithmetic");
+
+	const int32 N = KR * Color.R + KG * Color.G + KB * Color.B;
+	return FMath::Min((N * (NumBins - 1) + Den / 2) / Den, NumBins - 1);
 }
 
 TArrayView<const FVectorscopeTarget> GetVectorscopeTargets()
