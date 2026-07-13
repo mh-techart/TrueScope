@@ -17,7 +17,7 @@ class FRDGBuilder;
 class FTextureRenderTargetResource;
 class FTrueScopeAnalyzer;
 class FTrueScopeCaptureGate;
-class FTrueScopeGpuParade;
+class FTrueScopeGpuAnalysis;
 class UTextureRenderTarget2D;
 struct FPostProcessMaterialInputs;
 struct FScreenPassTexture;
@@ -57,7 +57,7 @@ class FTrueScopeViewExtension : public FSceneViewExtensionBase, public FGCObject
 public:
 	FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
 		const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-		const TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe>& InGpuParade,
+		const TSharedPtr<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe>& InGpuAnalysis,
 		const TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe>& InCaptureGate);
 
 	//~ Begin ISceneViewExtension interface
@@ -123,7 +123,7 @@ private:
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 
 	/** GPU analysis producer (all four scopes); replaces the readback on the GPU path. */
-	TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe> GpuParade;
+	TSharedPtr<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe> GpuAnalysis;
 
 	/**
 	 * Tab-visibility gate (M5): capture runs only while a TrueScope panel is

@@ -19,7 +19,7 @@
 
 #include "Analysis/TrueScopeAnalysis.h"
 #include "Analysis/TrueScopeAnalysisResult.h"
-#include "Analysis/TrueScopeGpuParade.h"
+#include "Analysis/TrueScopeGpuAnalysis.h"
 #include "Math/RandomStream.h"
 #include "UI/STrueScopeHistogram.h"
 #include "Misc/AutomationTest.h"
@@ -602,11 +602,11 @@ bool FTrueScopeGpuVectorscopeToleranceRuleTest::RunTest(const FString&)
 // The equivalence test itself (needs a real RHI: compute + readback).
 // ---------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeGpuParadeBinEquivalenceTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeGpuAnalysisBinEquivalenceTest,
 	"TrueScope.GPU.ParadeBinEquivalence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FTrueScopeGpuParadeBinEquivalenceTest::RunTest(const FString&)
+bool FTrueScopeGpuAnalysisBinEquivalenceTest::RunTest(const FString&)
 {
 	if (GUsingNullRHI)
 	{

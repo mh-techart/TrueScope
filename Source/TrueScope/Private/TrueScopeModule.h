@@ -9,7 +9,7 @@
 
 class FTrueScopeAnalyzer;
 class FTrueScopeCaptureGate;
-class FTrueScopeGpuParade;
+class FTrueScopeGpuAnalysis;
 class FTrueScopeViewExtension;
 
 class FTrueScopeModule : public IModuleInterface
@@ -48,6 +48,6 @@ private:
 
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> CaptureGate;
-	TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe> GpuParade;
+	TSharedPtr<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe> GpuAnalysis;
 	TSharedPtr<FTrueScopeViewExtension, ESPMode::ThreadSafe> ViewExtension;
 };

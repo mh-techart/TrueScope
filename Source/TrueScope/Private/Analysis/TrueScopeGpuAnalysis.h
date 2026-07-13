@@ -84,14 +84,14 @@ namespace TrueScope
  * capture publishes a fresh result through the analyzer so widgets repaint on
  * their usual serial poll.
  */
-class FTrueScopeGpuParade : public TSharedFromThis<FTrueScopeGpuParade, ESPMode::ThreadSafe>, public FGCObject
+class FTrueScopeGpuAnalysis : public TSharedFromThis<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe>, public FGCObject
 {
 public:
-	explicit FTrueScopeGpuParade(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer);
+	explicit FTrueScopeGpuAnalysis(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer);
 
 	//~ Begin FGCObject interface
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
-	virtual FString GetReferencerName() const override { return TEXT("FTrueScopeGpuParade"); }
+	virtual FString GetReferencerName() const override { return TEXT("FTrueScopeGpuAnalysis"); }
 	//~ End FGCObject interface
 
 	/**

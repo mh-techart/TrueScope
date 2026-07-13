@@ -4,7 +4,7 @@
 #include "Capture/TrueScopeViewExtension.h"
 
 #include "Analysis/TrueScopeAnalyzer.h"
-#include "Analysis/TrueScopeGpuParade.h"
+#include "Analysis/TrueScopeGpuAnalysis.h"
 #include "Capture/TrueScopeCaptureGate.h"
 #include "CommonRenderResources.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -40,11 +40,11 @@ static TAutoConsoleVariable<int32> CVarTrueScopeAnalysisPath(
 
 FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-	const TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe>& InGpuParade,
+	const TSharedPtr<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe>& InGpuAnalysis,
 	const TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe>& InCaptureGate)
 	: FSceneViewExtensionBase(AutoRegister)
 	, Analyzer(InAnalyzer)
-	, GpuParade(InGpuParade)
+	, GpuAnalysis(InGpuAnalysis)
 	, CaptureGate(InCaptureGate)
 {
 	CaptureRenderTarget = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
@@ -116,10 +116,10 @@ void FTrueScopeViewExtension::ReanalyzeLastCapture(TrueScope::EPathSwitchAction 
 		return;
 	}
 
-	if (Action == TrueScope::EPathSwitchAction::ReanalyzeGpu && GpuParade)
+	if (Action == TrueScope::EPathSwitchAction::ReanalyzeGpu && GpuAnalysis)
 	{
 		// FIFO render commands: the resource cache lands before the passes below.
-		GpuParade->CacheResources_GameThread();
+		GpuAnalysis->CacheResources_GameThread();
 	}
 
 	UE_LOG(LogTrueScope, Log, TEXT("Analysis path switched to %s — re-analysing the last capture (%s)"),
@@ -149,9 +149,9 @@ void FTrueScopeViewExtension::ReanalyzeLastCapture(TrueScope::EPathSwitchAction 
 			FRDGBuilder GraphBuilder(RHICmdList);
 			FRDGTextureRef Texture =
 				RegisterExternalTexture(GraphBuilder, CaptureTexture, TEXT("TrueScope.CaptureRT"));
-			if (Action == TrueScope::EPathSwitchAction::ReanalyzeGpu && This->GpuParade)
+			if (Action == TrueScope::EPathSwitchAction::ReanalyzeGpu && This->GpuAnalysis)
 			{
-				This->GpuParade->AddAnalysisPasses_RenderThread(GraphBuilder, Texture);
+				This->GpuAnalysis->AddAnalysisPasses_RenderThread(GraphBuilder, Texture);
 			}
 			else if (Action == TrueScope::EPathSwitchAction::SeedCpuReadback && This->Analyzer)
 			{
@@ -199,9 +199,9 @@ void FTrueScopeViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFami
 	FTextureRenderTargetResource* Resource =
 		CaptureRenderTarget ? CaptureRenderTarget->GameThread_GetRenderTargetResource() : nullptr;
 
-	if (GpuParade)
+	if (GpuAnalysis)
 	{
-		GpuParade->CacheResources_GameThread();
+		GpuAnalysis->CacheResources_GameThread();
 	}
 
 	ENQUEUE_RENDER_COMMAND(TrueScopeCacheCaptureResource)(
@@ -274,9 +274,9 @@ FScreenPassTexture FTrueScopeViewExtension::AfterTonemapPass_RenderThread(FRDGBu
 			// GPU. CPU path (M3, default this phase): async readback.
 			const int32 PathOverride = CVarTrueScopeAnalysisPath.GetValueOnRenderThread();
 			const bool bUseGpu = PathOverride < 0 ? GetUseGpuAnalysis() : PathOverride == 1;
-			if (bUseGpu && GpuParade)
+			if (bUseGpu && GpuAnalysis)
 			{
-				GpuParade->AddAnalysisPasses_RenderThread(GraphBuilder, OutputTexture);
+				GpuAnalysis->AddAnalysisPasses_RenderThread(GraphBuilder, OutputTexture);
 			}
 			else if (Analyzer)
 			{

@@ -1,7 +1,7 @@
 // Copyright 2026 TrueScope contributors
 // SPDX-License-Identifier: Apache-2.0
 
-#include "Analysis/TrueScopeGpuParade.h"
+#include "Analysis/TrueScopeGpuAnalysis.h"
 
 #include "Analysis/TrueScopeAnalysis.h"
 #include "Analysis/TrueScopeAnalyzer.h"
@@ -381,7 +381,7 @@ namespace TrueScope
 	}
 }
 
-FTrueScopeGpuParade::FTrueScopeGpuParade(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
+FTrueScopeGpuAnalysis::FTrueScopeGpuAnalysis(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
 	: Analyzer(InAnalyzer)
 {
 	// Fixed size: capture width x value bins, the CPU parade image's layout.
@@ -454,7 +454,7 @@ FTrueScopeGpuParade::FTrueScopeGpuParade(const TSharedPtr<FTrueScopeAnalyzer, ES
 	HistogramOverlayTargetWeak = HistogramOverlayTarget;
 }
 
-void FTrueScopeGpuParade::AddReferencedObjects(FReferenceCollector& Collector)
+void FTrueScopeGpuAnalysis::AddReferencedObjects(FReferenceCollector& Collector)
 {
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
@@ -470,7 +470,7 @@ void FTrueScopeGpuParade::AddReferencedObjects(FReferenceCollector& Collector)
 	Collector.AddReferencedObject(HistogramOverlayTarget);
 }
 
-void FTrueScopeGpuParade::CacheResources_GameThread()
+void FTrueScopeGpuAnalysis::CacheResources_GameThread()
 {
 	FTextureRenderTargetResource* Resources[FTrueScopeAnalysisResult::NumChannels] = {};
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
@@ -494,12 +494,12 @@ void FTrueScopeGpuParade::CacheResources_GameThread()
 	FTextureRenderTargetResource* HistogramOverlayResource =
 		HistogramOverlayTarget ? HistogramOverlayTarget->GameThread_GetRenderTargetResource() : nullptr;
 
-	ENQUEUE_RENDER_COMMAND(TrueScopeCacheParadeResources)(
+	ENQUEUE_RENDER_COMMAND(TrueScopeCacheAnalysisResources)(
 		[WeakThis = AsWeak(), Resources, VectorResource, WaveformRgbResource, WaveformLumaResource,
 			HistogramStackedResources, HistogramOverlayResource](FRHICommandListImmediate&)
 		{
-			if (TSharedPtr<FTrueScopeGpuParade> This =
-				StaticCastWeakPtr<FTrueScopeGpuParade>(WeakThis).Pin())
+			if (TSharedPtr<FTrueScopeGpuAnalysis> This =
+				StaticCastWeakPtr<FTrueScopeGpuAnalysis>(WeakThis).Pin())
 			{
 				for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 				{
@@ -514,7 +514,7 @@ void FTrueScopeGpuParade::CacheResources_GameThread()
 		});
 }
 
-void FTrueScopeGpuParade::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBuilder, FRDGTextureRef CaptureTexture)
+void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBuilder, FRDGTextureRef CaptureTexture)
 {
 	check(IsInRenderingThread());
 
