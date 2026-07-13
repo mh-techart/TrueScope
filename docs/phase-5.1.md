@@ -72,15 +72,15 @@ implementing. This is the risky-phase Task-0 discipline from the handover.
 
 ### Task 1 acceptance
 
-- [ ] With Realtime Viewport **off**, switching parade CPU<->GPU takes visible
+- [x] With Realtime Viewport **off**, switching parade CPU<->GPU takes visible
       effect promptly (no multi-second dead wait) — verified live via MCP with
       Realtime disabled.
-- [ ] The user's Realtime-Viewport setting is unchanged after the switch —
+- [x] The user's Realtime-Viewport setting is unchanged after the switch —
       verified.
-- [ ] Steady-state GPU path still performs **no** readback (the one-time
+- [x] Steady-state GPU path still performs **no** readback (the one-time
       GPU->CPU switch readback, if used, is the only exception and occurs only at
       the switch) — verified in logs.
-- [ ] Regression test at the switch/state layer with teeth.
+- [x] Regression test at the switch/state layer with teeth.
 
 ## Task 2 — Vectorscope on the GPU path (through-line scope)
 
@@ -115,13 +115,15 @@ its scatter is into a 2D **Cb/Cr** plane, not column x luma.
 
 ### Task 2 acceptance
 
-- [ ] Vectorscope renders live from the GPU path (selectable), visually
-      indistinguishable from the CPU vectorscope — MCP screenshot, human review.
-- [ ] Circular/aspect-locked at extreme panel shapes, graticule unchanged — no
-      regression from the CPU vectorscope.
-- [ ] No runtime readback on the GPU vectorscope path — verified.
-- [ ] Equivalence test passes on the synthetic set incl. colorbars; teeth proven.
-- [ ] uint atomics only, no wave intrinsics, nothing platform-specific.
+- [x] Vectorscope renders live from the GPU path (selectable), visually
+      indistinguishable from the CPU vectorscope — MCP screenshot done (pixel
+      diff below the same-path temporal control); human review at sign-off.
+- [x] Circular/aspect-locked at extreme panel shapes, graticule unchanged — no
+      regression from the CPU vectorscope (MCP wide-panel screenshot; the
+      aspect-lock draw path is untouched by this phase).
+- [x] No runtime readback on the GPU vectorscope path — verified.
+- [x] Equivalence test passes on the synthetic set incl. colorbars; teeth proven.
+- [x] uint atomics only, no wave intrinsics, nothing platform-specific.
 
 ## Note (not a task this phase) — uneven empty-state, from the M5 review
 
@@ -135,12 +137,50 @@ bug.
 
 ## Overall acceptance
 
-- [ ] Builds clean (no new warnings).
-- [ ] Task 1 and Task 2 acceptance met.
-- [ ] Full automation suite green (CPU headless + GPU-RHI tests), count checked.
-- [ ] No new TrueScope warnings/errors in the Output Log.
+- [x] Builds clean (no new warnings).
+- [x] Task 1 and Task 2 acceptance met.
+- [x] Full automation suite green (CPU headless + GPU-RHI tests), count checked.
+- [x] No new TrueScope warnings/errors in the Output Log.
 - [ ] Human sign-off: visual CPU-vs-GPU vectorscope comparison + a switch test
       with Realtime Viewport off.
+
+## Verification results (2026-07-13, this machine)
+
+**Task 1 (switch responsiveness, Realtime off)** — driven via the
+`TrueScope.AnalysisPath` CVar (routed through the same switch handling as the
+UI; Slate context menus are not reachable over MCP), Realtime toggled off via
+Ctrl+R with the capture-cycle log as the truth signal:
+
+- Realtime off confirmed: 71 s with zero capture cycles before the first
+  switch; the cycle counter stayed frozen through both switches.
+- CPU->GPU at 10:18:28: switch log immediate, **no** readback cycle; the
+  histogram (still CPU-fed) emptied to axes promptly — the GPU re-analysis of
+  the resident frame replaced the result instantly.
+- GPU->CPU at 10:20:14.755: the one-time seeding readback completed **64 ms**
+  later (cycle 1174), histogram refilled promptly; no further cycles in the
+  10 s after (Realtime still off, steady state clean).
+- Steady-state GPU with Realtime **on**: 10 s of live capture on the GPU path
+  produced zero readback cycles.
+- Regression test teeth: cold-start-guard removal and direction swap each
+  fail `TrueScope.Capture.PathSwitchDecision`.
+
+**Task 2 (GPU vectorscope)** — all 25 automation tests green with a real RHI
+(`-RenderOffscreen`), count checked (23 previous + 2D tolerance rule +
+vectorscope equivalence; the switch-decision test added in Task 1 included).
+
+- Equivalence: exact on the full synthetic set incl. SMPTE colorbars and
+  seeded noise, after making the chroma binning **integer-exact on both
+  paths** (`PixelToChromaBins` + shader mirror). Float binning was proven
+  unstable by the test itself: every neutral pixel's chroma is 0 — exactly on
+  the boundary between the two center bins — and CPU-vs-Metal FMA/ordering
+  differences flipped whole gray-value populations between bins in bulk.
+- Teeth: Cb/Cr axis swap and one-bin Cb offset in the shader each fail with a
+  precise cell diagnostic (colorbars caught the swap, as designed).
+- Visual: MCP screenshots CPU vs GPU — cross-path pixel difference of the
+  vectorscope region (mean 1.33/255, 93.6 % identical) is *below* the
+  same-path temporal control (GPU vs GPU seconds apart: 1.42/255, 93.4 %),
+  i.e. indistinguishable beyond normal scene animation. Extreme-wide-panel
+  screenshot: circle stays circular, graticule unchanged.
 
 ## Explicitly out of scope
 
