@@ -5,6 +5,7 @@
 
 #include "Analysis/TrueScopeColor.h"
 #include "Engine/Texture2D.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
@@ -57,7 +58,27 @@ void STrueScopeVectorscope::OnAnalysisResultChanged()
 	constexpr int32 NumTexels = NumBins * NumBins;
 
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
-	if (!Result.IsValid() || Result->VectorscopeIntensity.Num() != NumTexels)
+	if (!Result.IsValid())
+	{
+		return;
+	}
+
+	// GPU path (phase-5.1): the result carries the producer's density render
+	// target; point the brush at it — no texture build, no upload, no readback
+	// (same pattern as the parade widget).
+	if (Result->bHasGpuVectorscope)
+	{
+		UTextureRenderTarget2D* Target = Result->VectorscopeTarget.Get();
+		if (Target && TraceBrush.GetResourceObject() != Target)
+		{
+			TraceBrush.SetResourceObject(Target);
+			TraceBrush.ImageSize = FVector2f(NumBins, NumBins);
+			TraceTexture.Reset(); // CPU-path texture no longer drawn
+		}
+		return;
+	}
+
+	if (Result->VectorscopeIntensity.Num() != NumTexels)
 	{
 		return;
 	}
@@ -119,7 +140,9 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 
 	// Density plot: the whole [-0.5, 0.5] chroma square, so the out-of-circle
 	// corners (100 % green, magenta) remain visible instead of being clipped.
-	if (TraceTexture.IsValid())
+	// The brush holds whichever producer's texture is current: the CPU path's
+	// transient texture or the GPU path's render target.
+	if (TraceBrush.GetResourceObject())
 	{
 		FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
 			AllottedGeometry.ToPaintGeometry(FVector2f(PlotSide, PlotSide),

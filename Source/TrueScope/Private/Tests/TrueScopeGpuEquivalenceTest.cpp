@@ -97,6 +97,81 @@ namespace
 	}
 
 	/**
+	 * The tolerance rule for the vectorscope's 2D (Cb, Cr) grid. The 1D
+	 * prefix-sum formalization of the parade does not transfer to a plane, so
+	 * the 2D rule is:
+	 *
+	 *  - every per-cell difference is in {-1, 0, +1};
+	 *  - the grid total matches exactly (nothing dropped or invented);
+	 *  - every nonzero difference has an opposite-sign difference among its 8
+	 *    neighbours (a boundary pixel rounds CbBin and/or CrBin by one, so the
+	 *    compensation must sit within Chebyshev distance 1 — a count moved
+	 *    further is a mis-mapping, not rounding).
+	 */
+	bool CompareVectorscopeGrid(TArrayView<const uint32> Cpu, TArrayView<const uint32> Gpu, FString& OutError)
+	{
+		constexpr int32 N = FResult::NumVectorBins;
+		check(Cpu.Num() == N * N);
+		check(Gpu.Num() == N * N);
+
+		int64 Total = 0;
+		TArray<int8> Diff;
+		Diff.SetNumUninitialized(N * N);
+		for (int32 Cell = 0; Cell < N * N; ++Cell)
+		{
+			const int64 CellDiff = static_cast<int64>(Gpu[Cell]) - static_cast<int64>(Cpu[Cell]);
+			if (CellDiff < -1 || CellDiff > 1)
+			{
+				OutError = FString::Printf(
+					TEXT("cell (cb %d, cr %d): count diff %lld exceeds +/-1 (cpu %u, gpu %u)"),
+					Cell % N, Cell / N, CellDiff, Cpu[Cell], Gpu[Cell]);
+				return false;
+			}
+			Diff[Cell] = static_cast<int8>(CellDiff);
+			Total += CellDiff;
+		}
+		if (Total != 0)
+		{
+			OutError = FString::Printf(TEXT("grid totals differ by %lld"), Total);
+			return false;
+		}
+
+		for (int32 Cr = 0; Cr < N; ++Cr)
+		{
+			for (int32 Cb = 0; Cb < N; ++Cb)
+			{
+				const int8 CellDiff = Diff[Cr * N + Cb];
+				if (CellDiff == 0)
+				{
+					continue;
+				}
+				bool bCompensated = false;
+				for (int32 DCr = -1; DCr <= 1 && !bCompensated; ++DCr)
+				{
+					for (int32 DCb = -1; DCb <= 1 && !bCompensated; ++DCb)
+					{
+						const int32 NCr = Cr + DCr;
+						const int32 NCb = Cb + DCb;
+						if ((DCr != 0 || DCb != 0) && NCr >= 0 && NCr < N && NCb >= 0 && NCb < N
+							&& Diff[NCr * N + NCb] == -CellDiff)
+						{
+							bCompensated = true;
+						}
+					}
+				}
+				if (!bCompensated)
+				{
+					OutError = FString::Printf(
+						TEXT("cell (cb %d, cr %d): diff %d not compensated by any of the 8 adjacent cells"),
+						Cb, Cr, CellDiff);
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	/**
 	 * Uploads Pixels into a capture-format texture, runs exactly the runtime
 	 * binning pass (TrueScope::AddParadeBinningPass) and reads the bin buffer
 	 * back. Blocking is fine here — test harness, not the runtime path.
@@ -114,7 +189,7 @@ namespace
 				const FRHITextureCreateDesc Desc =
 					FRHITextureCreateDesc::Create2D(TEXT("TrueScope.EquivalenceInput"), Size.X, Size.Y, PF_B8G8R8A8)
 						.SetFlags(ETextureCreateFlags::ShaderResource);
-				FTextureRHIRef InputTexture = RHICreateTexture(Desc);
+				FTextureRHIRef InputTexture = RHICmdList.CreateTexture(Desc);
 				RHICmdList.UpdateTexture2D(InputTexture, 0,
 					FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y),
 					Size.X * sizeof(FColor), reinterpret_cast<const uint8*>(Pixels.GetData()));
@@ -125,6 +200,54 @@ namespace
 					FRDGTextureRef Input =
 						RegisterExternalTexture(GraphBuilder, InputTexture, TEXT("TrueScope.EquivalenceInput"));
 					FRDGBufferRef Bins = TrueScope::AddParadeBinningPass(GraphBuilder, Input, Size);
+					AddEnqueueCopyPass(GraphBuilder, &Readback, Bins, NumBytes);
+					GraphBuilder.Execute();
+				}
+
+				RHICmdList.SubmitAndBlockUntilGPUIdle();
+				if (Readback.IsReady())
+				{
+					if (const uint32* Data = static_cast<const uint32*>(Readback.Lock(NumBytes)))
+					{
+						OutBins.SetNumUninitialized(NumCells);
+						FMemory::Memcpy(OutBins.GetData(), Data, NumBytes);
+						bReadbackOk = true;
+					}
+					Readback.Unlock();
+				}
+			});
+		FlushRenderingCommands();
+		return bReadbackOk;
+	}
+
+	/**
+	 * Same test-only round trip for the vectorscope: uploads Pixels, runs
+	 * exactly the runtime scatter (TrueScope::AddVectorscopeBinningPass) and
+	 * reads the (Cb, Cr) grid back.
+	 */
+	bool RunGpuVectorscopeBinning(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins)
+	{
+		const int32 NumCells = FResult::NumVectorBins * FResult::NumVectorBins;
+		const uint32 NumBytes = NumCells * sizeof(uint32);
+
+		bool bReadbackOk = false;
+		ENQUEUE_RENDER_COMMAND(TrueScopeGpuVectorscopeEquivalenceRun)(
+			[&Pixels, Size, NumCells, NumBytes, &OutBins, &bReadbackOk](FRHICommandListImmediate& RHICmdList)
+			{
+				const FRHITextureCreateDesc Desc =
+					FRHITextureCreateDesc::Create2D(TEXT("TrueScope.EquivalenceInput"), Size.X, Size.Y, PF_B8G8R8A8)
+						.SetFlags(ETextureCreateFlags::ShaderResource);
+				FTextureRHIRef InputTexture = RHICmdList.CreateTexture(Desc);
+				RHICmdList.UpdateTexture2D(InputTexture, 0,
+					FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y),
+					Size.X * sizeof(FColor), reinterpret_cast<const uint8*>(Pixels.GetData()));
+
+				FRHIGPUBufferReadback Readback(TEXT("TrueScope.EquivalenceReadback"));
+				{
+					FRDGBuilder GraphBuilder(RHICmdList);
+					FRDGTextureRef Input =
+						RegisterExternalTexture(GraphBuilder, InputTexture, TEXT("TrueScope.EquivalenceInput"));
+					FRDGBufferRef Bins = TrueScope::AddVectorscopeBinningPass(GraphBuilder, Input, Size);
 					AddEnqueueCopyPass(GraphBuilder, &Readback, Bins, NumBytes);
 					GraphBuilder.Execute();
 				}
@@ -324,6 +447,87 @@ bool FTrueScopeGpuEquivalenceToleranceRuleTest::RunTest(const FString&)
 }
 
 // ---------------------------------------------------------------------------
+// 2D tolerance-rule self-tests (headless), same purpose as the 1D rule's: the
+// comparator itself needs proven teeth before it may judge the GPU scatter.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeGpuVectorscopeToleranceRuleTest,
+	"TrueScope.GPU.VectorscopeToleranceRule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeGpuVectorscopeToleranceRuleTest::RunTest(const FString&)
+{
+	constexpr int32 N = FResult::NumVectorBins;
+	FString Error;
+
+	TArray<uint32> Cpu;
+	Cpu.SetNumZeroed(N * N);
+	// A few occupied cells, asymmetric in (Cb, Cr) so a transpose is visible.
+	Cpu[100 * N + 40] = 10; // (cb 40, cr 100)
+	Cpu[100 * N + 41] = 5;
+	Cpu[200 * N + 90] = 3;
+
+	// Identical grids pass.
+	TArray<uint32> Gpu = Cpu;
+	TestTrue(TEXT("Identical grids pass"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+
+	// One count moved to a directly adjacent cell (Cb, Cr, and diagonal — the
+	// legitimate boundary-rounding cases) passes.
+	Gpu = Cpu;
+	Gpu[100 * N + 40] -= 1;
+	Gpu[100 * N + 41] += 1; // Cb neighbour
+	TestTrue(TEXT("Compensating +/-1 at a Cb boundary passes"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+	Gpu = Cpu;
+	Gpu[100 * N + 40] -= 1;
+	Gpu[101 * N + 40] += 1; // Cr neighbour
+	TestTrue(TEXT("Compensating +/-1 at a Cr boundary passes"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+	Gpu = Cpu;
+	Gpu[100 * N + 40] -= 1;
+	Gpu[101 * N + 41] += 1; // both boundaries at once: diagonal neighbour
+	TestTrue(TEXT("Compensating +/-1 at a diagonal boundary passes"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+
+	// A non-compensating extra count fails (something invented).
+	Gpu = Cpu;
+	Gpu[100 * N + 41] += 1;
+	TestFalse(TEXT("Non-compensating +1 fails"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+
+	// A dropped count fails (something lost).
+	Gpu = Cpu;
+	Gpu[100 * N + 40] -= 1;
+	TestFalse(TEXT("Dropped count fails"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+
+	// A count moved two cells away fails: only an adjacent cell may compensate.
+	Gpu = Cpu;
+	Gpu[100 * N + 40] -= 1;
+	Gpu[100 * N + 42] += 1;
+	TestFalse(TEXT("Non-adjacent compensation fails"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+
+	// Two counts across the same boundary fail (|diff| 2 per cell).
+	Gpu = Cpu;
+	Gpu[100 * N + 40] -= 2;
+	Gpu[100 * N + 41] += 2;
+	TestFalse(TEXT("Two counts across one boundary fail"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+
+	// A whole distribution shifted by one Cb bin fails (dense cells produce
+	// per-cell diffs far beyond +/-1).
+	Gpu.SetNumZeroed(N * N);
+	Gpu[100 * N + 41] = 10;
+	Gpu[100 * N + 42] = 5;
+	Gpu[200 * N + 91] = 3;
+	TestFalse(TEXT("Shifted distribution fails"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+
+	// Swapped axes (the scatter's classic failure) fail: the transpose puts
+	// counts in entirely different cells.
+	Gpu.SetNumZeroed(N * N);
+	Gpu[40 * N + 100] = 10;
+	Gpu[41 * N + 100] = 5;
+	Gpu[90 * N + 200] = 3;
+	TestFalse(TEXT("Swapped Cb/Cr axes fail"), CompareVectorscopeGrid(Cpu, Gpu, Error));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // The equivalence test itself (needs a real RHI: compute + readback).
 // ---------------------------------------------------------------------------
 
@@ -366,6 +570,50 @@ bool FTrueScopeGpuParadeBinEquivalenceTest::RunTest(const FString&)
 			{
 				AddError(FString::Printf(TEXT("%s: %s"), *Image.Name, *Error));
 			}
+		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Vectorscope equivalence (phase-5.1): the GPU (Cb, Cr) scatter against the
+// CPU vectorscope as ground truth. Colorbars are the key image here — a solid
+// frame cannot reveal an axis swap, the bars' six distinct chroma points can.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeGpuVectorscopeBinEquivalenceTest,
+	"TrueScope.GPU.VectorscopeBinEquivalence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeGpuVectorscopeBinEquivalenceTest::RunTest(const FString&)
+{
+	if (GUsingNullRHI)
+	{
+		AddInfo(TEXT("Skipped: GPU equivalence needs a real RHI (run without -nullrhi)."));
+		return true;
+	}
+
+	for (const FSyntheticImage& Image : MakeSyntheticImages())
+	{
+		// CPU ground truth.
+		FResult CpuResult;
+		TrueScope::AnalyzePixels(Image.Pixels, Image.Size.X, Image.Size.Y, CpuResult);
+
+		// The runtime GPU scatter, read back (test-only round trip).
+		TArray<uint32> GpuBins;
+		if (!RunGpuVectorscopeBinning(Image.Pixels, Image.Size, GpuBins))
+		{
+			AddError(FString::Printf(TEXT("%s: GPU vectorscope readback failed"), *Image.Name));
+			continue;
+		}
+
+		FString Error;
+		const bool bEqual = CompareVectorscopeGrid(CpuResult.Vectorscope, GpuBins, Error);
+		TestTrue(*FString::Printf(TEXT("%s: GPU (Cb, Cr) grid matches CPU ground truth"), *Image.Name), bEqual);
+		if (!bEqual)
+		{
+			AddError(FString::Printf(TEXT("%s: %s"), *Image.Name, *Error));
 		}
 	}
 

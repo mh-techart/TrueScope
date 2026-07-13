@@ -54,6 +54,41 @@ int32 ChromaToBin(float Chroma)
 	return FMath::Clamp(Bin, 0, FTrueScopeAnalysisResult::NumVectorBins - 1);
 }
 
+FIntPoint PixelToChromaBins(const FColor& Color)
+{
+	// The BT.709 coefficients as exact rationals over 10000. With byte values
+	// r,g,b, putting Cb = (b/255 - Y')/(2(1-Kb)) over a common denominator:
+	//
+	//   Cb = ((10000-722)b - 2126r - 7152g) / (255 * 2 * (10000-722))
+	//
+	// and bin = floor((Cb + 0.5) * NumVectorBins) becomes a single integer
+	// division (numerator max NumVectorBins * CbDen < 2^31, non-negative, so
+	// truncation is floor). Cr identically over (10000-2126).
+	constexpr int32 Scale = 10000;
+	constexpr int32 KR = 2126;
+	constexpr int32 KG = 7152;
+	constexpr int32 KB = 722;
+	static_assert(KR + KG + KB == Scale, "BT.709 luma coefficients must sum to 1");
+	static_assert(LumaR == static_cast<float>(KR) / Scale && LumaG == static_cast<float>(KG) / Scale
+			&& LumaB == static_cast<float>(KB) / Scale,
+		"integer and float BT.709 coefficients must agree");
+
+	constexpr int32 NumBins = FTrueScopeAnalysisResult::NumVectorBins;
+	constexpr int32 CbDen = 255 * 2 * (Scale - KB);
+	constexpr int32 CrDen = 255 * 2 * (Scale - KR);
+	static_assert(NumBins <= INT32_MAX / CbDen && NumBins <= INT32_MAX / CrDen,
+		"bin computation must fit 32-bit integer arithmetic");
+
+	const int32 NCb = (Scale - KB) * Color.B - KR * Color.R - KG * Color.G;
+	const int32 NCr = (Scale - KR) * Color.R - KG * Color.G - KB * Color.B;
+
+	// +CbDen/2 shifts [-0.5, 0.5] to [0, 1]; the +0.5 extreme lands on
+	// NumBins and clamps into the last bin, exactly like ChromaToBin.
+	const int32 CbBin = FMath::Min(NumBins * (NCb + CbDen / 2) / CbDen, NumBins - 1);
+	const int32 CrBin = FMath::Min(NumBins * (NCr + CrDen / 2) / CrDen, NumBins - 1);
+	return FIntPoint(CbBin, CrBin);
+}
+
 int32 LumaToBin(float Luma)
 {
 	// Rounded, not floored: a neutral pixel of code value v must land in bin v,

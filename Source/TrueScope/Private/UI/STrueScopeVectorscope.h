@@ -41,9 +41,13 @@ protected:
 	virtual void OnAnalysisResultChanged() override;
 
 private:
-	/** (Cb, Cr) density texture, NumVectorBins squared, updated per result. */
+	/**
+	 * CPU path: (Cb, Cr) density texture, NumVectorBins squared, updated per
+	 * result. Unused (reset) while a GPU result is displayed — there the brush
+	 * points directly at the producer's render target (phase-5.1).
+	 */
 	TStrongObjectPtr<UTexture2D> TraceTexture;
 
-	/** Brush wrapping the density texture for MakeBox. */
+	/** Brush wrapping the current producer's density texture for MakeBox. */
 	FSlateBrush TraceBrush;
 };

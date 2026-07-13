@@ -89,6 +89,73 @@ namespace
 	IMPLEMENT_GLOBAL_SHADER(FTrueScopeParadeBinCS, "/Plugin/TrueScope/TrueScopeParade.usf", "ParadeBinCS", SF_Compute);
 	IMPLEMENT_GLOBAL_SHADER(FTrueScopeParadeIntensityCS, "/Plugin/TrueScope/TrueScopeParade.usf", "ParadeIntensityCS",
 		SF_Compute);
+
+	/**
+	 * Shared compilation setup of both vectorscope shaders (phase-5.1):
+	 * NUM_VECTOR_BINS is generated from FTrueScopeAnalysisResult::NumVectorBins
+	 * so the grid layout cannot drift from the CPU path's.
+	 */
+	void ModifyVectorscopeShaderEnvironment(FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT("NUM_VECTOR_BINS"), FTrueScopeAnalysisResult::NumVectorBins);
+		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZE"), ThreadGroupSize);
+	}
+
+	class FTrueScopeVectorBinCS : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FTrueScopeVectorBinCS);
+		SHADER_USE_PARAMETER_STRUCT(FTrueScopeVectorBinCS, FGlobalShader);
+
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, InputTexture)
+			SHADER_PARAMETER(FIntPoint, InputSize)
+			SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, VectorBinsOut)
+		END_SHADER_PARAMETER_STRUCT()
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+			FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			ModifyVectorscopeShaderEnvironment(OutEnvironment);
+		}
+	};
+
+	class FTrueScopeVectorIntensityCS : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FTrueScopeVectorIntensityCS);
+		SHADER_USE_PARAMETER_STRUCT(FTrueScopeVectorIntensityCS, FGlobalShader);
+
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, VectorBinsIn)
+			SHADER_PARAMETER(uint32, MaxCount)
+			SHADER_PARAMETER(float, IntensityGain)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, VectorscopeOut)
+		END_SHADER_PARAMETER_STRUCT()
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+			FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			ModifyVectorscopeShaderEnvironment(OutEnvironment);
+		}
+	};
+
+	IMPLEMENT_GLOBAL_SHADER(FTrueScopeVectorBinCS, "/Plugin/TrueScope/TrueScopeVectorscope.usf", "VectorBinCS",
+		SF_Compute);
+	IMPLEMENT_GLOBAL_SHADER(FTrueScopeVectorIntensityCS, "/Plugin/TrueScope/TrueScopeVectorscope.usf",
+		"VectorIntensityCS", SF_Compute);
 }
 
 namespace TrueScope
@@ -117,6 +184,31 @@ namespace TrueScope
 
 		return Bins;
 	}
+
+	FRDGBufferRef AddVectorscopeBinningPass(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture,
+		FIntPoint InputSize)
+	{
+		const int32 NumCells = FTrueScopeAnalysisResult::NumVectorBins * FTrueScopeAnalysisResult::NumVectorBins;
+		FRDGBufferRef Bins = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), NumCells), TEXT("TrueScope.VectorBins"));
+		FRDGBufferUAVRef BinsUAV = GraphBuilder.CreateUAV(FRDGBufferUAVDesc(Bins, PF_R32_UINT));
+
+		AddClearUAVPass(GraphBuilder, BinsUAV, 0u);
+
+		FTrueScopeVectorBinCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FTrueScopeVectorBinCS::FParameters>();
+		Parameters->InputTexture = InputTexture;
+		Parameters->InputSize = InputSize;
+		Parameters->VectorBinsOut = BinsUAV;
+
+		TShaderMapRef<FTrueScopeVectorBinCS> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(GraphBuilder,
+			RDG_EVENT_NAME("TrueScope.VectorBin %dx%d", InputSize.X, InputSize.Y),
+			ComputeShader, Parameters,
+			FComputeShaderUtils::GetGroupCount(InputSize, ThreadGroupSize));
+
+		return Bins;
+	}
 }
 
 FTrueScopeGpuParade::FTrueScopeGpuParade(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
@@ -139,6 +231,20 @@ FTrueScopeGpuParade::FTrueScopeGpuParade(const TSharedPtr<FTrueScopeAnalyzer, ES
 		ChannelTarget[Channel] = Target;
 		ChannelTargetWeak[Channel] = Target;
 	}
+
+	// Vectorscope density target (phase-5.1): the (Cb, Cr) grid, same format
+	// rationale as the parade targets.
+	{
+		UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
+		Target->bCanCreateUAV = true;
+		Target->ClearColor = FLinearColor::Black;
+		Target->Filter = TF_Bilinear;
+		Target->InitCustomFormat(FTrueScopeAnalysisResult::NumVectorBins, FTrueScopeAnalysisResult::NumVectorBins,
+			PF_R8G8B8A8, /*bInForceLinearGamma*/ true);
+		Target->UpdateResourceImmediate(/*bClearRenderTarget*/ true);
+		VectorscopeTarget = Target;
+		VectorscopeTargetWeak = Target;
+	}
 }
 
 void FTrueScopeGpuParade::AddReferencedObjects(FReferenceCollector& Collector)
@@ -147,6 +253,7 @@ void FTrueScopeGpuParade::AddReferencedObjects(FReferenceCollector& Collector)
 	{
 		Collector.AddReferencedObject(ChannelTarget[Channel]);
 	}
+	Collector.AddReferencedObject(VectorscopeTarget);
 }
 
 void FTrueScopeGpuParade::CacheResources_GameThread()
@@ -157,9 +264,11 @@ void FTrueScopeGpuParade::CacheResources_GameThread()
 		Resources[Channel] =
 			ChannelTarget[Channel] ? ChannelTarget[Channel]->GameThread_GetRenderTargetResource() : nullptr;
 	}
+	FTextureRenderTargetResource* VectorResource =
+		VectorscopeTarget ? VectorscopeTarget->GameThread_GetRenderTargetResource() : nullptr;
 
 	ENQUEUE_RENDER_COMMAND(TrueScopeCacheParadeResources)(
-		[WeakThis = AsWeak(), Resources](FRHICommandListImmediate&)
+		[WeakThis = AsWeak(), Resources, VectorResource](FRHICommandListImmediate&)
 		{
 			if (TSharedPtr<FTrueScopeGpuParade> This =
 				StaticCastWeakPtr<FTrueScopeGpuParade>(WeakThis).Pin())
@@ -168,6 +277,7 @@ void FTrueScopeGpuParade::CacheResources_GameThread()
 				{
 					This->ChannelResourceRenderThread[Channel] = Resources[Channel];
 				}
+				This->VectorscopeResourceRenderThread = VectorResource;
 			}
 		});
 }
@@ -186,6 +296,12 @@ void FTrueScopeGpuParade::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBuild
 		{
 			return; // resources not cached yet; the next capture will have them
 		}
+	}
+	FRHITexture* VectorscopeTexture =
+		VectorscopeResourceRenderThread ? VectorscopeResourceRenderThread->GetRenderTargetTexture() : nullptr;
+	if (!VectorscopeTexture)
+	{
+		return; // all-or-nothing, same as the parade targets above
 	}
 
 	const FIntPoint InputSize(CaptureTexture->Desc.Extent.X, CaptureTexture->Desc.Extent.Y);
@@ -222,8 +338,34 @@ void FTrueScopeGpuParade::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBuild
 		ComputeShader, Parameters,
 		FComputeShaderUtils::GetGroupCount(OutputSize, ThreadGroupSize));
 
+	// Vectorscope (phase-5.1): binning pass into the (Cb, Cr) grid, then the
+	// log intensity pass into the vectorscope density target.
+	{
+		constexpr int32 NumVectorBins = FTrueScopeAnalysisResult::NumVectorBins;
+
+		FRDGBufferRef VectorBins = TrueScope::AddVectorscopeBinningPass(GraphBuilder, CaptureTexture, InputSize);
+
+		FTrueScopeVectorIntensityCS::FParameters* VectorParameters =
+			GraphBuilder.AllocParameters<FTrueScopeVectorIntensityCS::FParameters>();
+		VectorParameters->VectorBinsIn = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(VectorBins, PF_R32_UINT));
+		// Max possible count in one (Cb, Cr) cell: the whole frame on one chroma
+		// coordinate — the CPU path's normalization (BuildVectorscopeImage).
+		VectorParameters->MaxCount = static_cast<uint32>(InputSize.X * InputSize.Y);
+		VectorParameters->IntensityGain = TrueScope::DensityIntensityGain;
+
+		FRDGTextureRef VectorTarget =
+			RegisterExternalTexture(GraphBuilder, VectorscopeTexture, TEXT("TrueScope.Vectorscope"));
+		VectorParameters->VectorscopeOut = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(VectorTarget));
+
+		TShaderMapRef<FTrueScopeVectorIntensityCS> VectorComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(GraphBuilder,
+			RDG_EVENT_NAME("TrueScope.VectorIntensity %dx%d", NumVectorBins, NumVectorBins),
+			VectorComputeShader, VectorParameters,
+			FComputeShaderUtils::GetGroupCount(FIntPoint(NumVectorBins, NumVectorBins), ThreadGroupSize));
+	}
+
 	// Publish the GPU-resident result: metadata plus the target textures the
-	// widget draws directly. The count/intensity arrays stay empty — there is
+	// widgets draw directly. The count/intensity arrays stay empty — there is
 	// no CPU copy of anything on this path, by design.
 	TSharedRef<FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result =
 		MakeShared<FTrueScopeAnalysisResult, ESPMode::ThreadSafe>();
@@ -234,6 +376,8 @@ void FTrueScopeGpuParade::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBuild
 	{
 		Result->ParadeChannelTarget[Channel] = ChannelTargetWeak[Channel];
 	}
+	Result->bHasGpuVectorscope = true;
+	Result->VectorscopeTarget = VectorscopeTargetWeak;
 
 	if (Analyzer)
 	{

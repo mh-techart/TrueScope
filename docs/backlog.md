@@ -430,3 +430,20 @@ built on top of it.
 - Reference screenshots: DaVinci Resolve (Single/Dual/Quad/4×1) and Final Cut
   Pro (12-layout icon grid, Display submenu with Vertical Layout / Show Guides
   / Monochrome / brightness).
+
+## GPU-path housekeeping (from phase-5.1)
+
+- **Rename `FTrueScopeGpuParade` → `FTrueScopeGpuAnalysis`** (and its files)
+  when the next scope joins the GPU path (phase-5.2): since phase-5.1 the class
+  produces parade *and* vectorscope, so the M5 name understates it. Mechanical
+  `git mv` + identifier rename; deferred to keep the phase-5.1 diff focused.
+- **"Analysis Path" menu placement:** the switch lives in the parade's
+  right-click menu but selects the path for *all* GPU-capable scopes. Once
+  waveform/histogram join (phase-5.2), consider a panel-level home (tab
+  toolbar or every scope's menu) so the option is discoverable from any scope.
+- **Luma waveform GPU port (phase-5.2) must bin the luma integer-exactly**,
+  the same technique as `PixelToChromaBins`: `LumaToBin` on float luma is
+  unstable at bin boundaries between compilers (the vectorscope hit this at
+  chroma 0 — whole gray-value populations flipped bins between CPU and Metal).
+  Integer rationals over 10000 make both paths bit-identical; do it from the
+  start instead of debugging the equivalence test.

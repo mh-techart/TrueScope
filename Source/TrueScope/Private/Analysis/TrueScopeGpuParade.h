@@ -25,19 +25,34 @@ namespace TrueScope
 	 * and read the returned buffer back (test-only; the runtime never does).
 	 */
 	FRDGBufferRef AddParadeBinningPass(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, FIntPoint InputSize);
+
+	/**
+	 * Adds the vectorscope binning compute pass (phase-5.1 GPU path, pass 1):
+	 * one thread per pixel, BT.709 R'G'B' -> Y'CbCr, one uint InterlockedAdd
+	 * into a transient NumVectorBins^2 count grid laid out
+	 * [CrBin * NumVectorBins + CbBin] — the layout of
+	 * FTrueScopeAnalysisResult::Vectorscope. Exposed for the equivalence test,
+	 * same contract as AddParadeBinningPass.
+	 */
+	FRDGBufferRef AddVectorscopeBinningPass(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture,
+		FIntPoint InputSize);
 }
 
 /**
- * GPU parade producer (M5): runs the two-pass compute analysis on the capture
- * texture inside the capture pass's own render graph and publishes a
- * GPU-resident FTrueScopeAnalysisResult — the pixel data and the bins never
- * leave the GPU (no readback of any kind on this path).
+ * GPU analysis producer (M5 parade, phase-5.1 vectorscope): runs the two-pass
+ * compute analyses on the capture texture inside the capture pass's own render
+ * graph and publishes a GPU-resident FTrueScopeAnalysisResult — the pixel data
+ * and the bins never leave the GPU (no readback of any kind on this path).
+ * (Class keeps its M5 name until a third scope joins the GPU path — see
+ * docs/backlog.md.)
  *
- * Owns the three per-channel density render targets the parade widget draws
- * directly (PF_R8G8B8A8 + UAV, written by the intensity pass — the Niagara
- * render-target pattern). The targets are created once at the fixed capture
- * width x NumBins size and updated in place; each capture publishes a fresh
- * result through the analyzer so widgets repaint on their usual serial poll.
+ * Owns the density render targets the widgets draw directly (PF_R8G8B8A8 +
+ * UAV, written by the intensity passes — the Niagara render-target pattern):
+ * three per-channel parade targets (capture width x NumBins) and one
+ * vectorscope target (NumVectorBins^2, white with density in alpha). The
+ * targets are created once and updated in place; each capture publishes a
+ * fresh result through the analyzer so widgets repaint on their usual serial
+ * poll.
  */
 class FTrueScopeGpuParade : public TSharedFromThis<FTrueScopeGpuParade, ESPMode::ThreadSafe>, public FGCObject
 {
@@ -72,6 +87,11 @@ private:
 
 	/** Render-target resources, cached for the render thread. Render thread only. */
 	FTextureRenderTargetResource* ChannelResourceRenderThread[FTrueScopeAnalysisResult::NumChannels] = {};
+
+	/** Vectorscope density target (phase-5.1), same ownership pattern. */
+	TObjectPtr<UTextureRenderTarget2D> VectorscopeTarget;
+	TWeakObjectPtr<UTextureRenderTarget2D> VectorscopeTargetWeak;
+	FTextureRenderTargetResource* VectorscopeResourceRenderThread = nullptr;
 
 	/** Receives the published GPU results (same channel as the CPU analysis). */
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;

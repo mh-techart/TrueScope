@@ -65,8 +65,25 @@ namespace TrueScope
 	 * Bin index of a chroma component on the vectorscope's
 	 * FTrueScopeAnalysisResult::NumVectorBins axis; bin 0 = -0.5, last bin =
 	 * +0.5. Neutral (0.0) lands on the first bin above center.
+	 *
+	 * Float reference mapping (tests, graticule geometry). The pixel analysis
+	 * bins through PixelToChromaBins instead — see there.
 	 */
 	int32 ChromaToBin(float Chroma);
+
+	/**
+	 * Integer-exact vectorscope bins of one 8-bit pixel (X = Cb bin, Y = Cr
+	 * bin), the same BT.709 coefficients as RgbToYCbCr expressed as exact
+	 * rationals (0.2126 = 2126/10000, ...) and evaluated in pure integer
+	 * arithmetic. This makes the CPU and the GPU vectorscope bin *identically
+	 * by construction* (the parity rule's "identical values", phase-5.1):
+	 * float evaluation is unstable exactly where it matters most — every
+	 * neutral pixel's chroma is 0, which sits ON the boundary between the two
+	 * center bins, so FMA/ordering differences between compilers flip whole
+	 * gray-value populations between bins 127 and 128 in bulk. Mirrored by
+	 * TrueScopeVectorscope.usf; the GPU equivalence test pins the agreement.
+	 */
+	FIntPoint PixelToChromaBins(const FColor& Color);
 
 	/**
 	 * Value bin of a luma in [0,1] on the same NumBins axis the R/G/B channels

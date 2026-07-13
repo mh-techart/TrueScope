@@ -49,12 +49,15 @@ void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, F
 			++ParadeG[ColumnBase + Pixel->G];
 			++ParadeB[ColumnBase + Pixel->B];
 
-			// One BT.709 conversion feeds both the luma waveform and the
-			// vectorscope; the luma is the chroma's own intermediate.
+			// BT.709 luma for the luma waveform (float mapping; CPU-only path
+			// until phase-5.2 ports the waveform to the GPU).
 			const FYCbCr Ycc = RgbToYCbCr(*Pixel);
 			++LumaParade[ColumnBase + LumaToBin(Ycc.Luma)];
-			++Vector[ChromaToBin(Ycc.Chroma.Cr) * FTrueScopeAnalysisResult::NumVectorBins
-				+ ChromaToBin(Ycc.Chroma.Cb)];
+
+			// Vectorscope bins integer-exactly so the CPU and GPU paths agree
+			// bit-for-bit (see PixelToChromaBins).
+			const FIntPoint ChromaBins = PixelToChromaBins(*Pixel);
+			++Vector[ChromaBins.Y * FTrueScopeAnalysisResult::NumVectorBins + ChromaBins.X];
 		}
 	}
 }

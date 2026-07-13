@@ -105,4 +105,16 @@ struct FTrueScopeAnalysisResult
 
 	/** True when this result was produced by the GPU path (targets set, arrays empty). */
 	bool bHasGpuParade = false;
+
+	/**
+	 * GPU-resident vectorscope (phase-5.1 GPU path): the NumVectorBins^2
+	 * density render target written by the vectorscope intensity pass — white
+	 * texels carrying the density in alpha, the same convention as the CPU
+	 * widget's upload of VectorscopeIntensity. Same weak-ownership contract as
+	 * ParadeChannelTarget.
+	 */
+	TWeakObjectPtr<UTextureRenderTarget2D> VectorscopeTarget;
+
+	/** True when the GPU path produced the vectorscope target above. */
+	bool bHasGpuVectorscope = false;
 };
