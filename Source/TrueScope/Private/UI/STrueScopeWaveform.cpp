@@ -149,8 +149,10 @@ int32 STrueScopeWaveform::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
 	}
 
 	// The trace already carries its colour per texel; a white tint passes it
-	// through unchanged.
-	if (TraceTexture.IsValid())
+	// through unchanged. The brush holds whichever producer's texture is
+	// current: the CPU path's transient texture or the GPU path's render
+	// target (phase-5.2).
+	if (TraceBrush.GetResourceObject())
 	{
 		FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
 			AllottedGeometry.ToPaintGeometry(FVector2f(Plot.GetSize()), FSlateLayoutTransform(FVector2f(Plot.GetTopLeft()))),

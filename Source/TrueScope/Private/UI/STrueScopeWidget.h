@@ -38,10 +38,13 @@ struct FTrueScopeDisplayMode
  *   scale uniformly and center within the allotted area. Subclasses draw
  *   inside GetScopeContentRect() and remain policy-agnostic.
  *
- * - Display modes: a scope that offers more than one presentation of its data
- *   overrides GetDisplayModes()/GetDisplayModeId()/SetDisplayModeId() and gets
- *   a right-click menu to switch between them for free. Scopes without modes
- *   have no menu.
+ * - Right-click menu: a scope that offers more than one presentation of its
+ *   data overrides GetDisplayModes()/GetDisplayModeId()/SetDisplayModeId()
+ *   and gets a Display section for free. Every scope's menu also carries the
+ *   global Analysis Path section (phase-5.2): GPU (performance) /
+ *   CPU (compatibility) — ONE switch selecting the path for all four scopes
+ *   at once (a per-scope path would make the user set the same option four
+ *   times; simple operation for the artist takes priority).
  *
  * - Paused state (M4.1): when the measured viewport enters PIE it drops out as
  *   a source and the scopes hold their last frame — intended, but silent, so
@@ -111,24 +114,10 @@ protected:
 		LastResultTimeSeconds = InSeconds;
 	}
 
-	/** Display variants this scope offers; empty (default) means no menu. */
+	/** Display variants this scope offers; empty (default) means none. */
 	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const
 	{
 		return TArrayView<const FTrueScopeDisplayMode>();
-	}
-
-	/**
-	 * Scope-specific context-menu sections beyond the display modes (M5 first
-	 * user: the parade's analysis-path option). Return true from
-	 * HasContextMenuExtensions to get the menu even without display modes.
-	 */
-	virtual void ExtendContextMenu(class FMenuBuilder& MenuBuilder)
-	{
-	}
-
-	virtual bool HasContextMenuExtensions() const
-	{
-		return false;
 	}
 
 	/** Id of the active display mode. */
@@ -145,14 +134,21 @@ protected:
 private:
 	EActiveTimerReturnType PollAnalyzer(double InCurrentTime, float InDeltaTime);
 
+	/**
+	 * Every scope has a menu since phase-5.2: the global Analysis Path
+	 * section is offered on all four scopes, so the option is discoverable
+	 * from any of them (it selects the path for all scopes at once).
+	 */
 	bool HasContextMenu() const
 	{
-		return !GetDisplayModes().IsEmpty() || HasContextMenuExtensions();
+		return true;
 	}
 
 	TSharedRef<SWidget> BuildContextMenu();
 	void HandleSetDisplayMode(int32 ModeId);
 	bool IsDisplayModeActive(int32 ModeId) const;
+	void HandleSetUseGpuAnalysis(bool bUseGpu);
+	bool IsAnalysisPathActive(bool bGpu) const;
 
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 	TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> CachedResult;

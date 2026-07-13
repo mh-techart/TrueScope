@@ -41,17 +41,7 @@ public:
 protected:
 	virtual void OnAnalysisResultChanged() override;
 
-	/** Analysis-path selection (M5): GPU (performance) / CPU (compatibility). */
-	virtual void ExtendContextMenu(FMenuBuilder& MenuBuilder) override;
-	virtual bool HasContextMenuExtensions() const override
-	{
-		return true;
-	}
-
 private:
-	void HandleSetUseGpuParade(bool bUseGpu);
-	bool IsAnalysisPathActive(bool bGpu) const;
-
 	/**
 	 * CPU path: per-channel density textures built from the result's intensity
 	 * arrays, recreated on size change, updated per result. Unused (reset)

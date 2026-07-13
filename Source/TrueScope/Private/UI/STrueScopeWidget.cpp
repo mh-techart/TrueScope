@@ -12,6 +12,7 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Layout/WidgetPath.h"
 #include "Textures/SlateIcon.h"
+#include "TrueScopeModule.h"
 #include "UI/TrueScopeDraw.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopeWidget"
@@ -180,8 +181,39 @@ TSharedRef<SWidget> STrueScopeWidget::BuildContextMenu()
 		}
 		MenuBuilder.EndSection();
 	}
-	ExtendContextMenu(MenuBuilder);
+
+	// Global analysis-path selection (phase-5.2): offered on every scope, and
+	// ONE switch selects the path for all four scopes at once — a per-scope
+	// path would make the user set the same option four times (decision
+	// recorded in architecture.md). Neither entry is labelled "default"
+	// (architecture, "Analysis path selection"): performance vs. compatibility
+	// is the user-facing contrast, and both must produce identical values.
+	MenuBuilder.BeginSection(TEXT("TrueScopeAnalysisPath"), LOCTEXT("AnalysisPathSection", "Analysis Path (all scopes)"));
+	MenuBuilder.AddMenuEntry(LOCTEXT("AnalysisPathGpu", "GPU (performance)"), FText::GetEmpty(), FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSetUseGpuAnalysis, true),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsAnalysisPathActive, true)),
+		NAME_None, EUserInterfaceActionType::RadioButton);
+	MenuBuilder.AddMenuEntry(LOCTEXT("AnalysisPathCpu", "CPU (compatibility)"), FText::GetEmpty(), FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSetUseGpuAnalysis, false),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsAnalysisPathActive, false)),
+		NAME_None, EUserInterfaceActionType::RadioButton);
+	MenuBuilder.EndSection();
+
 	return MenuBuilder.MakeWidget();
+}
+
+void STrueScopeWidget::HandleSetUseGpuAnalysis(bool bUseGpu)
+{
+	FTrueScopeModule::Get().SetUseGpuAnalysis(bUseGpu);
+}
+
+bool STrueScopeWidget::IsAnalysisPathActive(bool bGpu) const
+{
+	return FTrueScopeModule::Get().GetUseGpuAnalysis() == bGpu;
 }
 
 void STrueScopeWidget::HandleSetDisplayMode(int32 ModeId)

@@ -77,17 +77,18 @@ public:
 	UTextureRenderTarget2D* GetCaptureRenderTarget() const { return CaptureRenderTarget; }
 
 	/**
-	 * UI-selected analysis path (M5): true = GPU parade compute, false = CPU
-	 * readback (default this phase). Set from the game thread, read on the
-	 * render thread per capture. The TrueScope.AnalysisPath console variable
-	 * overrides this for diagnostics.
+	 * UI-selected analysis path: true = GPU compute, false = CPU readback
+	 * (still the default; the flip is an M7 decision). Global — one value
+	 * selects the path for all four scopes at once (phase-5.2). Set from the
+	 * game thread, read on the render thread per capture. The
+	 * TrueScope.AnalysisPath console variable overrides this for diagnostics.
 	 *
 	 * A switch takes effect promptly regardless of the viewport's Realtime
 	 * setting (phase-5.1 Task 1): the last captured frame is re-analysed
 	 * through the newly selected path — see HandleAnalysisPathChanged.
 	 */
-	void SetUseGpuParade(bool bInUseGpuParade);
-	bool GetUseGpuParade() const { return bUseGpuParade.load(std::memory_order_relaxed); }
+	void SetUseGpuAnalysis(bool bInUseGpuAnalysis);
+	bool GetUseGpuAnalysis() const { return bUseGpuAnalysis.load(std::memory_order_relaxed); }
 
 	/**
 	 * Routes changes of the TrueScope.AnalysisPath diagnostic CVar through the
@@ -121,7 +122,7 @@ private:
 	/** Receives the captured texture for async readback + analysis (M3). */
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 
-	/** GPU parade producer (M5); runs instead of the readback on the GPU path. */
+	/** GPU analysis producer (all four scopes); replaces the readback on the GPU path. */
 	TSharedPtr<FTrueScopeGpuParade, ESPMode::ThreadSafe> GpuParade;
 
 	/**
@@ -130,8 +131,8 @@ private:
 	 */
 	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> CaptureGate;
 
-	/** See SetUseGpuParade. */
-	std::atomic<bool> bUseGpuParade{false};
+	/** See SetUseGpuAnalysis. */
+	std::atomic<bool> bUseGpuAnalysis{false};
 
 	/**
 	 * Whether at least one capture pass has run — the cold-start guard of the

@@ -5,10 +5,7 @@
 
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
-#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Rendering/DrawElements.h"
-#include "Textures/SlateIcon.h"
-#include "TrueScopeModule.h"
 #include "UI/TrueScopeDraw.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopeParade"
@@ -162,37 +159,6 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 	LayerId = DrawValueAxisY(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetWaveformGraticuleLevels());
 
 	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
-}
-
-void STrueScopeParade::ExtendContextMenu(FMenuBuilder& MenuBuilder)
-{
-	// Neither entry is labelled "default" (architecture, "Analysis path
-	// selection"): performance vs. compatibility is the user-facing contrast,
-	// and both must produce identical values.
-	MenuBuilder.BeginSection(TEXT("TrueScopeAnalysisPath"), LOCTEXT("AnalysisPathSection", "Analysis Path"));
-	MenuBuilder.AddMenuEntry(LOCTEXT("AnalysisPathGpu", "GPU (performance)"), FText::GetEmpty(), FSlateIcon(),
-		FUIAction(
-			FExecuteAction::CreateSP(this, &STrueScopeParade::HandleSetUseGpuParade, true),
-			FCanExecuteAction(),
-			FIsActionChecked::CreateSP(this, &STrueScopeParade::IsAnalysisPathActive, true)),
-		NAME_None, EUserInterfaceActionType::RadioButton);
-	MenuBuilder.AddMenuEntry(LOCTEXT("AnalysisPathCpu", "CPU (compatibility)"), FText::GetEmpty(), FSlateIcon(),
-		FUIAction(
-			FExecuteAction::CreateSP(this, &STrueScopeParade::HandleSetUseGpuParade, false),
-			FCanExecuteAction(),
-			FIsActionChecked::CreateSP(this, &STrueScopeParade::IsAnalysisPathActive, false)),
-		NAME_None, EUserInterfaceActionType::RadioButton);
-	MenuBuilder.EndSection();
-}
-
-void STrueScopeParade::HandleSetUseGpuParade(bool bUseGpu)
-{
-	FTrueScopeModule::Get().SetUseGpuParade(bUseGpu);
-}
-
-bool STrueScopeParade::IsAnalysisPathActive(bool bGpu) const
-{
-	return FTrueScopeModule::Get().GetUseGpuParade() == bGpu;
 }
 
 #undef LOCTEXT_NAMESPACE

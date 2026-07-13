@@ -88,17 +88,17 @@ void FTrueScopeModule::OnPostEngineInit()
 		.SetGroup(WorkspaceMenu::GetMenuStructure().GetLevelEditorCategory());
 }
 
-void FTrueScopeModule::SetUseGpuParade(bool bUseGpuParade)
+void FTrueScopeModule::SetUseGpuAnalysis(bool bUseGpuAnalysis)
 {
 	if (ViewExtension.IsValid())
 	{
-		ViewExtension->SetUseGpuParade(bUseGpuParade);
+		ViewExtension->SetUseGpuAnalysis(bUseGpuAnalysis);
 	}
 }
 
-bool FTrueScopeModule::GetUseGpuParade() const
+bool FTrueScopeModule::GetUseGpuAnalysis() const
 {
-	return ViewExtension.IsValid() && ViewExtension->GetUseGpuParade();
+	return ViewExtension.IsValid() && ViewExtension->GetUseGpuAnalysis();
 }
 
 TSharedRef<SDockTab> FTrueScopeModule::SpawnTrueScopeTab(const FSpawnTabArgs& SpawnTabArgs)

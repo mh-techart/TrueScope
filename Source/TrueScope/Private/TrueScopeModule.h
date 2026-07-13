@@ -33,13 +33,14 @@ public:
 	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> GetCaptureGate() const { return CaptureGate; }
 
 	/**
-	 * UI-selected analysis path (M5): true = GPU (performance), false = CPU
-	 * (compatibility). Default CPU through M5/M5.x; the flip to GPU-default is
-	 * an M7 decision. Not persisted yet (settings persistence is M6). Game
-	 * thread.
+	 * UI-selected analysis path: true = GPU (performance), false = CPU
+	 * (compatibility). Global since phase-5.2 — one switch selects the path
+	 * for all four scopes at once. Default CPU through M5.x; the flip to
+	 * GPU-default is an M7 decision. Not persisted yet (settings persistence
+	 * is M6). Game thread.
 	 */
-	void SetUseGpuParade(bool bUseGpuParade);
-	bool GetUseGpuParade() const;
+	void SetUseGpuAnalysis(bool bUseGpuAnalysis);
+	bool GetUseGpuAnalysis() const;
 
 private:
 	void OnPostEngineInit();

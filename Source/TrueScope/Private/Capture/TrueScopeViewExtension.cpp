@@ -23,17 +23,19 @@ DEFINE_LOG_CATEGORY_STATIC(LogTrueScope, Log, All);
 
 /**
  * Diagnostic override of the analysis path — the user-facing control is the
- * parade's right-click "Analysis Path" option, never this CVar alone
- * (architecture: CVars are a developer channel in addition to the UI).
- * Changes are routed through the same prompt-switch handling as the UI
- * setting (BindAnalysisPathCVarSink), so both channels take effect promptly.
+ * "Analysis Path (all scopes)" section in every scope's right-click menu,
+ * never this CVar alone (architecture: CVars are a developer channel in
+ * addition to the UI). Global since phase-5.2: one value selects the path
+ * for all four scopes at once. Changes are routed through the same
+ * prompt-switch handling as the UI setting (BindAnalysisPathCVarSink), so
+ * both channels take effect promptly.
  */
 static TAutoConsoleVariable<int32> CVarTrueScopeAnalysisPath(
 	TEXT("TrueScope.AnalysisPath"), -1,
-	TEXT("Diagnostic override of the TrueScope analysis path.\n")
+	TEXT("Diagnostic override of the TrueScope analysis path (global - all four scopes).\n")
 	TEXT(" -1: use the UI setting (default)\n")
 	TEXT("  0: force the CPU (compatibility) path\n")
-	TEXT("  1: force the GPU (performance) path (M5: parade only)"),
+	TEXT("  1: force the GPU (performance) path"),
 	ECVF_RenderThreadSafe);
 
 FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegister,
@@ -54,9 +56,9 @@ FTrueScopeViewExtension::FTrueScopeViewExtension(const FAutoRegister& AutoRegist
 	CaptureRenderTarget->UpdateResourceImmediate(/*bClearRenderTarget*/ true);
 }
 
-void FTrueScopeViewExtension::SetUseGpuParade(bool bInUseGpuParade)
+void FTrueScopeViewExtension::SetUseGpuAnalysis(bool bInUseGpuAnalysis)
 {
-	bUseGpuParade.store(bInUseGpuParade, std::memory_order_relaxed);
+	bUseGpuAnalysis.store(bInUseGpuAnalysis, std::memory_order_relaxed);
 	HandleAnalysisPathChanged();
 }
 
@@ -74,7 +76,7 @@ void FTrueScopeViewExtension::HandleAnalysisPathCVarChanged(IConsoleVariable*)
 bool FTrueScopeViewExtension::ResolveEffectiveUseGpu() const
 {
 	const int32 PathOverride = CVarTrueScopeAnalysisPath.GetValueOnGameThread();
-	return PathOverride < 0 ? GetUseGpuParade() : PathOverride == 1;
+	return PathOverride < 0 ? GetUseGpuAnalysis() : PathOverride == 1;
 }
 
 void FTrueScopeViewExtension::HandleAnalysisPathChanged()
@@ -271,7 +273,7 @@ FScreenPassTexture FTrueScopeViewExtension::AfterTonemapPass_RenderThread(FRDGBu
 			// draw). GPU path (M5): compute passes, the data never leaves the
 			// GPU. CPU path (M3, default this phase): async readback.
 			const int32 PathOverride = CVarTrueScopeAnalysisPath.GetValueOnRenderThread();
-			const bool bUseGpu = PathOverride < 0 ? GetUseGpuParade() : PathOverride == 1;
+			const bool bUseGpu = PathOverride < 0 ? GetUseGpuAnalysis() : PathOverride == 1;
 			if (bUseGpu && GpuParade)
 			{
 				GpuParade->AddAnalysisPasses_RenderThread(GraphBuilder, OutputTexture);
