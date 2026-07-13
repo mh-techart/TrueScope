@@ -182,10 +182,14 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		{
 			if (Brush.GetResourceObject())
 			{
+				// NoGamma, like every GPU scope texture: without it Slate
+				// display-gamma-corrects the sampled texel while the CPU
+				// path's vertex colours are not corrected, rendering the GPU
+				// fills visibly lighter (found in the phase-5.2 MCP A/B).
 				FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
 					AllottedGeometry.ToPaintGeometry(FVector2f(Rect.GetSize()),
 						FSlateLayoutTransform(FVector2f(Rect.GetTopLeft()))),
-					&Brush, ESlateDrawEffect::None, FLinearColor::White);
+					&Brush, ESlateDrawEffect::NoGamma, FLinearColor::White);
 			}
 		};
 		if (Mode == ETrueScopeHistogramMode::RgbOverlay)
