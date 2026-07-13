@@ -40,6 +40,17 @@ namespace
 		return LOCTEXT("PausedInPie",
 			"Paused \u2014 viewport in Play (PIE).\nYou may also focus another viewport.");
 	}
+
+	/**
+	 * The unified empty-state (phase-5.2): identical on all four scopes when a
+	 * scope has no data to draw \u2014 no source measured yet, or the current
+	 * result carries nothing for this scope.
+	 */
+	FText GetEmptyHintText()
+	{
+		return LOCTEXT("NoData",
+			"No data \u2014 nothing measured yet.\nFocus a Level Editor viewport to measure.");
+	}
 }
 
 void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
@@ -115,6 +126,25 @@ int32 STrueScopeWidget::DrawPausedHint(FSlateWindowElementList& OutDrawElements,
 
 	return TrueScope::Draw::DrawCenteredHint(OutDrawElements, LayerId, AllottedGeometry, Content,
 		GetPausedHintText());
+}
+
+int32 STrueScopeWidget::DrawScopeHints(FSlateWindowElementList& OutDrawElements, int32 LayerId,
+	const FGeometry& AllottedGeometry, const FSlateRect& Content) const
+{
+	// Paused wins: it means values are being HELD (data exists and stays
+	// readable under the hint), which is more specific than "no data".
+	if (ShouldDrawPausedHint())
+	{
+		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+	}
+
+	if (!HasDrawableData())
+	{
+		return TrueScope::Draw::DrawCenteredHint(OutDrawElements, LayerId, AllottedGeometry, Content,
+			GetEmptyHintText());
+	}
+
+	return LayerId;
 }
 
 FVector2D STrueScopeWidget::ComputeDesiredSize(float) const

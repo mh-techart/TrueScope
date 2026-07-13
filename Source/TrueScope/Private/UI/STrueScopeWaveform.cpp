@@ -38,6 +38,23 @@ void STrueScopeWaveform::BuildTexels(const FTrueScopeAnalysisResult& Result, ETr
 	}
 }
 
+bool STrueScopeWaveform::HasDrawableData() const
+{
+	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
+	if (!Result.IsValid())
+	{
+		return false;
+	}
+	if (Result->bHasGpuWaveform)
+	{
+		return true;
+	}
+	// CPU path: exactly the completeness condition UpdateTraceTexture uploads on.
+	const int32 NumTexels = GetTexelCount(*Result);
+	return NumTexels > 0 && Result->LumaIntensity.Num() == NumTexels
+		&& Result->ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelR].Num() == NumTexels;
+}
+
 TArrayView<const FTrueScopeDisplayMode> STrueScopeWaveform::GetDisplayModes() const
 {
 	// Function-local: LOCTEXT must not run before localization is initialized.
@@ -163,7 +180,7 @@ int32 STrueScopeWaveform::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
 	// Graticule + fixed-size 10-bit scale labels, every 128 code values.
 	LayerId = DrawValueAxisY(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetWaveformGraticuleLevels());
 
-	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+	return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 }
 
 #undef LOCTEXT_NAMESPACE

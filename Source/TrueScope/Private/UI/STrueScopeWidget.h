@@ -73,6 +73,34 @@ public:
 		return ScopeState == TrueScope::EScopeState::PausedInPie;
 	}
 
+	/**
+	 * Whether the cached result carries drawable data for THIS scope — the
+	 * exact condition the empty-state hint branches on (phase-5.2 unified
+	 * empty-state). Each scope overrides it with its own data check, so no
+	 * scope can silently hold a stale trace while another blanks: any scope
+	 * without data for the current result says so, identically.
+	 */
+	virtual bool HasDrawableData() const
+	{
+		return GetCachedResult().IsValid();
+	}
+
+	/**
+	 * The hint branch every scope's OnPaint ends in: the paused hint over
+	 * held values while the measured viewport is in PIE, else the uniform
+	 * "no data" hint when this scope has nothing to draw (phase-5.2), else
+	 * nothing. Returns the next free layer.
+	 */
+	int32 DrawScopeHints(FSlateWindowElementList& OutDrawElements, int32 LayerId,
+		const FGeometry& AllottedGeometry, const FSlateRect& Content) const;
+
+	/** Test seam: inject a result as if the analyzer had published it. */
+	void SetCachedResultForTesting(const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& InResult)
+	{
+		CachedResult = InResult;
+		OnAnalysisResultChanged();
+	}
+
 protected:
 	/** Call from the subclass's Construct. */
 	void InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,

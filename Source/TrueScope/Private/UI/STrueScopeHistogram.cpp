@@ -112,6 +112,18 @@ float STrueScopeHistogram::GetCurveHeight(uint32 Count, uint32 MaxCount)
 	return static_cast<float>(Count) / static_cast<float>(MaxCount);
 }
 
+bool STrueScopeHistogram::HasDrawableData() const
+{
+	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
+	if (!Result.IsValid() || Result->SourceSize.X <= 0)
+	{
+		return false;
+	}
+	// CPU path: exactly the conditions the vector draw needs (bins present
+	// and a nonzero shared scale).
+	return Result->bHasGpuHistogram || GetSharedMaxCount(*Result) > 0;
+}
+
 TArrayView<const FTrueScopeDisplayMode> STrueScopeHistogram::GetDisplayModes() const
 {
 	// Function-local: LOCTEXT must not run before localization is initialized.
@@ -157,7 +169,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
 	if (!Result.IsValid() || Result->SourceSize.X <= 0)
 	{
-		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	// GPU path (phase-5.2): the curves arrive pre-rasterized (fill + outline,
@@ -188,7 +200,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 			}
 		}
 		++LayerId;
-		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	// One shared vertical scale across the channels, so their relative heights
@@ -196,7 +208,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	const uint32 MaxCount = GetSharedMaxCount(*Result);
 	if (MaxCount == 0)
 	{
-		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
 	const FSlateBrush* WhiteBrush = FAppStyle::Get().GetBrush("WhiteBrush");
@@ -251,7 +263,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	}
 	LayerId += 2;
 
-	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+	return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -114,6 +114,22 @@ void STrueScopeParade::OnAnalysisResultChanged()
 	}
 }
 
+bool STrueScopeParade::HasDrawableData() const
+{
+	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
+	if (!Result.IsValid() || Result->ParadeImageSize.X <= 0)
+	{
+		return false;
+	}
+	if (Result->bHasGpuParade)
+	{
+		return true;
+	}
+	// CPU path: exactly the completeness condition the texture upload checks.
+	return Result->ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelR].Num()
+		== Result->ParadeImageSize.X * Result->ParadeImageSize.Y;
+}
+
 int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
 	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
 	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
@@ -158,7 +174,7 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 	// Graticule + fixed-size 10-bit scale labels, every 128 code values.
 	LayerId = DrawValueAxisY(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetWaveformGraticuleLevels());
 
-	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+	return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 }
 
 #undef LOCTEXT_NAMESPACE

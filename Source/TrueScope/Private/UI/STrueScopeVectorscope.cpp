@@ -116,6 +116,18 @@ void STrueScopeVectorscope::OnAnalysisResultChanged()
 		});
 }
 
+bool STrueScopeVectorscope::HasDrawableData() const
+{
+	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
+	if (!Result.IsValid())
+	{
+		return false;
+	}
+	return Result->bHasGpuVectorscope
+		|| Result->VectorscopeIntensity.Num()
+			== FTrueScopeAnalysisResult::NumVectorBins * FTrueScopeAnalysisResult::NumVectorBins;
+}
+
 int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
 	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
 	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
@@ -199,5 +211,5 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 	}
 	++LayerId;
 
-	return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+	return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 }

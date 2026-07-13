@@ -38,6 +38,8 @@ public:
 		const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
 		const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 
+	virtual bool HasDrawableData() const override;
+
 protected:
 	virtual void OnAnalysisResultChanged() override;
 

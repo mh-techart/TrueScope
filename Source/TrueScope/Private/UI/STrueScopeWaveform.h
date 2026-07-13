@@ -68,6 +68,8 @@ public:
 	static void BuildTexels(const FTrueScopeAnalysisResult& Result, ETrueScopeWaveformMode Mode,
 		TArrayView<FColor> OutTexels);
 
+	virtual bool HasDrawableData() const override;
+
 protected:
 	virtual void OnAnalysisResultChanged() override;
 

@@ -92,6 +92,8 @@ public:
 	 */
 	static float GetCurveHeight(uint32 Count, uint32 MaxCount);
 
+	virtual bool HasDrawableData() const override;
+
 protected:
 	virtual void OnAnalysisResultChanged() override;
 
