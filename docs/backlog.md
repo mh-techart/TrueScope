@@ -187,6 +187,31 @@ mechanism rather than leaving stale traces.
   reworks the readback machine anyway**, rather than as speculative work now.
   Include a regression test that drives an in-flight readback whose fence never
   signals and asserts the reset restores capture.
+- **Render scope textures at display resolution (`architecture.md:112`)** — the
+  anti-pixelation recipe requires "scope textures at display resolution or
+  higher", and the GPU path does not meet it: the histogram rasterizes into a
+  fixed 512×144 target that is upscaled to the panel, violating the rule and
+  producing a thicker/softer stroke than the CPU path. **This is not a
+  histogram-line bug** — the fixed-size raster is the root cause and the rule
+  applies to *all* GPU scopes (the parade/waveform/vectorscope density targets
+  are likewise fixed at `CaptureWidth × NumBins` and upscaled). Fix at **M6 for
+  all GPU scopes uniformly** — plumb the widget's plot-rect device-px into the
+  analysis pass, size the render targets dynamically — **not piecemeal per
+  scope**. The GPU path is not the shipped default until M7, so the cosmetic
+  residual ships to nobody meanwhile.
+
+  *Measured 2026-07-14* (retina, red curve, device px): the raster is magnified
+  3.67× horizontally but only 1.64× vertically, and the shader measures the
+  stroke distance isotropically in *texel* space — so the GPU stroke is not just
+  wider than the Slate vector line but **slope-dependent**: 1.98 px on flat
+  stretches and 4.00 px on steep peaks, against the CPU line's uniform
+  1.13/1.32 px. No thickness constant can fix this (a texture with fewer texels
+  than the screen has pixels cannot carry a crisp 1-px line, and no constant
+  removes the anisotropy) — hence the resolution fix above. The stroke's
+  *coverage profile* was a separate, genuine bug and is already fixed
+  (commit "Match Slate's antialiased line coverage in the histogram GPU
+  raster"): the shader now reproduces Slate's own antialiased-line coverage
+  instead of a box profile that laid down ~2× the ink at a saturated core.
 - **Density-to-brightness curve tuning ("scopes drowning in dense areas")** —
   observed in the M3 review: TrueScope's parade density is much denser than
   Resolve's, so structure drowns in solid fills. The likely cause is **not**
