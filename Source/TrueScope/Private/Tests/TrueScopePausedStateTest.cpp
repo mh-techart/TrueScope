@@ -82,7 +82,9 @@ bool FTrueScopePausedStateTest::RunTest(const FString&)
 	using namespace TrueScope;
 
 	// --- The decision itself, as a pure rule ------------------------------------
-	const double Interval = CaptureIntervalSeconds;
+	// The rule is expressed in capture intervals, so it holds at any measurement
+	// rate; the shipped default is the natural case to pin it at.
+	const double Interval = DefaultCaptureIntervalSeconds;
 	const double Stale = PausedAfterMissedIntervals * Interval + 1.0;
 
 	TestTrue(TEXT("No PIE, results flowing: live"),

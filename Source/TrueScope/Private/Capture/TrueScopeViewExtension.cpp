@@ -62,6 +62,11 @@ void FTrueScopeViewExtension::SetUseGpuAnalysis(bool bInUseGpuAnalysis)
 	HandleAnalysisPathChanged();
 }
 
+void FTrueScopeViewExtension::SetMeasurementRateHz(float InRateHz)
+{
+	MeasurementRateHz.store(FMath::Max(InRateHz, 0.1f), std::memory_order_relaxed);
+}
+
 void FTrueScopeViewExtension::BindAnalysisPathCVarSink()
 {
 	CVarTrueScopeAnalysisPath.AsVariable()->SetOnChangedCallback(FConsoleVariableDelegate::CreateSP(
@@ -183,7 +188,8 @@ bool FTrueScopeViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensi
 	}
 
 	// Throttle: skipping activation entirely makes a skipped frame cost nothing.
-	if (Now - LastCaptureTimeSeconds < TrueScope::CaptureIntervalSeconds)
+	// The interval follows the user's measurement rate (phase-6.1 Task 2).
+	if (Now - LastCaptureTimeSeconds < GetCaptureIntervalSeconds())
 	{
 		return false;
 	}

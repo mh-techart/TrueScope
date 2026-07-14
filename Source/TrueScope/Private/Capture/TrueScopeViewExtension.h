@@ -28,8 +28,17 @@ namespace TrueScope
 	constexpr int32 CaptureWidth = 960;
 	constexpr int32 CaptureHeight = 540;
 
-	/** Minimum time between captures — ~2.5 Hz refresh (M2 fixed constant). */
-	constexpr double CaptureIntervalSeconds = 0.4;
+	/** Minimum time between captures out of the box — ~2.5 Hz refresh (M2). */
+	constexpr double DefaultCaptureIntervalSeconds = 0.4;
+
+	/**
+	 * Measurement rates the tab's toolbar offers (phase-6.1 Task 2). Deliberately
+	 * a short list of useful cadences, not a free slider: the artist picks
+	 * "slower / normal / faster", and the adaptive rate that would make the choice
+	 * automatic is backlog. 2.5 Hz is the shipped default.
+	 */
+	inline constexpr float MeasurementRatesHz[] = {1.0f, 2.5f, 5.0f};
+	inline constexpr float DefaultMeasurementRateHz = 2.5f;
 
 	/**
 	 * Must stay below the OCIO display extension's priority (100, see
@@ -97,12 +106,30 @@ public:
 	 */
 	void BindAnalysisPathCVarSink();
 
+	/**
+	 * Effective path after the diagnostic CVar override — what is actually
+	 * running, which is what the UI must show (phase-6.1). Game thread.
+	 */
+	bool ResolveEffectiveUseGpu() const;
+
+	/**
+	 * Measurement rate (captures per second, phase-6.1 Task 2). Set from the
+	 * game thread, read by the capture throttle. The rate is a user-facing
+	 * trade-off — a faster scope costs more, and on the CPU path each capture
+	 * blocks the render thread for 1-2 frame-times.
+	 */
+	void SetMeasurementRateHz(float InRateHz);
+	float GetMeasurementRateHz() const { return MeasurementRateHz.load(std::memory_order_relaxed); }
+
+	/** The throttle interval derived from the rate. */
+	double GetCaptureIntervalSeconds() const
+	{
+		return 1.0 / FMath::Max(GetMeasurementRateHz(), KINDA_SMALL_NUMBER);
+	}
+
 private:
 	FScreenPassTexture AfterTonemapPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& View,
 		const FPostProcessMaterialInputs& Inputs);
-
-	/** Effective path after the diagnostic CVar override. Game thread. */
-	bool ResolveEffectiveUseGpu() const;
 
 	/**
 	 * Compares the effective path against the last one seen and, on a change,
@@ -133,6 +160,9 @@ private:
 
 	/** See SetUseGpuAnalysis. */
 	std::atomic<bool> bUseGpuAnalysis{false};
+
+	/** See SetMeasurementRateHz. */
+	std::atomic<float> MeasurementRateHz{TrueScope::DefaultMeasurementRateHz};
 
 	/**
 	 * Whether at least one capture pass has run — the cold-start guard of the

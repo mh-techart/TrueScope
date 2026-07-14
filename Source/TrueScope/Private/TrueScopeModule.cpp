@@ -10,6 +10,7 @@
 #include "Capture/TrueScopeViewExtension.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/CoreDelegates.h"
 #include "Misc/Paths.h"
@@ -93,6 +94,18 @@ void FTrueScopeModule::OnPostEngineInit()
 
 void FTrueScopeModule::SetUseGpuAnalysis(bool bUseGpuAnalysis)
 {
+	// A diagnostic override left on the console would silently outvote the click
+	// the user just made in the tab, so the UI action clears it (phase-6.1). The
+	// CVar sink then re-resolves the effective path, as on any CVar change.
+	if (IConsoleVariable* PathOverride =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("TrueScope.AnalysisPath")))
+	{
+		if (PathOverride->GetInt() >= 0)
+		{
+			PathOverride->Set(-1, ECVF_SetByCode);
+		}
+	}
+
 	if (ViewExtension.IsValid())
 	{
 		ViewExtension->SetUseGpuAnalysis(bUseGpuAnalysis);
@@ -102,6 +115,31 @@ void FTrueScopeModule::SetUseGpuAnalysis(bool bUseGpuAnalysis)
 bool FTrueScopeModule::GetUseGpuAnalysis() const
 {
 	return ViewExtension.IsValid() && ViewExtension->GetUseGpuAnalysis();
+}
+
+bool FTrueScopeModule::GetEffectiveUseGpuAnalysis() const
+{
+	return ViewExtension.IsValid() && ViewExtension->ResolveEffectiveUseGpu();
+}
+
+void FTrueScopeModule::SetMeasurementRateHz(float RateHz)
+{
+	if (ViewExtension.IsValid())
+	{
+		ViewExtension->SetMeasurementRateHz(RateHz);
+	}
+}
+
+float FTrueScopeModule::GetMeasurementRateHz() const
+{
+	return ViewExtension.IsValid() ? ViewExtension->GetMeasurementRateHz()
+		: TrueScope::DefaultMeasurementRateHz;
+}
+
+double FTrueScopeModule::GetCaptureIntervalSeconds() const
+{
+	return ViewExtension.IsValid() ? ViewExtension->GetCaptureIntervalSeconds()
+		: TrueScope::DefaultCaptureIntervalSeconds;
 }
 
 TSharedRef<SDockTab> FTrueScopeModule::SpawnTrueScopeTab(const FSpawnTabArgs& SpawnTabArgs)

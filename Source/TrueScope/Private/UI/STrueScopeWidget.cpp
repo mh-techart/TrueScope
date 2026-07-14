@@ -117,8 +117,10 @@ bool STrueScopeWidget::UpdateScopeState(double NowSeconds)
 	const double SecondsSinceLastResult =
 		LastResultTimeSeconds >= 0.0 ? NowSeconds - LastResultTimeSeconds : 0.0;
 
+	// The staleness clock runs in capture intervals, so it follows the user's
+	// measurement rate instead of pinning M2's fixed 2.5 Hz (phase-6.1 Task 2).
 	const TrueScope::EScopeState NewState = TrueScope::DetermineScopeState(
-		IsPlayInEditorActive(), SecondsSinceLastResult, TrueScope::CaptureIntervalSeconds);
+		IsPlayInEditorActive(), SecondsSinceLastResult, FTrueScopeModule::Get().GetCaptureIntervalSeconds());
 
 	if (NewState == ScopeState)
 	{
@@ -217,7 +219,7 @@ TSharedRef<SWidget> STrueScopeWidget::BuildContextMenu()
 		{
 			MenuBuilder.AddMenuEntry(Mode.Label, FText::GetEmpty(), FSlateIcon(),
 				FUIAction(
-					FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSetDisplayMode, Mode.Id),
+					FExecuteAction::CreateSP(this, &STrueScopeWidget::ApplyDisplayMode, Mode.Id),
 					FCanExecuteAction(),
 					FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsDisplayModeActive, Mode.Id)),
 				NAME_None, EUserInterfaceActionType::RadioButton);
@@ -259,7 +261,7 @@ bool STrueScopeWidget::IsAnalysisPathActive(bool bGpu) const
 	return FTrueScopeModule::Get().GetUseGpuAnalysis() == bGpu;
 }
 
-void STrueScopeWidget::HandleSetDisplayMode(int32 ModeId)
+void STrueScopeWidget::ApplyDisplayMode(int32 ModeId)
 {
 	SetDisplayModeId(ModeId);
 	Invalidate(EInvalidateWidgetReason::Paint);

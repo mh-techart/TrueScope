@@ -42,23 +42,35 @@ static TSharedRef<SWidget> MakePlaceholder(ETrueScopeType Type)
 }
 
 TSharedRef<SWidget> MakeScopeWidget(ETrueScopeType Type,
-	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& Analyzer)
+	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& Analyzer,
+	TSharedPtr<STrueScopeWidget>* OutScopeWidget)
 {
+	TSharedPtr<STrueScopeWidget> Scope;
 	switch (Type)
 	{
 	case ETrueScopeType::Waveform:
-		return SNew(STrueScopeWaveform, Analyzer);
+		Scope = SNew(STrueScopeWaveform, Analyzer);
+		break;
 	case ETrueScopeType::Parade:
-		return SNew(STrueScopeParade, Analyzer);
+		Scope = SNew(STrueScopeParade, Analyzer);
+		break;
 	case ETrueScopeType::Vectorscope:
-		return SNew(STrueScopeVectorscope, Analyzer);
+		Scope = SNew(STrueScopeVectorscope, Analyzer);
+		break;
 	case ETrueScopeType::Histogram:
-		return SNew(STrueScopeHistogram, Analyzer);
+		Scope = SNew(STrueScopeHistogram, Analyzer);
+		break;
 	default:
 		// A scope type added to the enumeration but not yet built (CIE, M8
 		// overlays): the panel keeps working, the gap is visible.
 		return MakePlaceholder(Type);
 	}
+
+	if (OutScopeWidget)
+	{
+		*OutScopeWidget = Scope;
+	}
+	return Scope.ToSharedRef();
 }
 
 } // namespace TrueScope

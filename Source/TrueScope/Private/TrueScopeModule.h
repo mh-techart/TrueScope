@@ -45,11 +45,33 @@ public:
 	 * UI-selected analysis path: true = GPU (performance), false = CPU
 	 * (compatibility). Global since phase-5.2 — one switch selects the path
 	 * for all four scopes at once. Default CPU through M5.x; the flip to
-	 * GPU-default is an M7 decision. Not persisted yet (settings persistence
-	 * is M6). Game thread.
+	 * GPU-default is an M7 decision. Game thread.
+	 *
+	 * Setting it from the UI also clears an active TrueScope.AnalysisPath
+	 * override (phase-6.1): the CVar is a diagnostic channel, so a user's click
+	 * in the tab must never be silently outvoted by a console value they cannot
+	 * see from there.
 	 */
 	void SetUseGpuAnalysis(bool bUseGpuAnalysis);
 	bool GetUseGpuAnalysis() const;
+
+	/**
+	 * The path actually running, i.e. after the diagnostic CVar override — what
+	 * the toolbar and the status line must show, since that is what produced the
+	 * numbers on screen.
+	 */
+	bool GetEffectiveUseGpuAnalysis() const;
+
+	/**
+	 * Measurement rate in captures per second (phase-6.1 Task 2). One value for
+	 * the whole plugin: it throttles the capture, and the scopes' staleness
+	 * clock is expressed in these intervals.
+	 */
+	void SetMeasurementRateHz(float RateHz);
+	float GetMeasurementRateHz() const;
+
+	/** The capture interval derived from the rate; the default before engine init. */
+	double GetCaptureIntervalSeconds() const;
 
 private:
 	void OnPostEngineInit();

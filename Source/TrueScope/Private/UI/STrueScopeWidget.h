@@ -95,6 +95,27 @@ public:
 	int32 DrawScopeHints(FSlateWindowElementList& OutDrawElements, int32 LayerId,
 		const FGeometry& AllottedGeometry, const FSlateRect& Content) const;
 
+	/**
+	 * Display variants this scope offers; empty (default) means none. Public
+	 * since phase-6.1: the tab's toolbar builds a visible control per scope from
+	 * these, so the modes are reachable without the right-click menu ("the end
+	 * user is an artist"). Menu and toolbar drive the same state, so a scope
+	 * that adds a mode gains it in both places at once.
+	 */
+	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const
+	{
+		return TArrayView<const FTrueScopeDisplayMode>();
+	}
+
+	/** Id of the active display mode. */
+	virtual int32 GetDisplayModeId() const
+	{
+		return 0;
+	}
+
+	/** Switch display mode and repaint — the one entry point menu and toolbar share. */
+	void ApplyDisplayMode(int32 ModeId);
+
 	/** Test seam: inject a result as if the analyzer had published it. */
 	void SetCachedResultForTesting(const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& InResult)
 	{
@@ -154,19 +175,7 @@ protected:
 		LastResultTimeSeconds = InSeconds;
 	}
 
-	/** Display variants this scope offers; empty (default) means none. */
-	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const
-	{
-		return TArrayView<const FTrueScopeDisplayMode>();
-	}
-
-	/** Id of the active display mode. */
-	virtual int32 GetDisplayModeId() const
-	{
-		return 0;
-	}
-
-	/** Switch display mode; the base class repaints afterwards. */
+	/** Switch display mode; ApplyDisplayMode repaints afterwards. */
 	virtual void SetDisplayModeId(int32 /*InModeId*/)
 	{
 	}
@@ -185,7 +194,6 @@ private:
 	}
 
 	TSharedRef<SWidget> BuildContextMenu();
-	void HandleSetDisplayMode(int32 ModeId);
 	bool IsDisplayModeActive(int32 ModeId) const;
 	void HandleSetUseGpuAnalysis(bool bUseGpu);
 	bool IsAnalysisPathActive(bool bGpu) const;

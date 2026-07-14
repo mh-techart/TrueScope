@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 
 class FTrueScopeAnalyzer;
+class STrueScopeWidget;
 class SWidget;
 
 /**
@@ -31,7 +32,12 @@ namespace TrueScope
 	 * Factory: builds the widget for a scope type, or a labelled placeholder
 	 * for types not yet implemented. Analysis-agnostic beyond passing the
 	 * analyzer the widget reads its results from.
+	 *
+	 * OutScopeWidget, if given, receives the scope widget itself — the tab's
+	 * toolbar (phase-6.1 Task 2) drives the scopes' display modes through it,
+	 * and a placeholder type simply leaves it null.
 	 */
 	TSharedRef<SWidget> MakeScopeWidget(ETrueScopeType Type,
-		const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& Analyzer);
+		const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& Analyzer,
+		TSharedPtr<STrueScopeWidget>* OutScopeWidget = nullptr);
 }
