@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Analysis/TrueScopeAnalysisResult.h"
+#include "Analysis/TrueScopeRasterSizes.h"
 #include "Containers/ArrayView.h"
 #include "CoreMinimal.h"
 #include "UI/TrueScopeScopeState.h"
@@ -124,6 +125,17 @@ protected:
 	FSlateRect GetScopeContentRect(const FGeometry& AllottedGeometry) const;
 
 	/**
+	 * Publishes, from OnPaint, the rect this scope draws a GPU raster into — in
+	 * DEVICE pixels, so the producer can rasterize at display resolution
+	 * (phase-6.1 Task 1; FTrueScopeRasterSizes). LocalSize is in the widget's
+	 * local space; the geometry's scale carries the editor's DPI/application
+	 * scale, which is exactly what Slate's line thickness is expressed in, so
+	 * the raster and the CPU vector draw end up in the same units.
+	 */
+	void RequestRasterSize(TrueScope::ERasterTarget Target, const FGeometry& AllottedGeometry,
+		FVector2f LocalSize) const;
+
+	/**
 	 * Draws the paused hint over the held scope when paused, nothing otherwise.
 	 * Call last in OnPaint so it sits above the trace. Returns the next free layer.
 	 */
@@ -179,6 +191,10 @@ private:
 	bool IsAnalysisPathActive(bool bGpu) const;
 
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
+
+	/** Where the scopes publish their plot rects for the GPU producer. */
+	TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe> RasterSizes;
+
 	TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> CachedResult;
 	uint64 LastSeenSerial = 0;
 	bool bMaintainSquareAspect = false;

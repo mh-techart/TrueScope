@@ -53,16 +53,17 @@ void STrueScopeParade::OnAnalysisResultChanged()
 	const int32 NumTexels = Size.X * Size.Y;
 
 	// GPU path (M5): the result carries the producer's density render targets;
-	// point the brushes at them — no texture build, no upload, no readback.
+	// point the brushes at them — no texture build, no upload, no readback. The
+	// raster fills the section rect this widget asked for in device pixels
+	// (phase-6.1), so the brush samples exactly that region.
 	if (Result->bHasGpuParade)
 	{
 		for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 		{
 			UTextureRenderTarget2D* Target = Result->ParadeChannelTarget[Channel].Get();
-			if (Target && ChannelBrush[Channel].GetResourceObject() != Target)
+			TrueScope::Draw::BindRasterBrush(ChannelBrush[Channel], Target, Result->ParadeRasterSize);
+			if (Target)
 			{
-				ChannelBrush[Channel].SetResourceObject(Target);
-				ChannelBrush[Channel].ImageSize = FVector2f(Size.X, Size.Y);
 				ChannelTexture[Channel].Reset(); // CPU-path texture no longer drawn
 			}
 		}
@@ -91,8 +92,7 @@ void STrueScopeParade::OnAnalysisResultChanged()
 			Texture->Filter = TF_Bilinear;
 			Texture->UpdateResource();
 			ChannelTexture[Channel].Reset(Texture);
-			ChannelBrush[Channel].SetResourceObject(Texture);
-			ChannelBrush[Channel].ImageSize = FVector2f(Size.X, Size.Y);
+			TrueScope::Draw::BindTextureBrush(ChannelBrush[Channel], Texture, Size);
 		}
 
 		// Colour the single-channel intensity into a private BGRA buffer, freed
@@ -154,6 +154,13 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 		const float SectionWidth =
 			(Plot.GetSize().X - SectionGap * (FTrueScopeAnalysisResult::NumChannels - 1))
 			/ FTrueScopeAnalysisResult::NumChannels;
+
+		// The GPU producer rasterizes one section at exactly this size in device
+		// pixels (the three sections are congruent), so its density texture is
+		// drawn 1:1 rather than upscaled (phase-6.1 Task 1).
+		RequestRasterSize(TrueScope::ERasterTarget::ParadeSection, AllottedGeometry,
+			FVector2f(SectionWidth, Plot.GetSize().Y));
+
 		for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 		{
 			// The brush holds whichever producer's texture is current: the

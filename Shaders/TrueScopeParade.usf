@@ -82,10 +82,22 @@ void ColumnBinCS(uint3 Thread : SV_DispatchThreadID)
 
 // ---------------------------------------------------------------------------
 // Pass 2: counts -> per-channel parade density textures + waveform traces
+//
+// The output is the widget's plot rect in DEVICE PIXELS (phase-6.1 Task 1), not
+// the bin grid: one raster texel is one device pixel, so Slate draws the raster
+// 1:1 and no upscale can thicken or smear it. The bin grid (SourceWidth columns
+// x NUM_BINS value bins) is therefore RESAMPLED into that rect here — with the
+// clamp-bilinear filter Slate's sampler used to apply, so the image is the one
+// the widget drew before, only rasterized at display resolution. Bins and
+// counts are untouched: this is a raster-resolution change, nothing else.
+//
+// The parade and the waveform live in different panels and thus have different
+// plot rects, so they are separate dispatches over the same count buffer.
 // ---------------------------------------------------------------------------
 
 Buffer<uint> ColumnBinsIn;
-int2 OutputSize;     // (capture width, NUM_BINS)
+int2 OutputSize;     // the target's plot rect, in device pixels
+int SourceWidth;     // columns in the count buffer (the capture width)
 uint MaxCount;       // max possible count per cell: the capture height
 float IntensityGain;
 RWTexture2D<float4> RedOut;
@@ -105,23 +117,55 @@ float CountToIntensity(uint Count)
 	return log(1.0 + IntensityGain * float(Count)) / log(1.0 + IntensityGain * float(MaxCount));
 }
 
+float CellIntensity(uint Channel, int Column, int Row)
+{
+	// Row 0 = top = highest value bin, matching the CPU intensity image layout.
+	const uint Bin = uint(NUM_BINS - 1 - Row);
+	const uint ChannelStride = uint(SourceWidth) * NUM_BINS;
+	return CountToIntensity(ColumnBinsIn[Channel * ChannelStride + uint(Column) * NUM_BINS + Bin]);
+}
+
+/**
+ * Bilinear sample of a channel's density at an output texel, in clamp
+ * addressing — the exact filter Slate's bilinear sampler applied to the old
+ * bin-sized texture, evaluated here on the count grid instead. Clamping the
+ * grid coordinate (not the two taps) is what makes the edge texels sample the
+ * edge cell twice, as the clamp sampler does.
+ */
+float SampleChannelIntensity(uint Channel, uint2 Texel)
+{
+	const float ColumnCoord = clamp(
+		(float(Texel.x) + 0.5) * float(SourceWidth) / float(OutputSize.x) - 0.5,
+		0.0, float(SourceWidth - 1));
+	const float RowCoord = clamp(
+		(float(Texel.y) + 0.5) * float(NUM_BINS) / float(OutputSize.y) - 0.5,
+		0.0, float(NUM_BINS - 1));
+
+	const int Column0 = int(floor(ColumnCoord));
+	const int Column1 = min(Column0 + 1, SourceWidth - 1);
+	const int Row0 = int(floor(RowCoord));
+	const int Row1 = min(Row0 + 1, NUM_BINS - 1);
+	const float ColumnFraction = ColumnCoord - float(Column0);
+	const float RowFraction = RowCoord - float(Row0);
+
+	const float Top = lerp(CellIntensity(Channel, Column0, Row0), CellIntensity(Channel, Column1, Row0),
+		ColumnFraction);
+	const float Bottom = lerp(CellIntensity(Channel, Column0, Row1), CellIntensity(Channel, Column1, Row1),
+		ColumnFraction);
+	return lerp(Top, Bottom, RowFraction);
+}
+
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
-void ColumnIntensityCS(uint3 Thread : SV_DispatchThreadID)
+void ColumnIntensityParadeCS(uint3 Thread : SV_DispatchThreadID)
 {
 	if (any(int2(Thread.xy) >= OutputSize))
 	{
 		return;
 	}
 
-	// Row 0 = top = highest value bin, matching the CPU intensity image layout.
-	const uint Bin = uint(OutputSize.y - 1) - Thread.y;
-	const uint ChannelStride = uint(OutputSize.x) * NUM_BINS;
-	const uint Cell = Thread.x * NUM_BINS + Bin;
-
-	const float R = CountToIntensity(ColumnBinsIn[0u * ChannelStride + Cell]);
-	const float G = CountToIntensity(ColumnBinsIn[1u * ChannelStride + Cell]);
-	const float B = CountToIntensity(ColumnBinsIn[2u * ChannelStride + Cell]);
-	const float L = CountToIntensity(ColumnBinsIn[3u * ChannelStride + Cell]);
+	const float R = SampleChannelIntensity(0u, Thread.xy);
+	const float G = SampleChannelIntensity(1u, Thread.xy);
+	const float B = SampleChannelIntensity(2u, Thread.xy);
 
 	// One single-channel texture per parade channel: the intensity goes into
 	// exactly the channel's own component, zero elsewhere (no cross-channel
@@ -129,10 +173,24 @@ void ColumnIntensityCS(uint3 Thread : SV_DispatchThreadID)
 	RedOut[Thread.xy]   = float4(R, 0.0, 0.0, 1.0);
 	GreenOut[Thread.xy] = float4(0.0, G, 0.0, 1.0);
 	BlueOut[Thread.xy]  = float4(0.0, 0.0, B, 1.0);
+}
+
+[numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
+void ColumnIntensityWaveformCS(uint3 Thread : SV_DispatchThreadID)
+{
+	if (any(int2(Thread.xy) >= OutputSize))
+	{
+		return;
+	}
 
 	// Waveform traces from the same counts (the CPU path's BuildRgbWaveform-
 	// Texels / BuildLumaWaveformTexels): RGB superimposes the three channel
 	// densities in one full-width plot, Luma is a neutral trace.
+	const float R = SampleChannelIntensity(0u, Thread.xy);
+	const float G = SampleChannelIntensity(1u, Thread.xy);
+	const float B = SampleChannelIntensity(2u, Thread.xy);
+	const float L = SampleChannelIntensity(3u, Thread.xy);
+
 	WaveformRgbOut[Thread.xy] = float4(R, G, B, 1.0);
 	WaveformLumaOut[Thread.xy] = float4(L, L, L, 1.0);
 }

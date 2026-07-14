@@ -3,11 +3,13 @@
 
 #include "UI/TrueScopeDraw.h"
 
+#include "Engine/TextureRenderTarget2D.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
+#include "Styling/SlateBrush.h"
 
 namespace TrueScope::Draw
 {
@@ -25,6 +27,35 @@ namespace
 	{
 		return Level / static_cast<float>(ScaleMax);
 	}
+}
+
+void BindRasterBrush(FSlateBrush& Brush, UTextureRenderTarget2D* Target, FIntPoint RasterSize)
+{
+	if (!Target || RasterSize.X <= 0 || RasterSize.Y <= 0)
+	{
+		return;
+	}
+
+	if (Brush.GetResourceObject() != Target)
+	{
+		Brush.SetResourceObject(Target);
+	}
+	Brush.ImageSize = FVector2f(RasterSize.X, RasterSize.Y);
+
+	// The rasterized region within the bucket-allocated target. Re-set on every
+	// result: the region tracks the panel, the allocation only tracks buckets.
+	const float TargetWidth = static_cast<float>(FMath::Max<int32>(Target->SizeX, 1));
+	const float TargetHeight = static_cast<float>(FMath::Max<int32>(Target->SizeY, 1));
+	Brush.SetUVRegion(FBox2f(FVector2f::ZeroVector,
+		FVector2f(FMath::Min(RasterSize.X / TargetWidth, 1.0f), FMath::Min(RasterSize.Y / TargetHeight, 1.0f))));
+}
+
+void BindTextureBrush(FSlateBrush& Brush, UTexture* Texture, FIntPoint Size)
+{
+	Brush.SetResourceObject(Texture);
+	Brush.ImageSize = FVector2f(Size.X, Size.Y);
+	// The CPU path draws whole textures; clear any region a GPU result left.
+	Brush.SetUVRegion(FBox2f(ForceInit));
 }
 
 FSlateFontInfo GetLabelFont()

@@ -65,14 +65,14 @@ void STrueScopeVectorscope::OnAnalysisResultChanged()
 
 	// GPU path (phase-5.1): the result carries the producer's density render
 	// target; point the brush at it — no texture build, no upload, no readback
-	// (same pattern as the parade widget).
+	// (same pattern as the parade widget). The raster fills the square plot rect
+	// this widget asked for in device pixels (phase-6.1).
 	if (Result->bHasGpuVectorscope)
 	{
 		UTextureRenderTarget2D* Target = Result->VectorscopeTarget.Get();
-		if (Target && TraceBrush.GetResourceObject() != Target)
+		TrueScope::Draw::BindRasterBrush(TraceBrush, Target, Result->VectorscopeRasterSize);
+		if (Target)
 		{
-			TraceBrush.SetResourceObject(Target);
-			TraceBrush.ImageSize = FVector2f(NumBins, NumBins);
 			TraceTexture.Reset(); // CPU-path texture no longer drawn
 		}
 		return;
@@ -92,8 +92,7 @@ void STrueScopeVectorscope::OnAnalysisResultChanged()
 		Texture->Filter = TF_Bilinear;
 		Texture->UpdateResource();
 		TraceTexture.Reset(Texture);
-		TraceBrush.SetResourceObject(Texture);
-		TraceBrush.ImageSize = FVector2f(NumBins, NumBins);
+		TrueScope::Draw::BindTextureBrush(TraceBrush, Texture, FIntPoint(NumBins, NumBins));
 	}
 
 	// White texels carrying the density in alpha, so empty chroma coordinates
@@ -149,6 +148,10 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 
 	const FVector2f Center(Content.Left + Content.GetSize().X * 0.5f, Content.Top + Content.GetSize().Y * 0.5f);
 	const float Radius = PlotSide * 0.5f;
+
+	// The GPU producer rasterizes the density square at exactly this size in
+	// device pixels, so it is drawn 1:1 rather than upscaled (phase-6.1 Task 1).
+	RequestRasterSize(TrueScope::ERasterTarget::Vectorscope, AllottedGeometry, FVector2f(PlotSide, PlotSide));
 
 	// Density plot: the whole [-0.5, 0.5] chroma square, so the out-of-circle
 	// corners (100 % green, magenta) remain visible instead of being clipped.

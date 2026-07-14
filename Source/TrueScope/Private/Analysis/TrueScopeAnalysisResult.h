@@ -107,6 +107,20 @@ struct FTrueScopeAnalysisResult
 	bool bHasGpuParade = false;
 
 	/**
+	 * Region of each GPU raster target that this result actually rasterized, in
+	 * texels (phase-6.1 Task 1). The targets are ALLOCATED in size buckets so a
+	 * splitter drag does not reallocate them, but the raster fills exactly the
+	 * widget's plot rect in device pixels — so the widget samples only this
+	 * region (brush UV region) and one texel lands on one device pixel. Zero
+	 * while the producing path has no raster of that kind.
+	 */
+	FIntPoint ParadeRasterSize = FIntPoint::ZeroValue;
+	FIntPoint WaveformRasterSize = FIntPoint::ZeroValue;
+	FIntPoint VectorscopeRasterSize = FIntPoint::ZeroValue;
+	FIntPoint HistogramStackedRasterSize = FIntPoint::ZeroValue;
+	FIntPoint HistogramOverlayRasterSize = FIntPoint::ZeroValue;
+
+	/**
 	 * GPU-resident vectorscope (phase-5.1 GPU path): the NumVectorBins^2
 	 * density render target written by the vectorscope intensity pass — white
 	 * texels carrying the density in alpha, the same convention as the CPU

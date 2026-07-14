@@ -57,6 +57,7 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 	bool bInMaintainSquareAspect)
 {
 	Analyzer = InAnalyzer;
+	RasterSizes = FTrueScopeModule::Get().GetRasterSizes();
 	bMaintainSquareAspect = bInMaintainSquareAspect;
 
 	if (Analyzer)
@@ -64,6 +65,18 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 		RegisterActiveTimer(ResultPollPeriodSeconds,
 			FWidgetActiveTimerDelegate::CreateSP(this, &STrueScopeWidget::PollAnalyzer));
 	}
+}
+
+void STrueScopeWidget::RequestRasterSize(TrueScope::ERasterTarget Target, const FGeometry& AllottedGeometry,
+	FVector2f LocalSize) const
+{
+	if (!RasterSizes)
+	{
+		return; // no producer (commandlet / test); nothing rasterizes on the GPU
+	}
+
+	const FVector2f DeviceSize = LocalSize * AllottedGeometry.Scale;
+	RasterSizes->Request(Target, TrueScope::ClampRasterSize(DeviceSize));
 }
 
 EActiveTimerReturnType STrueScopeWidget::PollAnalyzer(double InCurrentTime, float InDeltaTime)

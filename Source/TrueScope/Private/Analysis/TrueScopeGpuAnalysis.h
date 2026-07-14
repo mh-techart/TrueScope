@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Analysis/TrueScopeAnalysisResult.h"
+#include "Analysis/TrueScopeRasterSizes.h"
 #include "CoreMinimal.h"
 #include "RenderGraphFwd.h"
 #include "UObject/GCObject.h"
@@ -76,18 +77,29 @@ namespace TrueScope
  * FTrueScopeAnalysisResult — the pixel data and the bins never leave the GPU
  * (no readback of any kind on this path).
  *
- * Owns the density render targets the widgets draw directly (PF_R8G8B8A8 +
- * UAV, written by the intensity passes — the Niagara render-target pattern):
- * three per-channel parade targets and two waveform trace targets (capture
- * width x NumBins) and one vectorscope target (NumVectorBins^2, white with
- * density in alpha). The targets are created once and updated in place; each
- * capture publishes a fresh result through the analyzer so widgets repaint on
- * their usual serial poll.
+ * Owns the raster render targets the widgets draw directly (PF_R8G8B8A8 + UAV,
+ * written by the intensity/draw passes — the Niagara render-target pattern):
+ * three per-channel parade targets, two waveform trace targets, one vectorscope
+ * target and the histogram's curve rasters. The targets are updated in place;
+ * each capture publishes a fresh result through the analyzer so widgets repaint
+ * on their usual serial poll.
+ *
+ * Every target is sized to the rect its widget draws it into, in DEVICE PIXELS
+ * (phase-6.1 Task 1, FTrueScopeRasterSizes): one raster texel is one device
+ * pixel, which is the anti-pixelation rule ("scope textures at display
+ * resolution or higher") and what makes the GPU stroke as thin as the
+ * CPU/Slate line — a raster with fewer texels than the panel has pixels cannot
+ * carry a crisp 1-px line, and its upscale is anisotropic when the two axes are
+ * magnified differently. Allocation happens in size buckets so dragging a
+ * splitter cannot reallocate the targets every mouse move; the raster fills the
+ * exact requested region of the bucketed target and the widget samples only
+ * that region.
  */
 class FTrueScopeGpuAnalysis : public TSharedFromThis<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe>, public FGCObject
 {
 public:
-	explicit FTrueScopeGpuAnalysis(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer);
+	FTrueScopeGpuAnalysis(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
+		const TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe>& InRasterSizes);
 
 	//~ Begin FGCObject interface
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
@@ -95,9 +107,12 @@ public:
 	//~ End FGCObject interface
 
 	/**
-	 * Re-resolves the render-target resources and hands them to the render
-	 * thread. Called from the capture extension's BeginRenderViewFamily each
-	 * frame (same robustness pattern as the capture RT's resource cache).
+	 * Applies the widgets' current plot rects to the render targets (resizing
+	 * one only when its request crosses a bucket), then re-resolves the
+	 * render-target resources and hands them, with the exact raster sizes, to
+	 * the render thread. Called from the capture extension's
+	 * BeginRenderViewFamily each frame (same robustness pattern as the capture
+	 * RT's resource cache).
 	 */
 	void CacheResources_GameThread();
 
@@ -109,6 +124,12 @@ public:
 	void AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBuilder, FRDGTextureRef CaptureTexture);
 
 private:
+	/**
+	 * Sizes Target to the widget's current request (bucketed allocation) and
+	 * returns the exact region to rasterize, in texels. Game thread.
+	 */
+	FIntPoint ApplyRasterSize(UTextureRenderTarget2D* Target, TrueScope::ERasterTarget Which) const;
+
 	/** Per-channel density targets the parade widget draws. Game thread owned. */
 	TObjectPtr<UTextureRenderTarget2D> ChannelTarget[FTrueScopeAnalysisResult::NumChannels];
 
@@ -134,9 +155,11 @@ private:
 	/**
 	 * Histogram curve targets (phase-5.2): one per channel for the stacked
 	 * Separate Channels mode plus one combined RGB Overlay texture. The two
-	 * sets are rasterized at different heights because the modes draw into
-	 * bands of very different heights — each stays near 1:1 sampling, keeping
-	 * the outline width faithful to the CPU draw's 1 px line.
+	 * sets are separate targets because the modes draw into rects of very
+	 * different heights (a band vs. the whole plot), and each is rasterized at
+	 * its own rect's device resolution — so the outline is exactly the CPU
+	 * draw's 1-px Slate line in either mode, and switching modes needs no new
+	 * capture.
 	 */
 	TObjectPtr<UTextureRenderTarget2D> HistogramStackedTarget[FTrueScopeAnalysisResult::NumChannels];
 	TObjectPtr<UTextureRenderTarget2D> HistogramOverlayTarget;
@@ -147,4 +170,18 @@ private:
 
 	/** Receives the published GPU results (same channel as the CPU analysis). */
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
+
+	/** The widgets' plot rects in device pixels — what the targets are sized to. */
+	TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe> RasterSizes;
+
+	/**
+	 * The regions the passes rasterize this capture, snapshotted on the game
+	 * thread with the resources above (so size and resource can never disagree)
+	 * and read on the render thread only.
+	 */
+	FIntPoint ParadeRasterSizeRenderThread = FIntPoint::ZeroValue;
+	FIntPoint WaveformRasterSizeRenderThread = FIntPoint::ZeroValue;
+	FIntPoint VectorscopeRasterSizeRenderThread = FIntPoint::ZeroValue;
+	FIntPoint HistogramStackedRasterSizeRenderThread = FIntPoint::ZeroValue;
+	FIntPoint HistogramOverlayRasterSizeRenderThread = FIntPoint::ZeroValue;
 };

@@ -33,8 +33,10 @@ void STrueScopeHistogram::OnAnalysisResultChanged()
 {
 	// GPU path (phase-5.2): point the brushes at the producer's curve raster
 	// targets — no texture build, no upload, no readback (the parade widget's
-	// pattern). A CPU result needs nothing here: OnPaint draws the vector
-	// curves directly from its bin arrays.
+	// pattern). Both sets are rasterized at their own rect's device resolution
+	// (phase-6.1: a band and the whole plot), so each is drawn 1:1 and the
+	// outline is exactly the CPU draw's 1-px Slate line. A CPU result needs
+	// nothing here: OnPaint draws the vector curves from its bin arrays.
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
 	if (!Result.IsValid() || !Result->bHasGpuHistogram)
 	{
@@ -43,19 +45,11 @@ void STrueScopeHistogram::OnAnalysisResultChanged()
 
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
-		UTextureRenderTarget2D* Target = Result->HistogramStackedTarget[Channel].Get();
-		if (Target && StackedBrush[Channel].GetResourceObject() != Target)
-		{
-			StackedBrush[Channel].SetResourceObject(Target);
-			StackedBrush[Channel].ImageSize = FVector2f(Target->SizeX, Target->SizeY);
-		}
+		TrueScope::Draw::BindRasterBrush(StackedBrush[Channel], Result->HistogramStackedTarget[Channel].Get(),
+			Result->HistogramStackedRasterSize);
 	}
-	UTextureRenderTarget2D* OverlayTarget = Result->HistogramOverlayTarget.Get();
-	if (OverlayTarget && OverlayBrush.GetResourceObject() != OverlayTarget)
-	{
-		OverlayBrush.SetResourceObject(OverlayTarget);
-		OverlayBrush.ImageSize = FVector2f(OverlayTarget->SizeX, OverlayTarget->SizeY);
-	}
+	TrueScope::Draw::BindRasterBrush(OverlayBrush, Result->HistogramOverlayTarget.Get(),
+		Result->HistogramOverlayRasterSize);
 }
 
 FSlateRect STrueScopeHistogram::GetChannelPlotRect(const FSlateRect& Plot, ETrueScopeHistogramMode InMode, int32 Channel)
@@ -165,6 +159,14 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 
 	// One 0-1023 value axis spanning all channel sub-plots.
 	LayerId = DrawValueAxisX(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetHistogramGraticuleLevels());
+
+	// Both curve rasters are requested every paint, not just the current mode's:
+	// the producer rasterizes both each capture, so switching mode swaps to a
+	// texture that is already correct for its rect instead of waiting for the
+	// next capture (phase-6.1 Task 1; sizes in device pixels).
+	RequestRasterSize(TrueScope::ERasterTarget::HistogramBand, AllottedGeometry,
+		GetChannelPlotRect(Plot, ETrueScopeHistogramMode::SeparateChannels, 0).GetSize());
+	RequestRasterSize(TrueScope::ERasterTarget::HistogramOverlay, AllottedGeometry, Plot.GetSize());
 
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
 	if (!Result.IsValid() || Result->SourceSize.X <= 0)

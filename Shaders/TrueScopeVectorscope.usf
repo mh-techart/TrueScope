@@ -80,9 +80,16 @@ void VectorBinCS(uint3 Thread : SV_DispatchThreadID)
 
 // ---------------------------------------------------------------------------
 // Pass 2: counts -> density texture (white, density in alpha)
+//
+// The output is the widget's square plot rect in DEVICE PIXELS (phase-6.1
+// Task 1), so one raster texel is one device pixel and Slate draws the raster
+// 1:1. The (Cb, Cr) count grid is resampled into that rect with the same
+// clamp-bilinear filter Slate's sampler used to apply — bins and counts are
+// untouched, only the raster resolution changes.
 // ---------------------------------------------------------------------------
 
 Buffer<uint> VectorBinsIn;
+int2 OutputSize;     // the vectorscope's plot square, in device pixels
 uint MaxCount;       // max possible count per cell: the whole frame's pixel count
 float IntensityGain;
 RWTexture2D<float4> VectorscopeOut;
@@ -97,16 +104,42 @@ float CountToIntensity(uint Count)
 	return log(1.0 + IntensityGain * float(Count)) / log(1.0 + IntensityGain * float(MaxCount));
 }
 
+float CellIntensity(int Column, int Row)
+{
+	// Row 0 = top = highest Cr, matching the CPU intensity image layout.
+	const uint CrBin = uint(NUM_VECTOR_BINS - 1 - Row);
+	return CountToIntensity(VectorBinsIn[CrBin * NUM_VECTOR_BINS + uint(Column)]);
+}
+
+/** Clamp-bilinear sample of the count grid at an output texel (see the header). */
+float SampleIntensity(uint2 Texel)
+{
+	const float CbCoord = clamp(
+		(float(Texel.x) + 0.5) * float(NUM_VECTOR_BINS) / float(OutputSize.x) - 0.5,
+		0.0, float(NUM_VECTOR_BINS - 1));
+	const float RowCoord = clamp(
+		(float(Texel.y) + 0.5) * float(NUM_VECTOR_BINS) / float(OutputSize.y) - 0.5,
+		0.0, float(NUM_VECTOR_BINS - 1));
+
+	const int Column0 = int(floor(CbCoord));
+	const int Column1 = min(Column0 + 1, NUM_VECTOR_BINS - 1);
+	const int Row0 = int(floor(RowCoord));
+	const int Row1 = min(Row0 + 1, NUM_VECTOR_BINS - 1);
+	const float ColumnFraction = CbCoord - float(Column0);
+	const float RowFraction = RowCoord - float(Row0);
+
+	const float Top = lerp(CellIntensity(Column0, Row0), CellIntensity(Column1, Row0), ColumnFraction);
+	const float Bottom = lerp(CellIntensity(Column0, Row1), CellIntensity(Column1, Row1), ColumnFraction);
+	return lerp(Top, Bottom, RowFraction);
+}
+
 [numthreads(THREADGROUP_SIZE, THREADGROUP_SIZE, 1)]
 void VectorIntensityCS(uint3 Thread : SV_DispatchThreadID)
 {
-	if (any(Thread.xy >= uint(NUM_VECTOR_BINS).xx))
+	if (any(int2(Thread.xy) >= OutputSize))
 	{
 		return;
 	}
 
-	// Row 0 = top = highest Cr, matching the CPU intensity image layout.
-	const uint CrBin = uint(NUM_VECTOR_BINS - 1) - Thread.y;
-	const float Intensity = CountToIntensity(VectorBinsIn[CrBin * NUM_VECTOR_BINS + Thread.x]);
-	VectorscopeOut[Thread.xy] = float4(1.0, 1.0, 1.0, Intensity);
+	VectorscopeOut[Thread.xy] = float4(1.0, 1.0, 1.0, SampleIntensity(Thread.xy));
 }

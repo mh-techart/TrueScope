@@ -10,6 +10,9 @@
 #include "Layout/SlateRect.h"
 
 class FSlateWindowElementList;
+class UTexture;
+class UTextureRenderTarget2D;
+struct FSlateBrush;
 
 /**
  * Chrome shared by the scope widgets: one background, one set of colors and one
@@ -70,6 +73,21 @@ namespace TrueScope::Draw
 	 * about the source's bit depth.
 	 */
 	inline constexpr int32 ScaleMax = 1023;
+
+	/**
+	 * Points a scope brush at a GPU raster target and restricts sampling to the
+	 * region the producer rasterized this capture (phase-6.1 Task 1).
+	 *
+	 * The targets are ALLOCATED in size buckets, so a target is usually a little
+	 * larger than the raster inside it; the UV region hands Slate exactly the
+	 * rasterized part. Drawn into the plot rect it was rasterized for, that keeps
+	 * one texel on one device pixel — the bilinear filter becomes an identity
+	 * instead of an upscale that thickens and smears the trace.
+	 */
+	void BindRasterBrush(FSlateBrush& Brush, UTextureRenderTarget2D* Target, FIntPoint RasterSize);
+
+	/** Points a scope brush at a CPU-path texture: the whole texture, no region. */
+	void BindTextureBrush(FSlateBrush& Brush, UTexture* Texture, FIntPoint Size);
 
 	/** The one font every scope labels with — fixed size, never scaled. */
 	FSlateFontInfo GetLabelFont();

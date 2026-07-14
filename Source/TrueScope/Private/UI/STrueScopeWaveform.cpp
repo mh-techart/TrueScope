@@ -97,16 +97,17 @@ void STrueScopeWaveform::UpdateTraceTexture()
 	// GPU path (phase-5.2): the result carries the producer's trace render
 	// targets; point the brush at the one matching the display mode — no
 	// texture build, no upload, no readback (same pattern as the parade
-	// widget). A mode switch re-enters here and just swaps the brush.
+	// widget). A mode switch re-enters here and just swaps the brush. Both
+	// traces are rasterized at this widget's plot rect in device pixels
+	// (phase-6.1), so the brush samples exactly that region.
 	if (Result->bHasGpuWaveform)
 	{
 		UTextureRenderTarget2D* Target = Mode == ETrueScopeWaveformMode::Luma
 			? Result->WaveformLumaTarget.Get()
 			: Result->WaveformRgbTarget.Get();
-		if (Target && TraceBrush.GetResourceObject() != Target)
+		TrueScope::Draw::BindRasterBrush(TraceBrush, Target, Result->WaveformRasterSize);
+		if (Target)
 		{
-			TraceBrush.SetResourceObject(Target);
-			TraceBrush.ImageSize = FVector2f(Size.X, Size.Y);
 			TraceTexture.Reset(); // CPU-path texture no longer drawn
 		}
 		return;
@@ -129,8 +130,7 @@ void STrueScopeWaveform::UpdateTraceTexture()
 		Texture->Filter = TF_Bilinear;
 		Texture->UpdateResource();
 		TraceTexture.Reset(Texture);
-		TraceBrush.SetResourceObject(Texture);
-		TraceBrush.ImageSize = FVector2f(Size.X, Size.Y);
+		TrueScope::Draw::BindTextureBrush(TraceBrush, Texture, Size);
 	}
 
 	// Private BGRA buffer, freed by the async-upload cleanup once the render
@@ -164,6 +164,10 @@ int32 STrueScopeWaveform::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
 	{
 		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
+
+	// The GPU producer rasterizes the trace at exactly this plot rect in device
+	// pixels, so it is drawn 1:1 rather than upscaled (phase-6.1 Task 1).
+	RequestRasterSize(TrueScope::ERasterTarget::Waveform, AllottedGeometry, Plot.GetSize());
 
 	// The trace already carries its colour per texel; a white tint passes it
 	// through unchanged. The brush holds whichever producer's texture is

@@ -5,6 +5,7 @@
 
 #include "Analysis/TrueScopeAnalyzer.h"
 #include "Analysis/TrueScopeGpuAnalysis.h"
+#include "Analysis/TrueScopeRasterSizes.h"
 #include "Capture/TrueScopeCaptureGate.h"
 #include "Capture/TrueScopeViewExtension.h"
 #include "Framework/Application/SlateApplication.h"
@@ -57,6 +58,7 @@ void FTrueScopeModule::ShutdownModule()
 		Analyzer.Reset();
 	}
 	GpuAnalysis.Reset();
+	RasterSizes.Reset();
 	CaptureGate.Reset();
 
 	if (FSlateApplication::IsInitialized())
@@ -76,7 +78,8 @@ void FTrueScopeModule::OnPostEngineInit()
 
 	Analyzer = MakeShared<FTrueScopeAnalyzer, ESPMode::ThreadSafe>();
 	CaptureGate = MakeShared<FTrueScopeCaptureGate, ESPMode::ThreadSafe>();
-	GpuAnalysis = MakeShared<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe>(Analyzer);
+	RasterSizes = MakeShared<FTrueScopeRasterSizes, ESPMode::ThreadSafe>();
+	GpuAnalysis = MakeShared<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe>(Analyzer, RasterSizes);
 	ViewExtension = FSceneViewExtensions::NewExtension<FTrueScopeViewExtension>(Analyzer, GpuAnalysis, CaptureGate);
 	ViewExtension->BindAnalysisPathCVarSink();
 

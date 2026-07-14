@@ -10,6 +10,7 @@
 class FTrueScopeAnalyzer;
 class FTrueScopeCaptureGate;
 class FTrueScopeGpuAnalysis;
+class FTrueScopeRasterSizes;
 class FTrueScopeViewExtension;
 
 class FTrueScopeModule : public IModuleInterface
@@ -33,6 +34,14 @@ public:
 	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> GetCaptureGate() const { return CaptureGate; }
 
 	/**
+	 * The scope widgets' plot rects in device pixels (phase-6.1): every scope
+	 * publishes the rect it draws its raster into on each paint, and the GPU
+	 * producer sizes its render targets to them, so the rasters are drawn at
+	 * display resolution. Null in commandlets, like the other services.
+	 */
+	TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe> GetRasterSizes() const { return RasterSizes; }
+
+	/**
 	 * UI-selected analysis path: true = GPU (performance), false = CPU
 	 * (compatibility). Global since phase-5.2 — one switch selects the path
 	 * for all four scopes at once. Default CPU through M5.x; the flip to
@@ -48,6 +57,7 @@ private:
 
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> CaptureGate;
+	TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe> RasterSizes;
 	TSharedPtr<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe> GpuAnalysis;
 	TSharedPtr<FTrueScopeViewExtension, ESPMode::ThreadSafe> ViewExtension;
 };
