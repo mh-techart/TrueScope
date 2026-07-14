@@ -82,7 +82,7 @@ void HistogramReduceCS(uint3 Thread : SV_DispatchThreadID)
 Buffer<uint> HistogramIn;
 Buffer<uint> SharedMaxIn;
 int2 OutputSize;
-float LineHalfWidth;     // outline half-thickness in output texels
+float LineThickness;     // outline thickness in output texels (TrueScope::Draw)
 // The widget's exact curve colours (fill translucent, line stronger), passed
 // from the shared TrueScope::Draw constants so both paths draw identically.
 float4 FillColorR;
@@ -122,6 +122,39 @@ float DistanceToSegment(float2 P, float2 A, float2 B)
 }
 
 /**
+ * Coverage of Slate's antialiased line at a perpendicular distance from the
+ * stroke, reproduced from the engine so the rasterized outline and the CPU
+ * path's Slate vector line lay down the same stroke by construction.
+ *
+ * FSlateElementBatcher::AddLineElements extrudes the line quad to
+ * (HalfThickness + FilterRadius) with FilterRadius = 1 texel and
+ * HalfThickness = 0.5 * LineThickness, putting U = +/-1 on the outer edges;
+ * GetLineSegmentElementColor in SlateElementPixelShader.usf then takes
+ * coverage = smoothstep(1, InsideFilterU, |U|). At LineThickness 1 that peaks
+ * at alpha 0.84 in the core and integrates to ~1.05 texels of ink.
+ *
+ * This replaces a naive saturate(HalfWidth + 0.5 - Distance) box profile,
+ * which saturated the core at alpha 1 and integrated to 2.0 texels — roughly
+ * double the ink, which is why the rasterized curves read as a visibly heavier
+ * stroke than the CPU path (bin values were never involved).
+ *
+ * smoothstep is written out rather than called because its edges are reversed
+ * here (Edge0 > Edge1, since InsideFilterU goes negative for thin lines), a
+ * case HLSL leaves implementation-defined.
+ */
+float SlateLineCoverage(float Distance)
+{
+	const float FilterRadius = 1.0;
+	const float HalfThickness = 0.5 * LineThickness;
+	const float FilteredHalfThickness = HalfThickness + FilterRadius;
+	const float InsideFilterU = (HalfThickness - FilterRadius) / FilteredHalfThickness;
+
+	const float U = saturate(Distance / FilteredHalfThickness);
+	const float T = saturate((U - 1.0) / (InsideFilterU - 1.0));
+	return T * T * (3.0 - 2.0 * T);
+}
+
+/**
  * Fill and line coverage of one channel's curve at one texel, in [0,1].
  * Geometry matches the CPU vector draw: bin b sits at fraction b/(NUM_BINS-1)
  * of the plot width, heights interpolate linearly between bins, the fill
@@ -154,7 +187,7 @@ void CurveCoverage(uint Channel, float2 TexelCenter, out float FillCoverage, out
 			(1.0 - ChannelHeight(Channel, uint(Index + 1))) * H);
 		Distance = min(Distance, DistanceToSegment(TexelCenter, A, B));
 	}
-	LineCoverage = saturate(LineHalfWidth + 0.5 - Distance);
+	LineCoverage = SlateLineCoverage(Distance);
 }
 
 /** Src-over one element onto a premultiplied accumulator. */

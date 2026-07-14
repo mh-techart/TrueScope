@@ -263,7 +263,8 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 
 		// Crisp anti-aliased outline on top of the translucent fill.
 		FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 1, AllottedGeometry.ToPaintGeometry(),
-			TopLine, ESlateDrawEffect::None, GetChannelLineColor(Channel), /*bAntialias*/ true, 1.0f);
+			TopLine, ESlateDrawEffect::None, GetChannelLineColor(Channel), /*bAntialias*/ true,
+			TrueScope::Draw::HistogramLineThickness);
 	}
 	LayerId += 2;
 

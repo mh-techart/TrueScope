@@ -14,7 +14,7 @@
 #include "RenderingThread.h"
 #include "ShaderParameterStruct.h"
 #include "TextureResource.h"
-#include "UI/TrueScopeDraw.h" // histogram curve colours, shared with the widget
+#include "UI/TrueScopeDraw.h" // histogram curve colours + line thickness, shared with the widget
 
 namespace
 {
@@ -176,8 +176,12 @@ namespace
 	const FIntPoint HistogramStackedSize(512, 144);
 	const FIntPoint HistogramOverlaySize(512, 432);
 
-	/** Outline half-thickness in raster texels (the CPU line is 1 px, AA'd). */
-	constexpr float HistogramLineHalfWidth = 1.0f;
+	/**
+	 * Outline thickness in raster texels. The shader reproduces Slate's own
+	 * antialiased-line coverage from it, so feeding it the same constant the
+	 * widget passes to MakeLines is what keeps the two strokes identical.
+	 */
+	constexpr float HistogramLineThickness = TrueScope::Draw::HistogramLineThickness;
 
 	void ModifyHistogramShaderEnvironment(FShaderCompilerEnvironment& OutEnvironment)
 	{
@@ -220,7 +224,7 @@ namespace
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, HistogramIn)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, SharedMaxIn)
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, LineHalfWidth)
+		SHADER_PARAMETER(float, LineThickness)
 		SHADER_PARAMETER(FVector4f, FillColorR)
 		SHADER_PARAMETER(FVector4f, FillColorG)
 		SHADER_PARAMETER(FVector4f, FillColorB)
@@ -287,7 +291,7 @@ namespace
 		Parameters.HistogramIn = HistogramSRV;
 		Parameters.SharedMaxIn = SharedMaxSRV;
 		Parameters.OutputSize = OutputSize;
-		Parameters.LineHalfWidth = HistogramLineHalfWidth;
+		Parameters.LineThickness = HistogramLineThickness;
 		// The widget's exact curve colours (TrueScopeDraw.h), so both paths
 		// draw pixel-identical colours by construction.
 		Parameters.FillColorR = FVector4f(TrueScope::Draw::HistogramFillColors[0]);

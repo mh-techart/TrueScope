@@ -46,6 +46,15 @@ namespace TrueScope::Draw
 		FLinearColor(0.35f, 0.55f, 1.0f, 0.9f),
 	};
 
+	/**
+	 * Outline thickness of the histogram curves, shared for the same reason as
+	 * the colours: the widget passes it to Slate's MakeLines, the GPU raster
+	 * pass receives it as a shader parameter and reproduces Slate's own
+	 * antialiased-line coverage from it, so neither path can drift into a
+	 * heavier stroke than the other.
+	 */
+	inline constexpr float HistogramLineThickness = 1.0f;
+
 	/** Fixed-size chrome around the plot area. */
 	inline constexpr float PlotPadding = 6.0f;
 	inline constexpr float ValueLabelStripWidth = 30.0f;
