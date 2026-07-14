@@ -28,6 +28,18 @@ FText GetScopeTypeDisplayName(ETrueScopeType Type)
 	}
 }
 
+FName GetScopeTypeKey(ETrueScopeType Type)
+{
+	switch (Type)
+	{
+	case ETrueScopeType::Waveform:    return TEXT("Waveform");
+	case ETrueScopeType::Parade:      return TEXT("Parade");
+	case ETrueScopeType::Vectorscope: return TEXT("Vectorscope");
+	case ETrueScopeType::Histogram:   return TEXT("Histogram");
+	default:                          return NAME_None;
+	}
+}
+
 /** Labelled placeholder for scope types not yet implemented this phase. */
 static TSharedRef<SWidget> MakePlaceholder(ETrueScopeType Type)
 {

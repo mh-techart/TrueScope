@@ -8,6 +8,7 @@
 #include "Containers/ArrayView.h"
 #include "CoreMinimal.h"
 #include "UI/TrueScopeScopeState.h"
+#include "UI/TrueScopeType.h"
 #include "Widgets/SLeafWidget.h"
 
 class FTrueScopeAnalyzer;
@@ -113,8 +114,17 @@ public:
 		return 0;
 	}
 
-	/** Switch display mode and repaint — the one entry point menu and toolbar share. */
+	/**
+	 * Switch display mode, repaint, and remember the choice across restarts —
+	 * the one entry point the right-click menu and the toolbar share.
+	 */
 	void ApplyDisplayMode(int32 ModeId);
+
+	/** Which scope this is; the key its persisted options are stored under. */
+	ETrueScopeType GetScopeType() const
+	{
+		return ScopeType;
+	}
 
 	/** Test seam: inject a result as if the analyzer had published it. */
 	void SetCachedResultForTesting(const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& InResult)
@@ -124,9 +134,12 @@ public:
 	}
 
 protected:
-	/** Call from the subclass's Construct. */
+	/**
+	 * Call from the subclass's Construct. Restores the scope's persisted display
+	 * mode (phase-6.1 Task 3), so a scope opens the way the user left it.
+	 */
 	void InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-		bool bInMaintainSquareAspect);
+		ETrueScopeType InScopeType, bool bInMaintainSquareAspect);
 
 	/** Latest cached result; null until the first analysis completes. Game thread. */
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& GetCachedResult() const
@@ -205,6 +218,7 @@ private:
 
 	TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> CachedResult;
 	uint64 LastSeenSerial = 0;
+	ETrueScopeType ScopeType = ETrueScopeType::Waveform;
 	bool bMaintainSquareAspect = false;
 
 	/** When the last result arrived; negative until the staleness clock starts. */

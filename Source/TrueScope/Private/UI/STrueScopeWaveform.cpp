@@ -16,7 +16,7 @@ void STrueScopeWaveform::Construct(const FArguments& InArgs,
 {
 	TraceBrush.DrawAs = ESlateBrushDrawType::Image;
 	TraceBrush.Tiling = ESlateBrushTileType::NoTile;
-	InitializeScopeWidget(InAnalyzer, /*bMaintainSquareAspect*/ false);
+	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Waveform, /*bMaintainSquareAspect*/ false);
 }
 
 int32 STrueScopeWaveform::GetTexelCount(const FTrueScopeAnalysisResult& Result)

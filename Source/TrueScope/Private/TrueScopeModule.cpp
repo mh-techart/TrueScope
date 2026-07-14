@@ -16,6 +16,7 @@
 #include "Misc/Paths.h"
 #include "SceneViewExtension.h"
 #include "ShaderCore.h"
+#include "TrueScopeSettings.h"
 #include "UI/STrueScopePanel.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -84,6 +85,13 @@ void FTrueScopeModule::OnPostEngineInit()
 	ViewExtension = FSceneViewExtensions::NewExtension<FTrueScopeViewExtension>(Analyzer, GpuAnalysis, CaptureGate);
 	ViewExtension->BindAnalysisPathCVarSink();
 
+	// Reopen with the user's remembered options (phase-6.1 Task 3). The scopes'
+	// display modes restore themselves in InitializeScopeWidget; these two are
+	// plugin-wide, so they are applied here, before the first capture.
+	const UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
+	ViewExtension->SetUseGpuAnalysis(Settings.bUseGpuAnalysis);
+	ViewExtension->SetMeasurementRateHz(Settings.MeasurementRateHz);
+
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TrueScopeTabName,
 			FOnSpawnTab::CreateRaw(this, &FTrueScopeModule::SpawnTrueScopeTab))
 		.SetDisplayName(LOCTEXT("TabTitle", "TrueScope"))
@@ -110,6 +118,15 @@ void FTrueScopeModule::SetUseGpuAnalysis(bool bUseGpuAnalysis)
 	{
 		ViewExtension->SetUseGpuAnalysis(bUseGpuAnalysis);
 	}
+
+	// Persist the user's choice, not a diagnostic CVar's (the CVar sink never
+	// reaches this function).
+	UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
+	if (Settings.bUseGpuAnalysis != bUseGpuAnalysis)
+	{
+		Settings.bUseGpuAnalysis = bUseGpuAnalysis;
+		Settings.SaveConfig();
+	}
 }
 
 bool FTrueScopeModule::GetUseGpuAnalysis() const
@@ -127,6 +144,13 @@ void FTrueScopeModule::SetMeasurementRateHz(float RateHz)
 	if (ViewExtension.IsValid())
 	{
 		ViewExtension->SetMeasurementRateHz(RateHz);
+	}
+
+	UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
+	if (!FMath::IsNearlyEqual(Settings.MeasurementRateHz, RateHz))
+	{
+		Settings.MeasurementRateHz = RateHz;
+		Settings.SaveConfig();
 	}
 }
 

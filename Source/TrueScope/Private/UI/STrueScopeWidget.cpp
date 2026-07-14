@@ -13,6 +13,7 @@
 #include "Layout/WidgetPath.h"
 #include "Textures/SlateIcon.h"
 #include "TrueScopeModule.h"
+#include "TrueScopeSettings.h"
 #include "UI/TrueScopeDraw.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopeWidget"
@@ -54,11 +55,25 @@ namespace
 }
 
 void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-	bool bInMaintainSquareAspect)
+	ETrueScopeType InScopeType, bool bInMaintainSquareAspect)
 {
 	Analyzer = InAnalyzer;
 	RasterSizes = FTrueScopeModule::Get().GetRasterSizes();
+	ScopeType = InScopeType;
 	bMaintainSquareAspect = bInMaintainSquareAspect;
+
+	// Reopen in the display mode the user left this scope in (phase-6.1 Task 3).
+	// Validated against the scope's own modes, so a stale or hand-edited ini
+	// cannot put a scope into a mode it does not have.
+	const int32 SavedMode = UTrueScopeSettings::Get().GetScopeDisplayMode(ScopeType);
+	for (const FTrueScopeDisplayMode& Mode : GetDisplayModes())
+	{
+		if (Mode.Id == SavedMode)
+		{
+			SetDisplayModeId(SavedMode);
+			break;
+		}
+	}
 
 	if (Analyzer)
 	{
@@ -264,6 +279,7 @@ bool STrueScopeWidget::IsAnalysisPathActive(bool bGpu) const
 void STrueScopeWidget::ApplyDisplayMode(int32 ModeId)
 {
 	SetDisplayModeId(ModeId);
+	UTrueScopeSettings::Get().SetScopeDisplayMode(ScopeType, ModeId);
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 

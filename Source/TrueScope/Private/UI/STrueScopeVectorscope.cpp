@@ -49,7 +49,7 @@ void STrueScopeVectorscope::Construct(const FArguments& InArgs,
 {
 	TraceBrush.DrawAs = ESlateBrushDrawType::Image;
 	TraceBrush.Tiling = ESlateBrushTileType::NoTile;
-	InitializeScopeWidget(InAnalyzer, /*bMaintainSquareAspect*/ true);
+	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Vectorscope, /*bMaintainSquareAspect*/ true);
 }
 
 void STrueScopeVectorscope::OnAnalysisResultChanged()

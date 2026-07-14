@@ -25,8 +25,15 @@ enum class ETrueScopeType : uint8
 
 namespace TrueScope
 {
-	/** Display name for a scope type (tab labels, later the M6 dropdown). */
+	/** Display name for a scope type (toolbar labels, later the layout dropdown). */
 	FText GetScopeTypeDisplayName(ETrueScopeType Type);
+
+	/**
+	 * Stable, non-localized key for a scope type — what persisted settings are
+	 * keyed by (phase-6.1 Task 3), so neither a translation nor a new scope type
+	 * in the enumeration can move another scope's remembered options.
+	 */
+	FName GetScopeTypeKey(ETrueScopeType Type);
 
 	/**
 	 * Factory: builds the widget for a scope type, or a labelled placeholder
