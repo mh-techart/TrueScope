@@ -194,7 +194,7 @@ TSharedRef<SWidget> STrueScopeToolbar::MakeMeasurementRateControl()
 			[
 				MakeOptionButton(FText::Format(LOCTEXT("RateFormat", "{0} Hz"), GetMeasurementRateLabel(RateHz)),
 					FText::Format(LOCTEXT("RateTooltip",
-						"Measure {0} times per second. A faster rate costs more; on the CPU path every measurement briefly blocks the render thread."),
+						"Measure at {0} Hz. A faster rate costs more; on the CPU path every measurement briefly blocks the render thread."),
 						GetMeasurementRateLabel(RateHz)),
 					FSimpleDelegate::CreateSP(this, &STrueScopeToolbar::HandleSetMeasurementRate, RateHz),
 					TAttribute<bool>::CreateSP(this, &STrueScopeToolbar::IsMeasurementRateSelected, RateHz))
