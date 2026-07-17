@@ -22,6 +22,11 @@ public class TrueScope : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"InputCore",
+				// SLevelViewport::GetConfigKey — the key of the OCIO plugin's
+				// per-viewport store, read by reflection with no OCIO
+				// dependency (work order 13 Fix 3). Engine editor module,
+				// present in every editor build.
+				"LevelEditor",
 				"Projects",
 				"RHI",
 				"RenderCore",

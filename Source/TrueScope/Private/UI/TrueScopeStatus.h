@@ -57,6 +57,19 @@ namespace TrueScope
 	FText GetDefaultDisplayEncoding();
 
 	/**
+	 * Composes the user-facing OCIO destination name exactly the way the OCIO
+	 * plugin's own UI does (FOpenColorIOColorConversionSettings::
+	 * GetDestinationString): the display-view pair "Display - View" when both
+	 * are set, otherwise the destination colour-space name, empty when nothing
+	 * is configured. Pure, so the naming rule is unit-testable without the
+	 * OCIO plugin; the reflection walk that feeds it lives in
+	 * TrueScopeStatus.cpp (work order 13 Fix 3 — soft path, no build
+	 * dependency on OpenColorIO).
+	 */
+	FString ComposeOcioDestinationName(const FString& Display, const FString& View,
+		const FString& ColorSpaceName);
+
+	/**
 	 * The status line's text, as a pure function of the status — so what the
 	 * user is told is unit-testable without an editor, and every state is
 	 * guaranteed to say something.
