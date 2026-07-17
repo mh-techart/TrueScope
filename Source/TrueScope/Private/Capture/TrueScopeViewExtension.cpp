@@ -16,8 +16,23 @@
 #include "RenderGraphUtils.h"
 #include "SceneView.h"
 #include "ScreenPass.h"
+#include "ShowFlags.h"
 #include "TextureResource.h"
 #include "UnrealClient.h"
+
+bool TrueScope::IsStaleOrthoShowFlagState(ELevelViewportType StoredViewportType,
+	ELevelViewportType EffectiveViewportType, bool bPostProcessingShowFlag)
+{
+	// Stored still ortho + effective perspective can only mean a camera lock
+	// taken straight out of an ortho view; with PostProcessing also still off,
+	// the show flags provably carry the ortho state the engine forgot to
+	// re-apply. A deliberate Show > Post Processing uncheck in a normal
+	// perspective viewport does NOT match (its stored type IS Perspective)
+	// and stays untouched.
+	return StoredViewportType != LVT_Perspective
+		&& EffectiveViewportType == LVT_Perspective
+		&& !bPostProcessingShowFlag;
+}
 
 DEFINE_LOG_CATEGORY_STATIC(LogTrueScope, Log, All);
 
@@ -216,6 +231,35 @@ bool FTrueScopeViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensi
 
 void FTrueScopeViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
 {
+	// Ortho -> placed-camera repair (work order 13 Fix 1, human-approved
+	// 2026-07-17): picking a placed camera from an orthographic view sets only
+	// the actor lock; SetViewportType — and with it ApplyViewMode — never runs,
+	// so the viewport renders perspective with the ortho show flags still
+	// active. PostProcessing stays off, the renderer takes its minimal path,
+	// and the capture hook is never subscribed (class comment): the scopes
+	// freeze on the last ortho-era frame. Re-run the engine's own view-mode
+	// re-apply — exactly the call the ortho -> Perspective menu path makes —
+	// probing on a copy first so a view mode that legitimately wants
+	// PostProcessing off (e.g. perspective Wireframe) is left alone rather
+	// than invalidated every capture. State-based, not edge-based, so it also
+	// heals transitions that happened while the tab was closed.
+	if (FLevelEditorViewportClient* Client = GCurrentLevelEditingViewportClient)
+	{
+		if (TrueScope::IsStaleOrthoShowFlagState(
+				Client->ViewportType, Client->GetViewportType(), Client->EngineShowFlags.PostProcessing))
+		{
+			FEngineShowFlags RestoredFlags = Client->EngineShowFlags;
+			ApplyViewMode(Client->GetViewMode(), Client->IsPerspective(), RestoredFlags);
+			if (RestoredFlags.PostProcessing)
+			{
+				Client->EngineShowFlags = RestoredFlags;
+				Client->Invalidate();
+				UE_LOG(LogTrueScope, Log,
+					TEXT("Re-applied perspective show flags after a camera lock from an orthographic view (the engine skips ApplyViewMode on that path); capture resumes"));
+			}
+		}
+	}
+
 	// Resolve the RT resource on the game thread and hand the pointer to the
 	// render thread (same pattern as the OCIO display extension's resource cache).
 	FTextureRenderTargetResource* Resource =
@@ -240,9 +284,10 @@ void FTrueScopeViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFami
 void FTrueScopeViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass PassId, const FSceneView& View,
 	FAfterPassCallbackDelegateArray& InOutPassCallbacks, bool bIsPassEnabled)
 {
-	// Tonemap is the only pass whose after-callbacks run on both the full and
-	// the minimal post-processing path; OCIO applies its transform in the same
-	// callback chain, ahead of us by priority (see header).
+	// Only ever reached with the PostProcessing show flag on — the minimal
+	// path never subscribes extension callbacks (see class comment). OCIO
+	// applies its transform in the same callback chain, ahead of us by
+	// priority (see header).
 	if (PassId == EPostProcessingPass::Tonemap)
 	{
 		InOutPassCallbacks.Add(

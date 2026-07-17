@@ -75,6 +75,25 @@ receives. Consequences, by design:
   pass must run *after* the OCIO pass (pass selection / extension priority),
   otherwise scopes silently diverge from the viewport. Verified by an M2
   acceptance test.
+- **Capture exists only while the viewport's `PostProcessing` show flag is on**
+  (verified in 5.8 source + live diagnostic, work order 13 / 2026-07-17). With
+  the flag off the renderer takes its *minimal* post-processing path, and that
+  branch never collects scene-view-extension pass callbacks at all (the
+  subscribe loops in `PostProcessing.cpp` sit inside the
+  `bPostProcessingEnabled` branch only) — the hook is not skipped, it is never
+  registered. Consequences: (a) orthographic views and view modes that
+  `ApplyViewMode` maps to `PostProcessing=0` (Wireframe, Unlit, most debug
+  modes) are structurally uncapturable through this hook — measuring them would
+  need a different mechanism, not a different pass choice; (b) the engine has a
+  gap where switching an ortho viewport straight to a placed camera sets only
+  the actor lock and never re-runs `ApplyViewMode`, leaving the flags in their
+  ortho state while the view renders perspective — the scopes froze there.
+  TrueScope repairs exactly that stale state (`IsStaleOrthoShowFlagState` +
+  re-running the engine's own `ApplyViewMode`, the same call the
+  ortho→Perspective menu path makes; human-approved 2026-07-17). A deliberate
+  Show > Post Processing uncheck in a perspective viewport is recognizably
+  different (its stored viewport type is `Perspective`) and is never
+  overridden.
 - Values are display-referred (0–1 → scope scale 0–1023). With the tonemapper
   disabled, scenes clip exactly as the viewport shows them clipping.
 - **Calibration note:** percentages and vectorscope graticule targets are

@@ -11,6 +11,8 @@
 
 #include <atomic>
 
+enum ELevelViewportType : int;
+
 class IConsoleVariable;
 
 class FRDGBuilder;
@@ -48,6 +50,23 @@ namespace TrueScope
 	 * TrueScope samples the post-OCIO image.
 	 */
 	constexpr int32 CaptureExtensionPriority = 0;
+
+	/**
+	 * True when the focused viewport's show flags are stale from a missed
+	 * engine path (work order 13 Fix 1): switching an orthographic viewport
+	 * to a placed camera only sets the actor lock — SetViewportType, which
+	 * would re-apply the view-mode show flags, never runs — so the viewport
+	 * renders perspective while PostProcessing is still off from the ortho
+	 * state, and the capture hook is never subscribed (see class comment).
+	 * The signature is precise: the stored type still says ortho while the
+	 * effective type reports perspective (the camera lock overrides it).
+	 *
+	 * Pure so the automation test can pin the condition; the caller decides
+	 * what "restore" means (re-run ApplyViewMode, the exact call the engine
+	 * itself makes on the ortho -> Perspective menu path).
+	 */
+	bool IsStaleOrthoShowFlagState(ELevelViewportType StoredViewportType,
+		ELevelViewportType EffectiveViewportType, bool bPostProcessingShowFlag);
 }
 
 /**
@@ -57,9 +76,19 @@ namespace TrueScope
  *
  * Read-only pass: subscribes to the after-Tonemap callback chain, copies the
  * incoming scene color into the capture render target and returns the scene
- * color untouched. The Tonemap after-pass callbacks are the only ones invoked
- * on both the full and the minimal (post-processing disabled) render paths,
- * and they run regardless of the Tonemapper show flag — see PostProcessing.cpp.
+ * color untouched.
+ *
+ * The after-pass callbacks exist only while the PostProcessing show flag is
+ * on (verified in 5.8, work order 13 Fix 1): with the flag off the renderer
+ * takes its minimal path, whose branch never collects scene-view-extension
+ * pass callbacks at all — the subscribe loops in PostProcessing.cpp
+ * (AddPostProcessingPasses) sit inside the bPostProcessingEnabled branch
+ * only. That is why orthographic views (and Wireframe/Unlit view modes,
+ * which ApplyViewMode maps to PostProcessing=0) can never be captured
+ * through this hook. An earlier version of this comment claimed the Tonemap
+ * callbacks also run on the minimal path; they do not.
+ * BeginRenderViewFamily repairs the one case where the flag is stale rather
+ * than intended.
  */
 class FTrueScopeViewExtension : public FSceneViewExtensionBase, public FGCObject
 {

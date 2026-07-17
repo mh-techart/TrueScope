@@ -324,18 +324,19 @@ mechanism rather than leaving stale traces.
   tell the user.** **The UX half is resolved (2026-07-14, phase-6.1 Task 4):** the
   status line now names the state — *"No signal — orthographic view (Top); switch
   the viewport to Perspective"* — instead of leaving blank scopes unexplained
-  (`TrueScope::GatherMeasurementStatus`; test `TrueScope.UI.StatusLine`). **Still
-  open, and deliberately so:** whether ortho should be *measured* at all, i.e.
-  hooking a pass that also runs on the ortho path. That is the "(b) actually fix
-  it" branch below and it needs a source investigation, not a label. Original
-  record follows.
+  (`TrueScope::GatherMeasurementStatus`; test `TrueScope.UI.StatusLine`). **The
+  source investigation the "(b) actually fix it" branch asked for is now done**
+  (work order 13, 2026-07-17, recorded in `architecture.md` "Capture exists only
+  while…"): ortho views run with `PostProcessing=0`, and the renderer's minimal
+  path **never registers scene-view-extension pass callbacks at all** — so no
+  pass choice can capture ortho; measuring it would need a different mechanism
+  entirely (e.g. a non-SVE hook), which is a real architecture decision, not a
+  fix. Left deliberately open at low priority. Original record follows.
 
   Found during M4.1: with the level viewport in an ortho view (Top/Front/Left…),
   no capture ever happens — the log shows no "First viewport capture" at all and
   the scopes stay blank, until the viewport is switched back to Perspective, at
-  which point capture starts immediately. The post-tonemap hook
-  (`EPostProcessingPass::Tonemap`) evidently does not run on the ortho path;
-  investigate against 5.8 source before assuming a cause.
+  which point capture starts immediately. (Cause verified 2026-07-17, above.)
 
   **This is not a bug, it is the same class as the M4.1 paused indicator:** the
   source delivers nothing and the user is not told why. The scopes are simply never
