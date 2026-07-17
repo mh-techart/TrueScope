@@ -24,6 +24,11 @@ void STrueScopeHistogram::Construct(const FArguments& InArgs,
 		Brush.DrawAs = ESlateBrushDrawType::Image;
 		Brush.Tiling = ESlateBrushTileType::NoTile;
 	}
+	for (FSlateBrush& Brush : YrgbBrush)
+	{
+		Brush.DrawAs = ESlateBrushDrawType::Image;
+		Brush.Tiling = ESlateBrushTileType::NoTile;
+	}
 	OverlayBrush.DrawAs = ESlateBrushDrawType::Image;
 	OverlayBrush.Tiling = ESlateBrushTileType::NoTile;
 	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Histogram, /*bMaintainSquareAspect*/ false);
@@ -33,26 +38,55 @@ void STrueScopeHistogram::OnAnalysisResultChanged()
 {
 	// GPU path (phase-5.2): point the brushes at the producer's curve raster
 	// targets — no texture build, no upload, no readback (the parade widget's
-	// pattern). Both sets are rasterized at their own rect's device resolution
-	// (phase-6.1: a band and the whole plot), so each is drawn 1:1 and the
-	// outline is exactly the CPU draw's 1-px Slate line. A CPU result needs
-	// nothing here: OnPaint draws the vector curves from its bin arrays.
+	// pattern). All three sets are rasterized at their own rect's device
+	// resolution (phase-6.1: an RGB band, a YRGB band and the whole plot), so
+	// each is drawn 1:1 and the outline is exactly the CPU draw's 1-px Slate
+	// line. A CPU result instead rebuilds the YRGB luma bins here: OnPaint
+	// draws the vector curves from the bin arrays.
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
-	if (!Result.IsValid() || !Result->bHasGpuHistogram)
+	if (!Result.IsValid())
 	{
 		return;
 	}
+	if (!Result->bHasGpuHistogram)
+	{
+		LumaHistogramBins = BuildLumaHistogramBins(*Result);
+		return;
+	}
+	LumaHistogramBins.Reset();
 
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
 		TrueScope::Draw::BindRasterBrush(StackedBrush[Channel], Result->HistogramStackedTarget[Channel].Get(),
 			Result->HistogramStackedRasterSize);
 	}
+	for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+	{
+		TrueScope::Draw::BindRasterBrush(YrgbBrush[Slot], Result->HistogramYrgbTarget[Slot].Get(),
+			Result->HistogramYrgbRasterSize);
+	}
 	TrueScope::Draw::BindRasterBrush(OverlayBrush, Result->HistogramOverlayTarget.Get(),
 		Result->HistogramOverlayRasterSize);
 }
 
-FSlateRect STrueScopeHistogram::GetChannelPlotRect(const FSlateRect& Plot, ETrueScopeHistogramMode InMode, int32 Channel)
+int32 STrueScopeHistogram::GetNumCurveSlots(ETrueScopeHistogramMode InMode)
+{
+	return InMode == ETrueScopeHistogramMode::SeparateChannelsYrgb
+		? FTrueScopeAnalysisResult::NumYrgbCurves
+		: FTrueScopeAnalysisResult::NumChannels;
+}
+
+int32 STrueScopeHistogram::SlotToChannel(ETrueScopeHistogramMode InMode, int32 Slot)
+{
+	if (InMode != ETrueScopeHistogramMode::SeparateChannelsYrgb)
+	{
+		return Slot;
+	}
+	// YRGB display order: luma on top (Resolve's layout), then R, G, B.
+	return Slot == 0 ? INDEX_NONE : Slot - 1;
+}
+
+FSlateRect STrueScopeHistogram::GetChannelPlotRect(const FSlateRect& Plot, ETrueScopeHistogramMode InMode, int32 Slot)
 {
 	if (InMode == ETrueScopeHistogramMode::RgbOverlay)
 	{
@@ -61,15 +95,40 @@ FSlateRect STrueScopeHistogram::GetChannelPlotRect(const FSlateRect& Plot, ETrue
 
 	// Clamped so a plot too small for the gaps degenerates to zero-height bands
 	// instead of inverted rects. OnPaint never draws that small.
-	constexpr int32 NumChannels = FTrueScopeAnalysisResult::NumChannels;
-	const float SectionHeight = FMath::Max(0.0f, (Plot.GetSize().Y - ChannelGap * (NumChannels - 1)) / NumChannels);
-	const float Top = Plot.Top + Channel * (SectionHeight + ChannelGap);
+	const int32 NumSlots = GetNumCurveSlots(InMode);
+	const float SectionHeight = FMath::Max(0.0f, (Plot.GetSize().Y - ChannelGap * (NumSlots - 1)) / NumSlots);
+	const float Top = Plot.Top + Slot * (SectionHeight + ChannelGap);
 	return FSlateRect(Plot.Left, Top, Plot.Right, Top + SectionHeight);
 }
 
 TArrayView<const uint32> STrueScopeHistogram::GetChannelBins(const FTrueScopeAnalysisResult& Result, int32 Channel)
 {
 	return Result.Histogram[Channel];
+}
+
+TArray<uint32> STrueScopeHistogram::BuildLumaHistogramBins(const FTrueScopeAnalysisResult& Result)
+{
+	// Column sums of the waveform's integer-exact luma column bins — the exact
+	// relation the R/G/B histograms have to the parade (and what the GPU
+	// reduce pass computes for its luma band). Summing is not binning: the
+	// bins themselves are phase-5.2's, untouched.
+	constexpr int32 NumBins = FTrueScopeAnalysisResult::NumBins;
+	TArray<uint32> LumaBins;
+	if (Result.SourceSize.X <= 0 || Result.LumaParade.Num() != Result.SourceSize.X * NumBins)
+	{
+		return LumaBins;
+	}
+
+	LumaBins.SetNumZeroed(NumBins);
+	for (int32 Column = 0; Column < Result.SourceSize.X; ++Column)
+	{
+		const uint32* ColumnBins = Result.LumaParade.GetData() + Column * NumBins;
+		for (int32 Bin = 0; Bin < NumBins; ++Bin)
+		{
+			LumaBins[Bin] += ColumnBins[Bin];
+		}
+	}
+	return LumaBins;
 }
 
 FLinearColor STrueScopeHistogram::GetChannelFillColor(int32 Channel)
@@ -93,6 +152,17 @@ uint32 STrueScopeHistogram::GetSharedMaxCount(const FTrueScopeAnalysisResult& Re
 		{
 			MaxCount = FMath::Max(MaxCount, Count);
 		}
+	}
+	return MaxCount;
+}
+
+uint32 STrueScopeHistogram::GetYrgbSharedMaxCount(const FTrueScopeAnalysisResult& Result,
+	TArrayView<const uint32> LumaBins)
+{
+	uint32 MaxCount = GetSharedMaxCount(Result);
+	for (uint32 Count : LumaBins)
+	{
+		MaxCount = FMath::Max(MaxCount, Count);
 	}
 	return MaxCount;
 }
@@ -121,9 +191,12 @@ bool STrueScopeHistogram::HasDrawableData() const
 TArrayView<const FTrueScopeDisplayMode> STrueScopeHistogram::GetDisplayModes() const
 {
 	// Function-local: LOCTEXT must not run before localization is initialized.
+	// RGB before YRGB: RGB is the default (see the mode enum for why not YRGB).
 	static const TArray<FTrueScopeDisplayMode> Modes = {
 		FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeHistogramMode::SeparateChannels),
-			LOCTEXT("SeparateChannels", "Separate Channels")},
+			LOCTEXT("SeparateChannels", "Separate Channels RGB")},
+		FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeHistogramMode::SeparateChannelsYrgb),
+			LOCTEXT("SeparateChannelsYrgb", "Separate Channels YRGB")},
 		FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeHistogramMode::RgbOverlay),
 			LOCTEXT("RgbOverlay", "RGB Overlay")},
 	};
@@ -162,12 +235,14 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	// One 0-1023 value axis spanning all channel sub-plots.
 	LayerId = DrawValueAxisX(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetHistogramGraticuleLevels());
 
-	// Both curve rasters are requested every paint, not just the current mode's:
-	// the producer rasterizes both each capture, so switching mode swaps to a
-	// texture that is already correct for its rect instead of waiting for the
-	// next capture (phase-6.1 Task 1; sizes in device pixels).
+	// All curve rasters are requested every paint, not just the current mode's:
+	// the producer rasterizes every set each capture, so switching mode swaps
+	// to a texture that is already correct for its rect instead of waiting for
+	// the next capture (phase-6.1 Task 1; sizes in device pixels).
 	RequestRasterSize(TrueScope::ERasterTarget::HistogramBand, AllottedGeometry,
 		GetChannelPlotRect(Plot, ETrueScopeHistogramMode::SeparateChannels, 0).GetSize());
+	RequestRasterSize(TrueScope::ERasterTarget::HistogramBandYrgb, AllottedGeometry,
+		GetChannelPlotRect(Plot, ETrueScopeHistogramMode::SeparateChannelsYrgb, 0).GetSize());
 	RequestRasterSize(TrueScope::ERasterTarget::HistogramOverlay, AllottedGeometry, Plot.GetSize());
 
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();
@@ -200,6 +275,13 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		{
 			DrawCurveBox(OverlayBrush, Plot);
 		}
+		else if (Mode == ETrueScopeHistogramMode::SeparateChannelsYrgb)
+		{
+			for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+			{
+				DrawCurveBox(YrgbBrush[Slot], GetChannelPlotRect(Plot, Mode, Slot));
+			}
+		}
 		else
 		{
 			for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
@@ -211,9 +293,13 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
-	// One shared vertical scale across the channels, so their relative heights
-	// stay comparable (see GetCurveHeight for why the scale is linear).
-	const uint32 MaxCount = GetSharedMaxCount(*Result);
+	// One shared vertical scale across the displayed curves, so their relative
+	// heights stay comparable (see GetCurveHeight for why the scale is linear).
+	// In YRGB the luma curve participates in the maximum (GetYrgbSharedMaxCount).
+	const bool bYrgb = Mode == ETrueScopeHistogramMode::SeparateChannelsYrgb;
+	const uint32 MaxCount = bYrgb
+		? GetYrgbSharedMaxCount(*Result, LumaHistogramBins)
+		: GetSharedMaxCount(*Result);
 	if (MaxCount == 0)
 	{
 		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
@@ -222,11 +308,21 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	const FSlateBrush* WhiteBrush = FAppStyle::Get().GetBrush("WhiteBrush");
 	constexpr int32 NumBins = FTrueScopeAnalysisResult::NumBins;
 
-	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
+	for (int32 Slot = 0; Slot < GetNumCurveSlots(Mode); ++Slot)
 	{
-		const FSlateRect ChannelPlot = GetChannelPlotRect(Plot, Mode, Channel);
-		const TArrayView<const uint32> Bins = GetChannelBins(*Result, Channel);
-		const FColor FillColor = GetChannelFillColor(Channel).ToFColor(false);
+		const int32 Channel = SlotToChannel(Mode, Slot);
+		const bool bLumaSlot = Channel == INDEX_NONE;
+		if (bLumaSlot && LumaHistogramBins.Num() != NumBins)
+		{
+			continue; // luma bins not derivable from this result; draw the rest
+		}
+
+		const FSlateRect ChannelPlot = GetChannelPlotRect(Plot, Mode, Slot);
+		const TArrayView<const uint32> Bins = bLumaSlot
+			? TArrayView<const uint32>(LumaHistogramBins)
+			: GetChannelBins(*Result, Channel);
+		const FColor FillColor =
+			(bLumaSlot ? HistogramLumaFillColor : GetChannelFillColor(Channel)).ToFColor(false);
 
 		// Filled curve as one triangle strip: bottom/top vertex pairs per bin.
 		TArray<FSlateVertex> Vertices;
@@ -267,7 +363,8 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 
 		// Crisp anti-aliased outline on top of the translucent fill.
 		FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 1, AllottedGeometry.ToPaintGeometry(),
-			TopLine, ESlateDrawEffect::None, GetChannelLineColor(Channel), /*bAntialias*/ true,
+			TopLine, ESlateDrawEffect::None,
+			bLumaSlot ? HistogramLumaLineColor : GetChannelLineColor(Channel), /*bAntialias*/ true,
 			TrueScope::Draw::HistogramLineThickness);
 	}
 	LayerId += 2;

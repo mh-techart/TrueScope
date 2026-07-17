@@ -30,8 +30,15 @@ namespace TrueScope
 		/** The vectorscope's square plot (aspect-locked, so width == height). */
 		Vectorscope,
 
-		/** One channel band of the histogram's Separate Channels mode. */
+		/** One channel band of the histogram's Separate Channels RGB mode. */
 		HistogramBand,
+
+		/**
+		 * One band of the histogram's Separate Channels YRGB mode (phase-6.2):
+		 * four congruent bands, so one size covers the set — but a different
+		 * size than the three-band RGB mode's, hence its own request.
+		 */
+		HistogramBandYrgb,
 
 		/** The histogram's whole plot (RGB Overlay mode). */
 		HistogramOverlay,

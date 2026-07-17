@@ -758,6 +758,141 @@ bool FTrueScopeGpuHistogramBinEquivalenceTest::RunTest(const FString&)
 }
 
 // ---------------------------------------------------------------------------
+// Histogram LUMA equivalence (phase-6.2): the reduce's fourth channel — the
+// YRGB mode's luma curve — against the CPU widget's luma histogram, which is
+// itself the column sum of the waveform's integer-exact luma bins. Pins both
+// halves of the phase-6.2 provenance requirement at once: the GPU luma
+// histogram equals the CPU one, and both derive from the SAME luma bins the
+// waveform plots (no second luma computation on either path). Deliberately a
+// separate test so the phase-5.2 bin-equivalence tests stay untouched.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	/**
+	 * Test-only round trip for the luma reduce (phase-6.2): the same runtime
+	 * chain as RunGpuHistogramReduce, reading back ALL reduce channels (the
+	 * three colour channels plus luma) and the luma maximum.
+	 */
+	bool RunGpuHistogramLumaReduce(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins,
+		uint32& OutLumaMax)
+	{
+		constexpr int32 NumCells = TrueScope::ColumnBinChannels * FResult::NumBins;
+		constexpr uint32 NumBytes = NumCells * sizeof(uint32);
+
+		bool bReadbackOk = false;
+		ENQUEUE_RENDER_COMMAND(TrueScopeGpuHistogramLumaEquivalenceRun)(
+			[&Pixels, Size, &OutBins, &OutLumaMax, &bReadbackOk](FRHICommandListImmediate& RHICmdList)
+			{
+				const FRHITextureCreateDesc Desc =
+					FRHITextureCreateDesc::Create2D(TEXT("TrueScope.EquivalenceInput"), Size.X, Size.Y, PF_B8G8R8A8)
+						.SetFlags(ETextureCreateFlags::ShaderResource);
+				FTextureRHIRef InputTexture = RHICmdList.CreateTexture(Desc);
+				RHICmdList.UpdateTexture2D(InputTexture, 0,
+					FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y),
+					Size.X * sizeof(FColor), reinterpret_cast<const uint8*>(Pixels.GetData()));
+
+				FRHIGPUBufferReadback BinsReadback(TEXT("TrueScope.EquivalenceReadback"));
+				FRHIGPUBufferReadback MaxReadback(TEXT("TrueScope.EquivalenceMaxReadback"));
+				{
+					FRDGBuilder GraphBuilder(RHICmdList);
+					FRDGTextureRef Input =
+						RegisterExternalTexture(GraphBuilder, InputTexture, TEXT("TrueScope.EquivalenceInput"));
+					FRDGBufferRef ColumnBins = TrueScope::AddColumnBinningPass(GraphBuilder, Input, Size);
+					const TrueScope::FHistogramReduceOutputs Outputs =
+						TrueScope::AddHistogramReducePass(GraphBuilder, ColumnBins, Size.X);
+					AddEnqueueCopyPass(GraphBuilder, &BinsReadback, Outputs.Bins, NumBytes);
+					AddEnqueueCopyPass(GraphBuilder, &MaxReadback, Outputs.LumaMax, sizeof(uint32));
+					GraphBuilder.Execute();
+				}
+
+				RHICmdList.SubmitAndBlockUntilGPUIdle();
+				if (BinsReadback.IsReady() && MaxReadback.IsReady())
+				{
+					const uint32* BinsData = static_cast<const uint32*>(BinsReadback.Lock(NumBytes));
+					const uint32* MaxData = static_cast<const uint32*>(MaxReadback.Lock(sizeof(uint32)));
+					if (BinsData && MaxData)
+					{
+						OutBins.SetNumUninitialized(NumCells);
+						FMemory::Memcpy(OutBins.GetData(), BinsData, NumBytes);
+						OutLumaMax = *MaxData;
+						bReadbackOk = true;
+					}
+					BinsReadback.Unlock();
+					MaxReadback.Unlock();
+				}
+			});
+		FlushRenderingCommands();
+		return bReadbackOk;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeGpuHistogramLumaBinEquivalenceTest,
+	"TrueScope.GPU.HistogramLumaBinEquivalence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeGpuHistogramLumaBinEquivalenceTest::RunTest(const FString&)
+{
+	if (GUsingNullRHI)
+	{
+		AddInfo(TEXT("Skipped: GPU equivalence needs a real RHI (run without -nullrhi)."));
+		return true;
+	}
+
+	for (const FSyntheticImage& Image : MakeSyntheticImages())
+	{
+		// CPU ground truth: the widget's own luma histogram derivation — the
+		// column sum of the waveform's integer-exact luma bins.
+		FResult CpuResult;
+		TrueScope::AnalyzePixels(Image.Pixels, Image.Size.X, Image.Size.Y, CpuResult);
+		const TArray<uint32> CpuLumaBins = STrueScopeHistogram::BuildLumaHistogramBins(CpuResult);
+		if (CpuLumaBins.Num() != FResult::NumBins)
+		{
+			AddError(FString::Printf(TEXT("%s: CPU luma histogram bins missing"), *Image.Name));
+			continue;
+		}
+
+		TArray<uint32> GpuBins;
+		uint32 GpuLumaMax = 0;
+		if (!RunGpuHistogramLumaReduce(Image.Pixels, Image.Size, GpuBins, GpuLumaMax))
+		{
+			AddError(FString::Printf(TEXT("%s: GPU luma histogram readback failed"), *Image.Name));
+			continue;
+		}
+
+		// The luma binning is integer-exact on both paths (phase-5.2), and the
+		// reduce is a deterministic sum — so the expectation is EXACT equality,
+		// stricter than the parade's +/-1 boundary rule.
+		const TArrayView<const uint32> GpuLumaBins(
+			GpuBins.GetData() + TrueScope::LumaBinChannel * FResult::NumBins, FResult::NumBins);
+		uint32 CpuLumaMax = 0;
+		bool bBinsEqual = true;
+		for (int32 Bin = 0; Bin < FResult::NumBins; ++Bin)
+		{
+			CpuLumaMax = FMath::Max(CpuLumaMax, CpuLumaBins[Bin]);
+			if (GpuLumaBins[Bin] != CpuLumaBins[Bin])
+			{
+				AddError(FString::Printf(TEXT("%s: luma bin %d differs (cpu %u, gpu %u)"),
+					*Image.Name, Bin, CpuLumaBins[Bin], GpuLumaBins[Bin]));
+				bBinsEqual = false;
+			}
+		}
+		TestTrue(*FString::Printf(TEXT("%s: GPU luma histogram matches the CPU luma histogram exactly"),
+			*Image.Name), bBinsEqual);
+
+		// The YRGB scale ingredient: LumaMax is the luma histogram's peak, and
+		// max(SharedMax, LumaMax) equals the CPU widget's YRGB shared maximum.
+		TestEqual(*FString::Printf(TEXT("%s: GPU luma maximum matches the CPU luma peak"), *Image.Name),
+			GpuLumaMax, CpuLumaMax);
+		TestEqual(*FString::Printf(TEXT("%s: YRGB shared maximum agrees between the paths"), *Image.Name),
+			FMath::Max(GpuLumaMax, STrueScopeHistogram::GetSharedMaxCount(CpuResult)),
+			STrueScopeHistogram::GetYrgbSharedMaxCount(CpuResult, CpuLumaBins));
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // Vectorscope equivalence (phase-5.1): the GPU (Cb, Cr) scatter against the
 // CPU vectorscope as ground truth. Colorbars are the key image here — a solid
 // frame cannot reveal an axis swap, the bars' six distinct chroma points can.

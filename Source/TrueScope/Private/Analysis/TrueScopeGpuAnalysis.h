@@ -49,22 +49,39 @@ namespace TrueScope
 	FRDGBufferRef AddVectorscopeBinningPass(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture,
 		FIntPoint InputSize);
 
-	/** Outputs of the histogram reduce pass (phase-5.2). */
+	/** Outputs of the histogram reduce pass (phase-5.2; luma phase-6.2). */
 	struct FHistogramReduceOutputs
 	{
-		/** [Channel * NumBins + Bin] over the three colour channels. */
+		/**
+		 * [Channel * NumBins + Bin] over all ColumnBinChannels channels: R, G,
+		 * B and — since phase-6.2, for the YRGB mode — the integer-exact luma
+		 * as channel LumaBinChannel. The first three channels' layout and
+		 * values are exactly phase-5.2's (the equivalence test reads only
+		 * those and stays untouched).
+		 */
 		FRDGBufferRef Bins = nullptr;
 
-		/** One uint: the strongest channel's peak — the shared curve scale. */
+		/**
+		 * One uint: the strongest COLOUR channel's peak — the shared curve
+		 * scale of the RGB modes, luma deliberately excluded so those modes
+		 * draw exactly as before phase-6.2.
+		 */
 		FRDGBufferRef SharedMax = nullptr;
+
+		/**
+		 * One uint: the luma histogram's peak. The YRGB draw pass scales by
+		 * max(SharedMax, LumaMax) — the shared maximum over all four displayed
+		 * curves, mirroring STrueScopeHistogram::GetYrgbSharedMaxCount.
+		 */
+		FRDGBufferRef LumaMax = nullptr;
 	};
 
 	/**
 	 * Adds the histogram reduce compute pass (phase-5.2 GPU path): sums the
 	 * column bins over all columns into the per-channel 1D histogram — by
 	 * definition the CPU histogram's exact numbers — and folds the shared
-	 * three-channel maximum. Exposed for the equivalence test, same contract
-	 * as AddColumnBinningPass.
+	 * three-channel maximum plus the luma maximum (phase-6.2). Exposed for the
+	 * equivalence test, same contract as AddColumnBinningPass.
 	 */
 	FHistogramReduceOutputs AddHistogramReducePass(FRDGBuilder& GraphBuilder, FRDGBufferRef ColumnBins,
 		int32 SourceWidth);
@@ -168,6 +185,16 @@ private:
 	FTextureRenderTargetResource* HistogramStackedResourceRenderThread[FTrueScopeAnalysisResult::NumChannels] = {};
 	FTextureRenderTargetResource* HistogramOverlayResourceRenderThread = nullptr;
 
+	/**
+	 * YRGB band targets (phase-6.2 Task 2), display order Y, R, G, B — a third
+	 * histogram set for the same reason the first two are separate: four-way
+	 * bands have their own height, and each set is rasterized at its own
+	 * rect's device resolution.
+	 */
+	TObjectPtr<UTextureRenderTarget2D> HistogramYrgbTarget[FTrueScopeAnalysisResult::NumYrgbCurves];
+	TWeakObjectPtr<UTextureRenderTarget2D> HistogramYrgbTargetWeak[FTrueScopeAnalysisResult::NumYrgbCurves];
+	FTextureRenderTargetResource* HistogramYrgbResourceRenderThread[FTrueScopeAnalysisResult::NumYrgbCurves] = {};
+
 	/** Receives the published GPU results (same channel as the CPU analysis). */
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 
@@ -183,5 +210,6 @@ private:
 	FIntPoint WaveformRasterSizeRenderThread = FIntPoint::ZeroValue;
 	FIntPoint VectorscopeRasterSizeRenderThread = FIntPoint::ZeroValue;
 	FIntPoint HistogramStackedRasterSizeRenderThread = FIntPoint::ZeroValue;
+	FIntPoint HistogramYrgbRasterSizeRenderThread = FIntPoint::ZeroValue;
 	FIntPoint HistogramOverlayRasterSizeRenderThread = FIntPoint::ZeroValue;
 };

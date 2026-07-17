@@ -226,6 +226,7 @@ namespace
 			SHADER_PARAMETER(int32, SourceWidth)
 			SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, HistogramOut)
 			SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, SharedMaxOut)
+			SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, LumaMaxOut)
 		END_SHADER_PARAMETER_STRUCT()
 
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -248,18 +249,25 @@ namespace
 	BEGIN_SHADER_PARAMETER_STRUCT(FTrueScopeHistogramDrawParameters, )
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, HistogramIn)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, SharedMaxIn)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, LumaMaxIn)
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, LineThickness)
 		SHADER_PARAMETER(FVector4f, FillColorR)
 		SHADER_PARAMETER(FVector4f, FillColorG)
 		SHADER_PARAMETER(FVector4f, FillColorB)
+		SHADER_PARAMETER(FVector4f, FillColorY)
 		SHADER_PARAMETER(FVector4f, LineColorR)
 		SHADER_PARAMETER(FVector4f, LineColorG)
 		SHADER_PARAMETER(FVector4f, LineColorB)
+		SHADER_PARAMETER(FVector4f, LineColorY)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, StackedROut)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, StackedGOut)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, StackedBOut)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OverlayOut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, YrgbYOut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, YrgbROut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, YrgbGOut)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, YrgbBOut)
 	END_SHADER_PARAMETER_STRUCT()
 
 	class FTrueScopeHistogramDrawStackedCS : public FGlobalShader
@@ -302,12 +310,35 @@ namespace
 		}
 	};
 
+	/** The YRGB band set (phase-6.2): four bands, luma scale participates. */
+	class FTrueScopeHistogramDrawYrgbCS : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FTrueScopeHistogramDrawYrgbCS);
+		SHADER_USE_PARAMETER_STRUCT(FTrueScopeHistogramDrawYrgbCS, FGlobalShader);
+		using FParameters = FTrueScopeHistogramDrawParameters;
+
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+			FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			ModifyHistogramShaderEnvironment(OutEnvironment);
+		}
+	};
+
 	IMPLEMENT_GLOBAL_SHADER(FTrueScopeHistogramReduceCS, "/Plugin/TrueScope/TrueScopeHistogram.usf",
 		"HistogramReduceCS", SF_Compute);
 	IMPLEMENT_GLOBAL_SHADER(FTrueScopeHistogramDrawStackedCS, "/Plugin/TrueScope/TrueScopeHistogram.usf",
 		"HistogramDrawStackedCS", SF_Compute);
 	IMPLEMENT_GLOBAL_SHADER(FTrueScopeHistogramDrawOverlayCS, "/Plugin/TrueScope/TrueScopeHistogram.usf",
 		"HistogramDrawOverlayCS", SF_Compute);
+	IMPLEMENT_GLOBAL_SHADER(FTrueScopeHistogramDrawYrgbCS, "/Plugin/TrueScope/TrueScopeHistogram.usf",
+		"HistogramDrawYrgbCS", SF_Compute);
 
 	/**
 	 * Creates one raster target. The size follows the owning widget's plot rect
@@ -332,26 +363,30 @@ namespace
 		return Target;
 	}
 
-	/** Fills the draw parameters shared by both histogram draw dispatches. */
+	/** Fills the draw parameters shared by the histogram draw dispatches. */
 	void FillHistogramDrawParameters(FTrueScopeHistogramDrawParameters& Parameters,
-		FRDGBufferSRVRef HistogramSRV, FRDGBufferSRVRef SharedMaxSRV, FIntPoint OutputSize)
+		FRDGBufferSRVRef HistogramSRV, FRDGBufferSRVRef SharedMaxSRV, FRDGBufferSRVRef LumaMaxSRV,
+		FIntPoint OutputSize)
 	{
 		Parameters.HistogramIn = HistogramSRV;
 		Parameters.SharedMaxIn = SharedMaxSRV;
+		Parameters.LumaMaxIn = LumaMaxSRV;
 		Parameters.OutputSize = OutputSize;
 		Parameters.LineThickness = HistogramLineThickness;
 		// The widget's exact curve colours (TrueScopeDraw.h), so both paths
 		// draw pixel-identical colours by construction. Fills are passed as-is
 		// (numerically what the widget's ToFColor(false) packing renders); the
-		// line colour goes through the shared Slate-vertex encoding — see
+		// line colours go through the shared Slate-vertex encoding — see
 		// GetHistogramLineRasterColor for why the raw linear value would come
 		// out darker than the CPU line.
 		Parameters.FillColorR = FVector4f(TrueScope::Draw::HistogramFillColors[0]);
 		Parameters.FillColorG = FVector4f(TrueScope::Draw::HistogramFillColors[1]);
 		Parameters.FillColorB = FVector4f(TrueScope::Draw::HistogramFillColors[2]);
+		Parameters.FillColorY = FVector4f(TrueScope::Draw::HistogramLumaFillColor);
 		Parameters.LineColorR = FVector4f(TrueScope::Draw::GetHistogramLineRasterColor(0));
 		Parameters.LineColorG = FVector4f(TrueScope::Draw::GetHistogramLineRasterColor(1));
 		Parameters.LineColorB = FVector4f(TrueScope::Draw::GetHistogramLineRasterColor(2));
+		Parameters.LineColorY = FVector4f(TrueScope::Draw::GetHistogramLumaLineRasterColor());
 	}
 }
 
@@ -409,16 +444,23 @@ namespace TrueScope
 	FHistogramReduceOutputs AddHistogramReducePass(FRDGBuilder& GraphBuilder, FRDGBufferRef ColumnBins,
 		int32 SourceWidth)
 	{
-		constexpr int32 NumCells = FTrueScopeAnalysisResult::NumChannels * FTrueScopeAnalysisResult::NumBins;
+		// All ColumnBinChannels channels since phase-6.2: R, G, B and the luma
+		// channel (the YRGB mode's fourth curve). Channels 0-2 keep exactly
+		// their phase-5.2 layout and values.
+		constexpr int32 NumCells = TrueScope::ColumnBinChannels * FTrueScopeAnalysisResult::NumBins;
 
 		FHistogramReduceOutputs Outputs;
 		Outputs.Bins = GraphBuilder.CreateBuffer(
 			FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), NumCells), TEXT("TrueScope.HistogramBins"));
 		Outputs.SharedMax = GraphBuilder.CreateBuffer(
 			FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("TrueScope.HistogramSharedMax"));
+		Outputs.LumaMax = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("TrueScope.HistogramLumaMax"));
 
 		FRDGBufferUAVRef SharedMaxUAV = GraphBuilder.CreateUAV(FRDGBufferUAVDesc(Outputs.SharedMax, PF_R32_UINT));
 		AddClearUAVPass(GraphBuilder, SharedMaxUAV, 0u);
+		FRDGBufferUAVRef LumaMaxUAV = GraphBuilder.CreateUAV(FRDGBufferUAVDesc(Outputs.LumaMax, PF_R32_UINT));
+		AddClearUAVPass(GraphBuilder, LumaMaxUAV, 0u);
 
 		FTrueScopeHistogramReduceCS::FParameters* Parameters =
 			GraphBuilder.AllocParameters<FTrueScopeHistogramReduceCS::FParameters>();
@@ -426,6 +468,7 @@ namespace TrueScope
 		Parameters->SourceWidth = SourceWidth;
 		Parameters->HistogramOut = GraphBuilder.CreateUAV(FRDGBufferUAVDesc(Outputs.Bins, PF_R32_UINT));
 		Parameters->SharedMaxOut = SharedMaxUAV;
+		Parameters->LumaMaxOut = LumaMaxUAV;
 
 		TShaderMapRef<FTrueScopeHistogramReduceCS> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		FComputeShaderUtils::AddPass(GraphBuilder,
@@ -466,6 +509,11 @@ FTrueScopeGpuAnalysis::FTrueScopeGpuAnalysis(const TSharedPtr<FTrueScopeAnalyzer
 	{
 		HistogramStackedTarget[Channel] = MakeRasterTarget(FLinearColor::Transparent);
 		HistogramStackedTargetWeak[Channel] = HistogramStackedTarget[Channel];
+	}
+	for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+	{
+		HistogramYrgbTarget[Slot] = MakeRasterTarget(FLinearColor::Transparent);
+		HistogramYrgbTargetWeak[Slot] = HistogramYrgbTarget[Slot];
 	}
 	HistogramOverlayTarget = MakeRasterTarget(FLinearColor::Transparent);
 	HistogramOverlayTargetWeak = HistogramOverlayTarget;
@@ -509,6 +557,10 @@ void FTrueScopeGpuAnalysis::AddReferencedObjects(FReferenceCollector& Collector)
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
 		Collector.AddReferencedObject(HistogramStackedTarget[Channel]);
+	}
+	for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+	{
+		Collector.AddReferencedObject(HistogramYrgbTarget[Slot]);
 	}
 	Collector.AddReferencedObject(HistogramOverlayTarget);
 }
@@ -564,6 +616,19 @@ void FTrueScopeGpuAnalysis::CacheResources_GameThread()
 		HistogramStackedResources[Channel] = HistogramStackedTarget[Channel]->GameThread_GetRenderTargetResource();
 	}
 
+	FIntPoint HistogramYrgbSize = FIntPoint::ZeroValue;
+	FTextureRenderTargetResource* HistogramYrgbResources[FTrueScopeAnalysisResult::NumYrgbCurves] = {};
+	for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+	{
+		if (!HistogramYrgbTarget[Slot])
+		{
+			continue;
+		}
+		// The four YRGB bands are congruent, so they share one request.
+		HistogramYrgbSize = ApplyRasterSize(HistogramYrgbTarget[Slot], TrueScope::ERasterTarget::HistogramBandYrgb);
+		HistogramYrgbResources[Slot] = HistogramYrgbTarget[Slot]->GameThread_GetRenderTargetResource();
+	}
+
 	FIntPoint HistogramOverlaySize = FIntPoint::ZeroValue;
 	FTextureRenderTargetResource* HistogramOverlayResource = nullptr;
 	if (HistogramOverlayTarget)
@@ -574,8 +639,8 @@ void FTrueScopeGpuAnalysis::CacheResources_GameThread()
 
 	ENQUEUE_RENDER_COMMAND(TrueScopeCacheAnalysisResources)(
 		[WeakThis = AsWeak(), Resources, VectorResource, WaveformRgbResource, WaveformLumaResource,
-			HistogramStackedResources, HistogramOverlayResource, ParadeSize, WaveformSize, VectorscopeSize,
-			HistogramStackedSize, HistogramOverlaySize](FRHICommandListImmediate&)
+			HistogramStackedResources, HistogramYrgbResources, HistogramOverlayResource, ParadeSize, WaveformSize,
+			VectorscopeSize, HistogramStackedSize, HistogramYrgbSize, HistogramOverlaySize](FRHICommandListImmediate&)
 		{
 			if (TSharedPtr<FTrueScopeGpuAnalysis> This =
 				StaticCastWeakPtr<FTrueScopeGpuAnalysis>(WeakThis).Pin())
@@ -584,6 +649,10 @@ void FTrueScopeGpuAnalysis::CacheResources_GameThread()
 				{
 					This->ChannelResourceRenderThread[Channel] = Resources[Channel];
 					This->HistogramStackedResourceRenderThread[Channel] = HistogramStackedResources[Channel];
+				}
+				for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+				{
+					This->HistogramYrgbResourceRenderThread[Slot] = HistogramYrgbResources[Slot];
 				}
 				This->VectorscopeResourceRenderThread = VectorResource;
 				This->WaveformRgbResourceRenderThread = WaveformRgbResource;
@@ -594,6 +663,7 @@ void FTrueScopeGpuAnalysis::CacheResources_GameThread()
 				This->WaveformRasterSizeRenderThread = WaveformSize;
 				This->VectorscopeRasterSizeRenderThread = VectorscopeSize;
 				This->HistogramStackedRasterSizeRenderThread = HistogramStackedSize;
+				This->HistogramYrgbRasterSizeRenderThread = HistogramYrgbSize;
 				This->HistogramOverlayRasterSizeRenderThread = HistogramOverlaySize;
 			}
 		});
@@ -627,10 +697,20 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 			? HistogramStackedResourceRenderThread[Channel]->GetRenderTargetTexture()
 			: nullptr;
 	}
+	FRHITexture* HistogramYrgbTextures[FTrueScopeAnalysisResult::NumYrgbCurves] = {};
+	bool bHaveAllYrgbTextures = true;
+	for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+	{
+		HistogramYrgbTextures[Slot] = HistogramYrgbResourceRenderThread[Slot]
+			? HistogramYrgbResourceRenderThread[Slot]->GetRenderTargetTexture()
+			: nullptr;
+		bHaveAllYrgbTextures &= HistogramYrgbTextures[Slot] != nullptr;
+	}
 	FRHITexture* HistogramOverlayTexture =
 		HistogramOverlayResourceRenderThread ? HistogramOverlayResourceRenderThread->GetRenderTargetTexture() : nullptr;
 	if (!VectorscopeTexture || !WaveformRgbTexture || !WaveformLumaTexture || !HistogramStackedTextures[0]
-		|| !HistogramStackedTextures[1] || !HistogramStackedTextures[2] || !HistogramOverlayTexture)
+		|| !HistogramStackedTextures[1] || !HistogramStackedTextures[2] || !bHaveAllYrgbTextures
+		|| !HistogramOverlayTexture)
 	{
 		return; // all-or-nothing, same as the parade targets above
 	}
@@ -645,9 +725,10 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 	const FIntPoint WaveformSize = WaveformRasterSizeRenderThread;
 	const FIntPoint VectorscopeSize = VectorscopeRasterSizeRenderThread;
 	const FIntPoint HistogramStackedSize = HistogramStackedRasterSizeRenderThread;
+	const FIntPoint HistogramYrgbSize = HistogramYrgbRasterSizeRenderThread;
 	const FIntPoint HistogramOverlaySize = HistogramOverlayRasterSizeRenderThread;
 	if (ParadeSize.X <= 0 || WaveformSize.X <= 0 || VectorscopeSize.X <= 0 || HistogramStackedSize.X <= 0
-		|| HistogramOverlaySize.X <= 0)
+		|| HistogramYrgbSize.X <= 0 || HistogramOverlaySize.X <= 0)
 	{
 		return; // sizes not cached yet; the next capture will have them
 	}
@@ -743,12 +824,14 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 			TrueScope::AddHistogramReducePass(GraphBuilder, Bins, InputSize.X);
 		FRDGBufferSRVRef HistogramSRV = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(Histogram.Bins, PF_R32_UINT));
 		FRDGBufferSRVRef SharedMaxSRV = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(Histogram.SharedMax, PF_R32_UINT));
+		FRDGBufferSRVRef LumaMaxSRV = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(Histogram.LumaMax, PF_R32_UINT));
 
-		// Stacked (Separate Channels) set: one texture per channel.
+		// Stacked (Separate Channels RGB) set: one texture per channel.
 		{
 			FTrueScopeHistogramDrawParameters* DrawParameters =
 				GraphBuilder.AllocParameters<FTrueScopeHistogramDrawParameters>();
-			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, SharedMaxSRV, HistogramStackedSize);
+			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, SharedMaxSRV, LumaMaxSRV,
+				HistogramStackedSize);
 			static const TCHAR* StackedNames[FTrueScopeAnalysisResult::NumChannels] = {
 				TEXT("TrueScope.HistogramStackedR"), TEXT("TrueScope.HistogramStackedG"),
 				TEXT("TrueScope.HistogramStackedB")};
@@ -769,11 +852,40 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 				FComputeShaderUtils::GetGroupCount(HistogramStackedSize, ThreadGroupSize));
 		}
 
+		// YRGB band set (phase-6.2): four textures, display order Y, R, G, B;
+		// heights scale by max(SharedMax, LumaMax) — the shared maximum over
+		// all four displayed curves (GetYrgbSharedMaxCount's mirror).
+		{
+			FTrueScopeHistogramDrawParameters* DrawParameters =
+				GraphBuilder.AllocParameters<FTrueScopeHistogramDrawParameters>();
+			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, SharedMaxSRV, LumaMaxSRV, HistogramYrgbSize);
+			static const TCHAR* YrgbNames[FTrueScopeAnalysisResult::NumYrgbCurves] = {
+				TEXT("TrueScope.HistogramYrgbY"), TEXT("TrueScope.HistogramYrgbR"),
+				TEXT("TrueScope.HistogramYrgbG"), TEXT("TrueScope.HistogramYrgbB")};
+			FRDGTextureUAVRef YrgbUAV[FTrueScopeAnalysisResult::NumYrgbCurves];
+			for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+			{
+				YrgbUAV[Slot] = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(RegisterExternalTexture(
+					GraphBuilder, HistogramYrgbTextures[Slot], YrgbNames[Slot])));
+			}
+			DrawParameters->YrgbYOut = YrgbUAV[0];
+			DrawParameters->YrgbROut = YrgbUAV[1];
+			DrawParameters->YrgbGOut = YrgbUAV[2];
+			DrawParameters->YrgbBOut = YrgbUAV[3];
+
+			TShaderMapRef<FTrueScopeHistogramDrawYrgbCS> YrgbShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("TrueScope.HistogramDrawYrgb %dx%d", HistogramYrgbSize.X, HistogramYrgbSize.Y),
+				YrgbShader, DrawParameters,
+				FComputeShaderUtils::GetGroupCount(HistogramYrgbSize, ThreadGroupSize));
+		}
+
 		// Overlay set: all three channels composited into one texture.
 		{
 			FTrueScopeHistogramDrawParameters* DrawParameters =
 				GraphBuilder.AllocParameters<FTrueScopeHistogramDrawParameters>();
-			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, SharedMaxSRV, HistogramOverlaySize);
+			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, SharedMaxSRV, LumaMaxSRV,
+				HistogramOverlaySize);
 			DrawParameters->OverlayOut = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(RegisterExternalTexture(
 				GraphBuilder, HistogramOverlayTexture, TEXT("TrueScope.HistogramOverlay"))));
 
@@ -798,6 +910,7 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 	Result->WaveformRasterSize = WaveformSize;
 	Result->VectorscopeRasterSize = VectorscopeSize;
 	Result->HistogramStackedRasterSize = HistogramStackedSize;
+	Result->HistogramYrgbRasterSize = HistogramYrgbSize;
 	Result->HistogramOverlayRasterSize = HistogramOverlaySize;
 	Result->bHasGpuParade = true;
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
@@ -813,6 +926,10 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
 		Result->HistogramStackedTarget[Channel] = HistogramStackedTargetWeak[Channel];
+	}
+	for (int32 Slot = 0; Slot < FTrueScopeAnalysisResult::NumYrgbCurves; ++Slot)
+	{
+		Result->HistogramYrgbTarget[Slot] = HistogramYrgbTargetWeak[Slot];
 	}
 	Result->HistogramOverlayTarget = HistogramOverlayTargetWeak;
 

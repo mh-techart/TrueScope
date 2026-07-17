@@ -50,6 +50,14 @@ namespace TrueScope::Draw
 	};
 
 	/**
+	 * The luma curve of the histogram's YRGB mode (phase-6.2 Task 2): neutral,
+	 * as Resolve draws its Y histogram — a colour would suggest a channel that
+	 * does not exist. Same fill/line split and alphas as the colour channels.
+	 */
+	inline const FLinearColor HistogramLumaFillColor(0.75f, 0.75f, 0.75f, 0.38f);
+	inline const FLinearColor HistogramLumaLineColor(0.85f, 0.85f, 0.85f, 0.9f);
+
+	/**
 	 * Outline thickness of the histogram curves, shared for the same reason as
 	 * the colours: the widget passes it to Slate's MakeLines, the GPU raster
 	 * pass receives it as a shader parameter and reproduces Slate's own
@@ -76,11 +84,22 @@ namespace TrueScope::Draw
 	 * 8 bits exactly like Slate's vertex path does; alpha stays linear, also
 	 * like Slate's.
 	 */
-	inline FLinearColor GetHistogramLineRasterColor(int32 Channel)
+	inline FLinearColor EncodeSlateLineColor(const FLinearColor& LineColor)
 	{
-		const FColor Encoded = HistogramLineColors[Channel].ToFColor(/*bSRGB*/ true);
+		const FColor Encoded = LineColor.ToFColor(/*bSRGB*/ true);
 		return FLinearColor(
 			Encoded.R / 255.0f, Encoded.G / 255.0f, Encoded.B / 255.0f, Encoded.A / 255.0f);
+	}
+
+	inline FLinearColor GetHistogramLineRasterColor(int32 Channel)
+	{
+		return EncodeSlateLineColor(HistogramLineColors[Channel]);
+	}
+
+	/** The luma curve's outline, encoded like the channel lines (same rationale). */
+	inline FLinearColor GetHistogramLumaLineRasterColor()
+	{
+		return EncodeSlateLineColor(HistogramLumaLineColor);
 	}
 
 	/** Fixed-size chrome around the plot area. */
@@ -118,6 +137,24 @@ namespace TrueScope::Draw
 	 * about the source's bit depth.
 	 */
 	inline constexpr int32 ScaleMax = 1023;
+
+	/**
+	 * Minor scale ticks (phase-6.2 Task 3, Resolve's scales): three short
+	 * intermediate ticks between each pair of labelled majors, as fixed-size
+	 * chrome next to the label strip. Pure value helper so the rule is
+	 * testable without Slate.
+	 */
+	inline constexpr int32 MinorTicksPerDivision = 3;
+
+	/** The axis values of the minor ticks between two labelled majors. */
+	inline void GetMinorTickValues(int32 LowerLevel, int32 UpperLevel, TArray<float>& OutValues)
+	{
+		for (int32 Tick = 1; Tick <= MinorTicksPerDivision; ++Tick)
+		{
+			OutValues.Add(LowerLevel
+				+ (UpperLevel - LowerLevel) * Tick / static_cast<float>(MinorTicksPerDivision + 1));
+		}
+	}
 
 	/**
 	 * Points a scope brush at a GPU raster target and restricts sampling to the

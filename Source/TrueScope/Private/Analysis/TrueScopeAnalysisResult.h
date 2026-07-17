@@ -118,6 +118,7 @@ struct FTrueScopeAnalysisResult
 	FIntPoint WaveformRasterSize = FIntPoint::ZeroValue;
 	FIntPoint VectorscopeRasterSize = FIntPoint::ZeroValue;
 	FIntPoint HistogramStackedRasterSize = FIntPoint::ZeroValue;
+	FIntPoint HistogramYrgbRasterSize = FIntPoint::ZeroValue;
 	FIntPoint HistogramOverlayRasterSize = FIntPoint::ZeroValue;
 
 	/**
@@ -161,6 +162,19 @@ struct FTrueScopeAnalysisResult
 	 */
 	TWeakObjectPtr<UTextureRenderTarget2D> HistogramStackedTarget[NumChannels];
 	TWeakObjectPtr<UTextureRenderTarget2D> HistogramOverlayTarget;
+
+	/**
+	 * The Separate Channels YRGB mode's four band rasters (phase-6.2 Task 2),
+	 * indexed in DISPLAY order: 0 = Luma (top band), then R, G, B — the same
+	 * curve rasterization as the stacked set, but four bands sized for the
+	 * four-way split and scaled against the shared maximum over all FOUR
+	 * displayed curves (luma participates; see the histogram widget). The luma
+	 * curve derives from the same integer-exact luma column bins as the
+	 * waveform — no second luma computation. Same weak-ownership contract as
+	 * ParadeChannelTarget.
+	 */
+	static constexpr int32 NumYrgbCurves = NumChannels + 1;
+	TWeakObjectPtr<UTextureRenderTarget2D> HistogramYrgbTarget[NumYrgbCurves];
 
 	/** True when the GPU path produced the histogram targets above. */
 	bool bHasGpuHistogram = false;
