@@ -22,11 +22,14 @@ public class TrueScope : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"InputCore",
-				// SLevelViewport::GetConfigKey — the key of the OCIO plugin's
-				// per-viewport store, read by reflection with no OCIO
-				// dependency (work order 13 Fix 3). Engine editor module,
-				// present in every editor build.
-				"LevelEditor",
+				// Live per-viewport OCIO display config for the status line
+				// (FOpenColorIODisplayManager). Human-decided hard dependency
+				// (2026-07-17): the live state has no reflection-reachable
+				// mirror, and the persisted store lags in-session changes —
+				// see architecture.md, "Status line: OCIO view-transform
+				// name". The OCIO plugin ships with every engine install;
+				// TrueScope.uplugin declares the plugin reference.
+				"OpenColorIO",
 				"Projects",
 				"RHI",
 				"RenderCore",

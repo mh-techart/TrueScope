@@ -13,5 +13,11 @@
 			"Type": "Editor",
 			"LoadingPhase": "PostConfigInit"
 		}
+	],
+	"Plugins": [
+		{
+			"Name": "OpenColorIO",
+			"Enabled": true
+		}
 	]
 }

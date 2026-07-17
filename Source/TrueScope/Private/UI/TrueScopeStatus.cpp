@@ -5,11 +5,11 @@
 
 #include "Editor/UnrealEdTypes.h"
 #include "GameFramework/Actor.h"
+#include "IOpenColorIOModule.h"
 #include "LevelEditorViewport.h"
-#include "Modules/ModuleManager.h"
-#include "SLevelViewport.h"
+#include "OpenColorIOColorSpace.h"
+#include "OpenColorIODisplayManager.h"
 #include "TrueScopeModule.h"
-#include "UObject/UnrealType.h"
 
 #define LOCTEXT_NAMESPACE "TrueScopeStatus"
 
@@ -40,145 +40,40 @@ namespace
 		return bUseGpu ? LOCTEXT("PathGpu", "GPU") : LOCTEXT("PathCpu", "CPU");
 	}
 
-	/** A string UPROPERTY inside a struct UPROPERTY, or empty on any miss. */
-	FString ReadNestedString(const FStructProperty* StructProp, const void* Container,
-		const TCHAR* FieldName)
-	{
-		const FStrProperty* Field =
-			CastField<FStrProperty>(StructProp->Struct->FindPropertyByName(FieldName));
-		return Field
-			? Field->GetPropertyValue_InContainer(StructProp->ContainerPtrToValuePtr<void>(Container))
-			: FString();
-	}
-
 	/**
-	 * The destination name out of one FOpenColorIODisplayConfiguration value,
-	 * or empty when the configuration is disabled/unset. Reflection-only.
-	 */
-	FString ReadOcioConfigurationName(const FStructProperty* ConfigProp, const void* Owner)
-	{
-		const FBoolProperty* EnabledProp =
-			CastField<FBoolProperty>(ConfigProp->Struct->FindPropertyByName(TEXT("bIsEnabled")));
-		const FStructProperty* ConversionProp =
-			CastField<FStructProperty>(ConfigProp->Struct->FindPropertyByName(TEXT("ColorConfiguration")));
-		if (!EnabledProp || !ConversionProp)
-		{
-			return FString();
-		}
-
-		const void* Config = ConfigProp->ContainerPtrToValuePtr<void>(Owner);
-		if (!EnabledProp->GetPropertyValue_InContainer(Config))
-		{
-			return FString();
-		}
-
-		const FStructProperty* DisplayViewProp = CastField<FStructProperty>(
-			ConversionProp->Struct->FindPropertyByName(TEXT("DestinationDisplayView")));
-		const FStructProperty* DestSpaceProp = CastField<FStructProperty>(
-			ConversionProp->Struct->FindPropertyByName(TEXT("DestinationColorSpace")));
-		if (!DisplayViewProp || !DestSpaceProp)
-		{
-			return FString();
-		}
-
-		const void* Conversion = ConversionProp->ContainerPtrToValuePtr<void>(Config);
-		return ComposeOcioDestinationName(
-			ReadNestedString(DisplayViewProp, Conversion, TEXT("Display")),
-			ReadNestedString(DisplayViewProp, Conversion, TEXT("View")),
-			ReadNestedString(DestSpaceProp, Conversion, TEXT("ColorSpaceName")));
-	}
-
-	/**
-	 * The active OCIO view transform of the focused level viewport, read with
-	 * NO build dependency on the OpenColorIO plugin (work order 13 Fix 3 —
-	 * soft path, human-approved 2026-07-17). The source is the OCIO editor
-	 * module's own per-viewport store — UOpenColorIOLevelViewportSettings,
-	 * keyed by SLevelViewport::GetConfigKey(), falling back to
-	 * UOpenColorIODefaultViewportSettings when enabled — i.e. exactly what
-	 * UOpenColorIOLevelViewportSettings::GetViewportSettings() returns to the
-	 * OCIO module itself, which writes the store on every viewport-menu change
-	 * (SetViewportSettings + SaveConfig), so the label stays current. Every
-	 * step degrades to "no name" (plain encoding) when the plugin is absent
-	 * or a future engine version renames a field — a silently missing label,
-	 * never a crash. Empty result = OCIO inactive for this viewport.
+	 * The LIVE OCIO view transform of the focused level viewport, or empty
+	 * when OCIO is not enabled for it (work order 13 Fix 3, final form —
+	 * hard OCIO plugin dependency, human-decided 2026-07-17; the trade-off
+	 * and the discarded soft path are recorded in architecture.md, "Status
+	 * line: OCIO view-transform name").
+	 *
+	 * The source is FOpenColorIODisplayManager, keyed by the SAME viewport
+	 * client the capture extension measures — the exact store the viewport's
+	 * "OCIO Display" menu writes on every change, so the label can never
+	 * disagree with the menu or lag an in-session toggle. (The
+	 * reflection-readable UOpenColorIOLevelViewportSettings store was tried
+	 * first and rejected: it persists only on viewport teardown, so it lags
+	 * live toggles — verified 2026-07-17.) GetDestinationString() is the OCIO
+	 * plugin's own UI naming: display-view pair, else the destination colour
+	 * space.
 	 */
 	FString GetOcioDestinationName(const FLevelEditorViewportClient* Viewport)
 	{
-		// The settings classes live in the OCIO *editor* module; not loaded
-		// means the OCIO plugin is disabled — the common case, exit cheaply.
-		if (!FModuleManager::Get().IsModuleLoaded(TEXT("OpenColorIOEditor")))
+		// Defensive: the plugin reference guarantees availability in normal
+		// operation; the guard only covers shutdown/startup edges.
+		if (!IOpenColorIOModule::IsAvailable())
 		{
 			return FString();
 		}
 
-		const TSharedPtr<SLevelViewport> LevelViewport =
-			StaticCastSharedPtr<SLevelViewport>(Viewport->GetEditorViewportWidget());
-		if (!LevelViewport.IsValid())
+		const FOpenColorIODisplayConfiguration* Config =
+			IOpenColorIOModule::Get().GetDisplayManager().GetDisplayConfiguration(Viewport);
+		if (!Config || !Config->bIsEnabled)
 		{
 			return FString();
 		}
-		const FName ConfigKey = LevelViewport->GetConfigKey();
-
-		// Per-viewport store first (mirrors GetViewportSettings()).
-		if (const UClass* SettingsClass = FindObject<UClass>(nullptr,
-			TEXT("/Script/OpenColorIOEditor.OpenColorIOLevelViewportSettings")))
-		{
-			const UObject* Settings = SettingsClass->GetDefaultObject();
-			const FArrayProperty* ArrayProp = CastField<FArrayProperty>(
-				SettingsClass->FindPropertyByName(TEXT("ViewportsSettings")));
-			const FStructProperty* PairProp =
-				ArrayProp ? CastField<FStructProperty>(ArrayProp->Inner) : nullptr;
-			if (Settings && PairProp)
-			{
-				const FNameProperty* IdProp = CastField<FNameProperty>(
-					PairProp->Struct->FindPropertyByName(TEXT("ViewportIdentifier")));
-				const FStructProperty* ConfigProp = CastField<FStructProperty>(
-					PairProp->Struct->FindPropertyByName(TEXT("DisplayConfiguration")));
-				if (IdProp && ConfigProp)
-				{
-					FScriptArrayHelper Array(ArrayProp,
-						ArrayProp->ContainerPtrToValuePtr<void>(Settings));
-					for (int32 Index = 0; Index < Array.Num(); ++Index)
-					{
-						const void* Pair = Array.GetRawPtr(Index);
-						if (IdProp->GetPropertyValue_InContainer(Pair) == ConfigKey)
-						{
-							// An entry exists: its state decides, enabled or not
-							// (a disabled entry must NOT fall through to the
-							// default — GetViewportSettings returns it as-is).
-							return ReadOcioConfigurationName(ConfigProp, Pair);
-						}
-					}
-				}
-			}
-		}
-
-		// No entry for this viewport: the enabled project-wide default applies.
-		if (const UClass* DefaultClass = FindObject<UClass>(nullptr,
-			TEXT("/Script/OpenColorIOEditor.OpenColorIODefaultViewportSettings")))
-		{
-			const UObject* Defaults = DefaultClass->GetDefaultObject();
-			const FStructProperty* ConfigProp = CastField<FStructProperty>(
-				DefaultClass->FindPropertyByName(TEXT("DefaultDisplayConfiguration")));
-			if (Defaults && ConfigProp)
-			{
-				return ReadOcioConfigurationName(ConfigProp, Defaults);
-			}
-		}
-
-		return FString();
+		return Config->ColorConfiguration.GetDestinationString();
 	}
-}
-
-FString ComposeOcioDestinationName(const FString& Display, const FString& View,
-	const FString& ColorSpaceName)
-{
-	if (!Display.IsEmpty() && !View.IsEmpty())
-	{
-		// FOpenColorIODisplayView::ToString's exact format.
-		return FString::Printf(TEXT("%s - %s"), *Display, *View);
-	}
-	return ColorSpaceName;
 }
 
 FText GetDefaultDisplayEncoding()

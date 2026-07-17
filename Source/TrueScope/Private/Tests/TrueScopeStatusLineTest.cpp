@@ -86,21 +86,10 @@ bool FTrueScopeStatusLineTest::RunTest(const FString&)
 		TestTrue(TEXT("Every state says something"), !StatusText(State).IsEmpty());
 	}
 
-	// OCIO destination naming (work order 13 Fix 3): must mirror the OCIO
-	// plugin's own GetDestinationString — display-view pair first, colour
-	// space as the fallback, silence when nothing is configured.
-	TestEqual(TEXT("Display-view pair wins"),
-		TrueScope::ComposeOcioDestinationName(TEXT("sRGB - Display"), TEXT("ACES 1.0 - SDR Video"), TEXT("Rec709")),
-		FString(TEXT("sRGB - Display - ACES 1.0 - SDR Video")));
-	TestEqual(TEXT("Colour space is the fallback"),
-		TrueScope::ComposeOcioDestinationName(FString(), FString(), TEXT("Rec709")),
-		FString(TEXT("Rec709")));
-	TestEqual(TEXT("Half a display-view falls back to the colour space"),
-		TrueScope::ComposeOcioDestinationName(TEXT("sRGB - Display"), FString(), TEXT("Rec709")),
-		FString(TEXT("Rec709")));
-	TestEqual(TEXT("Nothing configured stays silent"),
-		TrueScope::ComposeOcioDestinationName(FString(), FString(), FString()),
-		FString());
+	// The OCIO view-transform naming itself is the OCIO plugin's own
+	// GetDestinationString (hard dependency since work order 13 Fix 3, final
+	// form) — nothing of ours left to unit-test there; the live behaviour is
+	// verified in-editor.
 
 	return true;
 }

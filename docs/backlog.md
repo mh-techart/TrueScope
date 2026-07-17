@@ -121,17 +121,19 @@ mechanism rather than leaving stale traces.
   capture but are questionable as a signal, and a status-line state for the
   no-capture modes.
 - **[resolved in work order 13] Name the active OCIO view transform in the
-  status line** — **Resolved 2026-07-17 via the reflection soft path** (decided
-  by the human, revising the earlier phase-6.1 drop; settled decision in
-  `architecture.md`, "Status line: OCIO view-transform name via soft path"):
-  the status line reads the OCIO editor module's per-viewport store by
-  reflection — no OCIO build or plugin dependency — and shows the destination
-  name when a transform is enabled. What remains for the **color-space-aware
-  work below**: making the transform *load-bearing* (scale and graticule
-  calibration), which is where a real OCIO dependency would earn its keep.
-  V1's percentages and vectorscope targets stay calibrated for Rec.709/sRGB
-  only, so under a P3/PQ view transform the name in the status line is a
-  truthful label, not a recalibration.
+  status line** — **Resolved 2026-07-17 via a human-decided hard OCIO plugin
+  dependency** (`FOpenColorIODisplayManager`, live per-viewport config; the
+  full decision history — including why the reflection soft path was built
+  first and then rejected (teardown-only persistence made it lag live
+  toggles), the exact API wall, and the OCIO plugin's per-layout-pane preset
+  behaviour — is recorded in `architecture.md`, "Status line: OCIO
+  view-transform name via a hard OpenColorIO plugin dependency"). What
+  remains for the **color-space-aware work below**: making the transform
+  *load-bearing* (scale and graticule calibration) — the dependency now
+  already exists, so that work can query OCIO directly. V1's percentages and
+  vectorscope targets stay calibrated for Rec.709/sRGB only, so under a P3/PQ
+  view transform the name in the status line is a truthful label, not a
+  recalibration.
 - **Scene-referred / HDR / OCIO measurement modes** — analyze pre-tonemap or
   OCIO-managed signals; log-scale waveform; values above display white;
   log-profile (S-Log etc.) zebra targets; color-space-aware calibration
