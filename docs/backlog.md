@@ -99,23 +99,39 @@ mechanism rather than leaving stale traces.
   viewport-only decision. Opt-in convenience only; must never become a
   requirement (would reintroduce scene-side state). Caveats to solve:
   mirroring camera/post settings, auto-exposure parity with a real viewport.
-- **Name the active OCIO view transform in the status line** — the M6 status line
-  reports the display encoding as "sRGB / Rec.709" and does **not** name an OCIO
-  view transform when one is active. Deliberate, decided by the human in
-  phase-6.1 (recorded in `architecture.md`, "Status line: display encoding, and no
-  OpenColorIO dependency"): the only supported source is the OpenColorIO plugin's
-  own store (`FOpenColorIODisplayManager::GetDisplayConfiguration(ViewportClient)`,
-  public API in module `OpenColorIO`; the per-viewport preset lives in the private
-  `UOpenColorIOLevelViewportSettings`, keyed by `SLevelViewport::GetConfigKey()`),
-  and that plugin is **not enabled by default** in UE 5.8 — so a dependency would
-  force it, plus its third-party library, on every TrueScope user for a label.
-  Measurement itself is unaffected: TrueScope samples after the OCIO pass and
-  therefore always measures what the viewport shows.
-  **Pick this up with the color-space-aware work below**, where the transform
-  stops being a label and starts deciding the scale and graticule calibration —
-  at that point the dependency buys something real and can be re-decided. Note
-  that V1's percentages and vectorscope targets are calibrated for Rec.709/sRGB
-  only, so under a P3/PQ view transform a *name* would be the least of it.
+- **Pane split-ratio persistence** — the TrueScope panel's internal `SSplitter`
+  ratios reset to equal on tab close/reopen; the docking position persists but
+  the pane sizes do not (code default 0.5, confirmed during the phase-5.1 MCP
+  sessions). Persist the user's pane sizes through the same per-user settings
+  mechanism the other options use (phase-6.1 Task 3). Low priority (human's
+  call, work order 13).
+- **Unsuitable view-mode signalling (open design question, work order 13)** —
+  even in a perspective/cine view, the viewport's **view mode** may carry no
+  meaningful colour signal. Confirmed fine and worth keeping measuring: Lit,
+  Detail Lighting, Lighting Only, Reflections. Open for a later phase: which
+  view modes yield no usable colour image, and should those get a status-line
+  note like the ortho case? Deliberately **not** a blanket "warn on non-Lit" —
+  Lighting Only etc. are wanted. **The Fix 1 investigation already answered
+  half of this** (see `architecture.md`, "Capture exists only while…"): modes
+  that `ApplyViewMode` maps to `PostProcessing=0` — Wireframe, Unlit, most
+  debug visualizations — produce **no capture at all** (the scopes silently
+  hold their last frame), so the engine's own `ApplyViewMode` table in
+  `ShowFlags.cpp` is the authoritative list to design against. Remaining
+  design work: per-mode decision (note vs. measure) for modes that *do*
+  capture but are questionable as a signal, and a status-line state for the
+  no-capture modes.
+- **[resolved in work order 13] Name the active OCIO view transform in the
+  status line** — **Resolved 2026-07-17 via the reflection soft path** (decided
+  by the human, revising the earlier phase-6.1 drop; settled decision in
+  `architecture.md`, "Status line: OCIO view-transform name via soft path"):
+  the status line reads the OCIO editor module's per-viewport store by
+  reflection — no OCIO build or plugin dependency — and shows the destination
+  name when a transform is enabled. What remains for the **color-space-aware
+  work below**: making the transform *load-bearing* (scale and graticule
+  calibration), which is where a real OCIO dependency would earn its keep.
+  V1's percentages and vectorscope targets stay calibrated for Rec.709/sRGB
+  only, so under a P3/PQ view transform the name in the status line is a
+  truthful label, not a recalibration.
 - **Scene-referred / HDR / OCIO measurement modes** — analyze pre-tonemap or
   OCIO-managed signals; log-scale waveform; values above display white;
   log-profile (S-Log etc.) zebra targets; color-space-aware calibration
