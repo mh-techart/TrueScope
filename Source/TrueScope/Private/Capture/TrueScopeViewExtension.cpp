@@ -195,6 +195,22 @@ bool FTrueScopeViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensi
 	}
 
 	LastCaptureTimeSeconds = Now;
+
+	// Diagnostic (silent unless LogTrueScope is set to Verbose): activation says
+	// "TrueScope wants this frame", which is NOT the same as "a frame will
+	// arrive" — the capture hook only fires if the view actually runs the
+	// post-tonemap chain. When the scopes hold still with a viewport focused,
+	// this line plus the "capture pass ran" line below tell the two apart.
+	UE_LOG(LogTrueScope, Verbose,
+		TEXT("Capture activated: view type %d, perspective %d, view mode %d, post-processing %d, locked actor %s"),
+		static_cast<int32>(GCurrentLevelEditingViewportClient->GetViewportType()),
+		GCurrentLevelEditingViewportClient->IsPerspective() ? 1 : 0,
+		static_cast<int32>(GCurrentLevelEditingViewportClient->GetViewMode()),
+		GCurrentLevelEditingViewportClient->EngineShowFlags.PostProcessing ? 1 : 0,
+		GCurrentLevelEditingViewportClient->GetActiveActorLock().IsValid()
+			? *GCurrentLevelEditingViewportClient->GetActiveActorLock()->GetActorLabel()
+			: TEXT("none"));
+
 	return true;
 }
 
@@ -291,6 +307,11 @@ FScreenPassTexture FTrueScopeViewExtension::AfterTonemapPass_RenderThread(FRDGBu
 
 			// The switch re-analysis (cold-start guard) may now trust the RT.
 			bHasCapturedFrame.store(true, std::memory_order_release);
+
+			// The counterpart of the activation line: this one only appears when
+			// a frame really reached the scopes.
+			UE_LOG(LogTrueScope, Verbose, TEXT("Capture pass ran (%dx%d)"),
+				SceneColor.ViewRect.Width(), SceneColor.ViewRect.Height());
 
 			if (!bFirstCaptureLogged)
 			{
