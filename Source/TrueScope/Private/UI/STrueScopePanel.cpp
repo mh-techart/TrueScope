@@ -5,6 +5,7 @@
 
 #include "Capture/TrueScopeCaptureGate.h"
 #include "TrueScopeModule.h"
+#include "UI/STrueScopeStatusLine.h"
 #include "UI/STrueScopeToolbar.h"
 #include "UI/STrueScopeWidget.h"
 #include "UI/TrueScopeType.h"
@@ -90,6 +91,14 @@ void STrueScopePanel::Construct(const FArguments& InArgs)
 					Histogram
 				]
 			]
+		]
+
+		// What is being measured, in which encoding, on which path — and why
+		// nothing is being measured when that is the case (phase-6.1 Task 4).
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(STrueScopeStatusLine, Analyzer)
 		]
 	];
 }
