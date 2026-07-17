@@ -111,4 +111,62 @@ namespace TrueScope
 	 * further from center than R/Cy and Yl/B.
 	 */
 	TArrayView<const FVectorscopeTarget> GetVectorscopeTargets();
+
+	/**
+	 * The six 100 % targets (fully saturated primaries/secondaries), derived the
+	 * same way as the 75 % set. They do NOT share one radius either — each sits
+	 * at its own chroma magnitude (Mg/G furthest out, R/Cy nearer, Yl/B nearest;
+	 * phase-6.2 spec, measured against Resolve) — and must never be placed on a
+	 * common circle.
+	 */
+	TArrayView<const FVectorscopeTarget> GetVectorscopeTargets100();
+
+	/**
+	 * Chroma -> graticule angle in degrees: counter-clockwise from +Cb (Cb on x
+	 * positive right, Cr on y positive up), normalized to [0, 360). The one
+	 * angular reference frame of the vectorscope (phase-6.2) — the frame the
+	 * density is plotted in and the frame Resolve uses (no NTSC/YIQ rotation).
+	 */
+	float ChromaAngleDegrees(const FChroma& Chroma);
+
+	/**
+	 * Skin tone line angle in the Cb/Cr frame above (phase-6.2 Task 1a).
+	 *
+	 * THIS ANGLE IS A CONVENTION, NOT A STANDARD — do not "correct" it.
+	 * Blackmagic publishes no number and Resolve's documentation describes the
+	 * indicator only qualitatively. 123.0 degrees is the historical NTSC I axis
+	 * expressed in the Cb/Cr plane, the value SMPTE flesh-tone practice and
+	 * Resolve, FCP, Premiere and Media Composer all converge on. Three
+	 * independent confirmations, recorded here so nobody replaces the constant
+	 * with a plausible-looking recomputation (phase-6.2 spec):
+	 *   (1) the NTSC I-axis derivation;
+	 *   (2) a representative skin colour, sRGB 0.80/0.60/0.50, computes to
+	 *       124.9 degrees — on the line;
+	 *   (3) direct measurement of Resolve's own white line: 123.08 degrees,
+	 *       sigma 0.09 degrees over 1546 pixels.
+	 */
+	inline constexpr float SkinToneLineAngleDegrees = 123.0f;
+
+	/** One colour stop of the vectorscope hue ring, at its Cb/Cr angle. */
+	struct FHueRingStop
+	{
+		/** Graticule angle (ChromaAngleDegrees frame), in RADIANS. */
+		float AngleRadians = 0.0f;
+
+		/** Display-encoded fully saturated hue at that angle. */
+		FLinearColor Color = FLinearColor::Black;
+	};
+
+	/**
+	 * Builds the vectorscope hue ring (phase-6.2 Task 1b): NumSteps fully
+	 * saturated RGB hues swept in hue order, each converted through the BT.709
+	 * matrix and placed at atan2(Cr, Cb). The ring is deliberately NOT an
+	 * HSV/RGB colour wheel: generating the angles from the same formula as the
+	 * six targets makes the non-uniform angular spacing (red->yellow 72 deg,
+	 * yellow->green 55 deg) fall out by itself and keeps the ring in register
+	 * with the targets by construction — it cannot be mis-rotated. Stops come
+	 * out in monotonically increasing angle order along the hue sweep, wrapping
+	 * once through 360.
+	 */
+	void BuildHueRingStops(int32 NumSteps, TArray<FHueRingStop>& OutStops);
 }

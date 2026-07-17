@@ -34,6 +34,47 @@ namespace
 		{TEXT("G"),  0.0f,  Bar75, 0.0f },
 		{TEXT("Yl"), Bar75, Bar75, 0.0f },
 	};
+
+	/** The same six colours at full amplitude (phase-6.2: the 100 % targets). */
+	constexpr FTargetDefinition TargetDefinitions100[] = {
+		{TEXT("R"),  1.0f, 0.0f, 0.0f},
+		{TEXT("Mg"), 1.0f, 0.0f, 1.0f},
+		{TEXT("B"),  0.0f, 0.0f, 1.0f},
+		{TEXT("Cy"), 0.0f, 1.0f, 1.0f},
+		{TEXT("G"),  0.0f, 1.0f, 0.0f},
+		{TEXT("Yl"), 1.0f, 1.0f, 0.0f},
+	};
+
+	TArray<FVectorscopeTarget> BuildTargets(TArrayView<const FTargetDefinition> Definitions)
+	{
+		TArray<FVectorscopeTarget> Built;
+		Built.Reserve(Definitions.Num());
+		for (const FTargetDefinition& Definition : Definitions)
+		{
+			Built.Add(FVectorscopeTarget{Definition.Label,
+				RgbToChroma(Definition.R, Definition.G, Definition.B)});
+		}
+		return Built;
+	}
+
+	/**
+	 * Fully saturated RGB hue (HSV with S = V = 1) for a hue fraction in [0,1).
+	 * Textbook piecewise conversion, written from the definition.
+	 */
+	FLinearColor HueToRgb(float HueFraction)
+	{
+		const float H = FMath::Frac(HueFraction) * 6.0f;
+		const float X = 1.0f - FMath::Abs(FMath::Fmod(H, 2.0f) - 1.0f);
+		switch (FMath::Min(static_cast<int32>(H), 5))
+		{
+		case 0:  return FLinearColor(1.0f, X, 0.0f);
+		case 1:  return FLinearColor(X, 1.0f, 0.0f);
+		case 2:  return FLinearColor(0.0f, 1.0f, X);
+		case 3:  return FLinearColor(0.0f, X, 1.0f);
+		case 4:  return FLinearColor(X, 0.0f, 1.0f);
+		default: return FLinearColor(1.0f, 0.0f, X);
+		}
+	}
 }
 
 FYCbCr RgbToYCbCr(float R, float G, float B)
@@ -116,17 +157,34 @@ int32 PixelToLumaBin(const FColor& Color)
 
 TArrayView<const FVectorscopeTarget> GetVectorscopeTargets()
 {
-	static const TArray<FVectorscopeTarget> Targets = []
-	{
-		TArray<FVectorscopeTarget> Built;
-		Built.Reserve(UE_ARRAY_COUNT(TargetDefinitions));
-		for (const FTargetDefinition& Definition : TargetDefinitions)
-		{
-			Built.Add(FVectorscopeTarget{Definition.Label, RgbToChroma(Definition.R, Definition.G, Definition.B)});
-		}
-		return Built;
-	}();
+	static const TArray<FVectorscopeTarget> Targets = BuildTargets(TargetDefinitions);
 	return Targets;
+}
+
+TArrayView<const FVectorscopeTarget> GetVectorscopeTargets100()
+{
+	static const TArray<FVectorscopeTarget> Targets = BuildTargets(TargetDefinitions100);
+	return Targets;
+}
+
+float ChromaAngleDegrees(const FChroma& Chroma)
+{
+	const float Degrees = FMath::RadiansToDegrees(FMath::Atan2(Chroma.Cr, Chroma.Cb));
+	return Degrees < 0.0f ? Degrees + 360.0f : Degrees;
+}
+
+void BuildHueRingStops(int32 NumSteps, TArray<FHueRingStop>& OutStops)
+{
+	OutStops.Reset(NumSteps);
+	for (int32 Step = 0; Step < NumSteps; ++Step)
+	{
+		// Sweep in HUE order and derive each stop's ANGLE from the BT.709 matrix
+		// — never place hues at uniform angles (see the header: the non-uniform
+		// spacing and the register with the six targets both come from this).
+		const FLinearColor Rgb = HueToRgb(static_cast<float>(Step) / NumSteps);
+		const FChroma Chroma = RgbToChroma(Rgb.R, Rgb.G, Rgb.B);
+		OutStops.Add(FHueRingStop{FMath::Atan2(Chroma.Cr, Chroma.Cb), Rgb});
+	}
 }
 
 } // namespace TrueScope
