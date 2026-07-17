@@ -99,6 +99,23 @@ mechanism rather than leaving stale traces.
   viewport-only decision. Opt-in convenience only; must never become a
   requirement (would reintroduce scene-side state). Caveats to solve:
   mirroring camera/post settings, auto-exposure parity with a real viewport.
+- **Name the active OCIO view transform in the status line** — the M6 status line
+  reports the display encoding as "sRGB / Rec.709" and does **not** name an OCIO
+  view transform when one is active. Deliberate, decided by the human in
+  phase-6.1 (recorded in `architecture.md`, "Status line: display encoding, and no
+  OpenColorIO dependency"): the only supported source is the OpenColorIO plugin's
+  own store (`FOpenColorIODisplayManager::GetDisplayConfiguration(ViewportClient)`,
+  public API in module `OpenColorIO`; the per-viewport preset lives in the private
+  `UOpenColorIOLevelViewportSettings`, keyed by `SLevelViewport::GetConfigKey()`),
+  and that plugin is **not enabled by default** in UE 5.8 — so a dependency would
+  force it, plus its third-party library, on every TrueScope user for a label.
+  Measurement itself is unaffected: TrueScope samples after the OCIO pass and
+  therefore always measures what the viewport shows.
+  **Pick this up with the color-space-aware work below**, where the transform
+  stops being a label and starts deciding the scale and graticule calibration —
+  at that point the dependency buys something real and can be re-decided. Note
+  that V1's percentages and vectorscope targets are calibrated for Rec.709/sRGB
+  only, so under a P3/PQ view transform a *name* would be the least of it.
 - **Scene-referred / HDR / OCIO measurement modes** — analyze pre-tonemap or
   OCIO-managed signals; log-scale waveform; values above display white;
   log-profile (S-Log etc.) zebra targets; color-space-aware calibration
@@ -187,31 +204,37 @@ mechanism rather than leaving stale traces.
   reworks the readback machine anyway**, rather than as speculative work now.
   Include a regression test that drives an in-flight readback whose fence never
   signals and asserts the reset restores capture.
-- **Render scope textures at display resolution (`architecture.md:112`)** — the
-  anti-pixelation recipe requires "scope textures at display resolution or
-  higher", and the GPU path does not meet it: the histogram rasterizes into a
-  fixed 512×144 target that is upscaled to the panel, violating the rule and
-  producing a thicker/softer stroke than the CPU path. **This is not a
-  histogram-line bug** — the fixed-size raster is the root cause and the rule
-  applies to *all* GPU scopes (the parade/waveform/vectorscope density targets
-  are likewise fixed at `CaptureWidth × NumBins` and upscaled). Fix at **M6 for
-  all GPU scopes uniformly** — plumb the widget's plot-rect device-px into the
-  analysis pass, size the render targets dynamically — **not piecemeal per
-  scope**. The GPU path is not the shipped default until M7, so the cosmetic
-  residual ships to nobody meanwhile.
+- **[resolved in phase-6.1] Render scope textures at display resolution** —
+  **Resolved 2026-07-14 (phase-6.1 Task 1).** Every scope widget now publishes
+  the rect it draws its raster into, in device pixels
+  (`FTrueScopeRasterSizes`, filled from `OnPaint`), and the GPU producer sizes
+  its render targets to those rects: one raster texel is one device pixel, so
+  Slate's upscale becomes an identity. Targets are *allocated* in 64-px buckets
+  (a splitter drag must not reallocate them every mouse move) and the pass
+  rasterizes the exact requested region inside the bucket, which the widget then
+  samples through the brush's UV region. Bins and counts are untouched — the
+  shaders resample the bin grid with the same clamp-bilinear filter Slate's
+  sampler used to apply. Regression test: `TrueScope.UI.RasterBucket`.
 
-  *Measured 2026-07-14* (retina, red curve, device px): the raster is magnified
-  3.67× horizontally but only 1.64× vertically, and the shader measures the
-  stroke distance isotropically in *texel* space — so the GPU stroke is not just
-  wider than the Slate vector line but **slope-dependent**: 1.98 px on flat
+  *Re-measured after the fix* (same method as below, retina, red curve,
+  perpendicular stroke width in device px): GPU **1.43 px** on flat stretches and
+  **1.02 px** on steep ones, against the CPU/Slate line's 1.28 / 0.97 px — the
+  slope-dependence is gone (the GPU stroke now thins on steep stretches exactly
+  as the Slate line does) and the width matches within ~0.15 px. Why it works:
+  Slate expresses line thickness in *screen-space* pixels (`FLineBuilder` divides
+  it by the element scale), so a device-resolution raster reproduces the CPU
+  line's width from the same constant, by construction.
+
+  *Original record (measured 2026-07-14, before the fix):* the raster was
+  magnified 3.67× horizontally but only 1.64× vertically, and the shader measures
+  the stroke distance isotropically in *texel* space — so the GPU stroke was not
+  just wider than the Slate vector line but **slope-dependent**: 1.98 px on flat
   stretches and 4.00 px on steep peaks, against the CPU line's uniform
-  1.13/1.32 px. No thickness constant can fix this (a texture with fewer texels
+  1.13/1.32 px. No thickness constant could fix that (a texture with fewer texels
   than the screen has pixels cannot carry a crisp 1-px line, and no constant
-  removes the anisotropy) — hence the resolution fix above. The stroke's
-  *coverage profile* was a separate, genuine bug and is already fixed
-  (commit "Match Slate's antialiased line coverage in the histogram GPU
-  raster"): the shader now reproduces Slate's own antialiased-line coverage
-  instead of a box profile that laid down ~2× the ink at a saturated core.
+  removes the anisotropy) — hence the resolution fix. The stroke's *coverage
+  profile* was a separate, genuine bug, fixed earlier (commit "Match Slate's
+  antialiased line coverage in the histogram GPU raster").
 - **Density-to-brightness curve tuning ("scopes drowning in dense areas")** —
   observed in the M3 review: TrueScope's parade density is much denser than
   Resolve's, so structure drowns in solid fills. The likely cause is **not**
@@ -270,16 +293,17 @@ mechanism rather than leaving stale traces.
   right-click menu on `STrueScopeWidget`) and shipped its first two users — the
   histogram's Separate Channels / RGB Overlay pair and the waveform's RGB /
   Luma pair. Further modes only need the three overrides.
-- **Minimum panel size / graceful degradation** — below a certain panel size the
-  vectorscope stops being drawn. Reading it there is pointless anyway, so the
-  behaviour is acceptable, but a scope that simply vanishes reads as a bug.
-  **First find the actual cause** (measure, do not assume — intentional guard,
-  clamp on non-positive size, or accident). Then replace the empty panel with a
-  short centred hint, e.g. *"Panel too small — enlarge to use the Vectorscope"*
-  (exact wording M6); below an even smaller threshold, degrade to nothing rather
-  than clipped text. **Build it on the base scope widget**, not in the
-  vectorscope, so every current and future scope inherits it — the vectorscope is
-  just the first to hit the limit because it is aspect-locked.
+- **[resolved in phase-6.1] Minimum panel size / graceful degradation** —
+  **Resolved 2026-07-14 (phase-6.1 Task 5).** The cause was what the item
+  suspected: each scope had its own hand-rolled "plot too small" guard that drew
+  the background and bailed out, so a squeezed scope silently vanished. The rule
+  now lives on the base scope widget (`TrueScope::Draw::IsTooSmallToRead`, routed
+  through `DrawScopeHints`), so every current and future scope inherits it: below
+  the readable size it shows a centred *"Panel too small"*, and below the size
+  where even that hint's plate fits, `DrawCenteredHint` draws nothing rather than
+  clipped text — the same mechanism the paused/empty hints use. The vectorscope
+  reaches the threshold first, as predicted, because its content rect is the
+  largest centred square. Regression test: `TrueScope.UI.PanelSizeHint`.
   (The detailed vectorscope graticule spec, previously a placeholder here, is now
   its own section below: "Vectorscope graticule extensions".)
 - **Richer PIE handling (deferred; behaviour otherwise resolved).** The former
@@ -296,13 +320,22 @@ mechanism rather than leaving stale traces.
   as a separate process with no editor module, so TrueScope does not load
   there; state this as a known limitation in the plugin README (M7 release
   docs). See `architecture.md`, "Behaviour during PIE".
-- **Orthographic viewports are never measured — tell the user (deferred UX gap;
-  belongs to the M6 status line).** Found during M4.1: with the level viewport in
-  an ortho view (Top/Front/Left…), no capture ever happens — the log shows no
-  "First viewport capture" at all and the scopes stay blank, until the viewport
-  is switched back to Perspective, at which point capture starts immediately. The
-  post-tonemap hook (`EPostProcessingPass::Tonemap`) evidently does not run on the
-  ortho path; investigate against 5.8 source before assuming a cause.
+- **[partly resolved in phase-6.1] Orthographic viewports are never measured —
+  tell the user.** **The UX half is resolved (2026-07-14, phase-6.1 Task 4):** the
+  status line now names the state — *"No signal — orthographic view (Top); switch
+  the viewport to Perspective"* — instead of leaving blank scopes unexplained
+  (`TrueScope::GatherMeasurementStatus`; test `TrueScope.UI.StatusLine`). **Still
+  open, and deliberately so:** whether ortho should be *measured* at all, i.e.
+  hooking a pass that also runs on the ortho path. That is the "(b) actually fix
+  it" branch below and it needs a source investigation, not a label. Original
+  record follows.
+
+  Found during M4.1: with the level viewport in an ortho view (Top/Front/Left…),
+  no capture ever happens — the log shows no "First viewport capture" at all and
+  the scopes stay blank, until the viewport is switched back to Perspective, at
+  which point capture starts immediately. The post-tonemap hook
+  (`EPostProcessingPass::Tonemap`) evidently does not run on the ortho path;
+  investigate against 5.8 source before assuming a cause.
 
   **This is not a bug, it is the same class as the M4.1 paused indicator:** the
   source delivers nothing and the user is not told why. The scopes are simply never
