@@ -29,3 +29,33 @@ void UTrueScopeSettings::SetScopeDisplayMode(ETrueScopeType Type, int32 ModeId)
 	ScopeDisplayModes.Add(Key, ModeId);
 	SaveConfig();
 }
+
+namespace
+{
+	FName MakeToggleKey(ETrueScopeType Type, FName Key)
+	{
+		return FName(TrueScope::GetScopeTypeKey(Type).ToString() + TEXT(".") + Key.ToString());
+	}
+}
+
+bool UTrueScopeSettings::GetScopeToggleOption(ETrueScopeType Type, FName Key, bool& OutValue) const
+{
+	if (const bool* Value = ScopeToggleOptions.Find(MakeToggleKey(Type, Key)))
+	{
+		OutValue = *Value;
+		return true;
+	}
+	return false;
+}
+
+void UTrueScopeSettings::SetScopeToggleOption(ETrueScopeType Type, FName Key, bool bValue)
+{
+	const FName FullKey = MakeToggleKey(Type, Key);
+	if (const bool* Existing = ScopeToggleOptions.Find(FullKey); Existing && *Existing == bValue)
+	{
+		return; // unchanged; do not rewrite the ini on every repaint-triggering click
+	}
+
+	ScopeToggleOptions.Add(FullKey, bValue);
+	SaveConfig();
+}

@@ -85,6 +85,17 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 		}
 	}
 
+	// Toggle options likewise (phase-6.2): only keys the scope actually offers
+	// are restored, and a key the ini does not know keeps the scope's default.
+	for (const FTrueScopeToggleOption& Toggle : GetToggleOptions())
+	{
+		bool bSavedValue = false;
+		if (UTrueScopeSettings::Get().GetScopeToggleOption(ScopeType, Toggle.Key, bSavedValue))
+		{
+			SetToggleOptionValue(Toggle.Key, bSavedValue);
+		}
+	}
+
 	if (Analyzer)
 	{
 		RegisterActiveTimer(ResultPollPeriodSeconds,
@@ -248,7 +259,7 @@ FReply STrueScopeWidget::OnMouseButtonUp(const FGeometry& MyGeometry, const FPoi
 TSharedRef<SWidget> STrueScopeWidget::BuildContextMenu()
 {
 	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr);
-	if (!GetDisplayModes().IsEmpty())
+	if (!GetDisplayModes().IsEmpty() || !GetToggleOptions().IsEmpty())
 	{
 		MenuBuilder.BeginSection(TEXT("TrueScopeDisplayModes"), LOCTEXT("DisplaySection", "Display"));
 		for (const FTrueScopeDisplayMode& Mode : GetDisplayModes())
@@ -259,6 +270,15 @@ TSharedRef<SWidget> STrueScopeWidget::BuildContextMenu()
 					FCanExecuteAction(),
 					FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsDisplayModeActive, Mode.Id)),
 				NAME_None, EUserInterfaceActionType::RadioButton);
+		}
+		for (const FTrueScopeToggleOption& Toggle : GetToggleOptions())
+		{
+			MenuBuilder.AddMenuEntry(Toggle.Label, Toggle.Tooltip, FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleFlipToggleOption, Toggle.Key),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsToggleOptionChecked, Toggle.Key)),
+				NAME_None, EUserInterfaceActionType::ToggleButton);
 		}
 		MenuBuilder.EndSection();
 	}
@@ -307,6 +327,23 @@ void STrueScopeWidget::ApplyDisplayMode(int32 ModeId)
 bool STrueScopeWidget::IsDisplayModeActive(int32 ModeId) const
 {
 	return GetDisplayModeId() == ModeId;
+}
+
+void STrueScopeWidget::ApplyToggleOption(FName Key, bool bValue)
+{
+	SetToggleOptionValue(Key, bValue);
+	UTrueScopeSettings::Get().SetScopeToggleOption(ScopeType, Key, bValue);
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void STrueScopeWidget::HandleFlipToggleOption(FName Key)
+{
+	ApplyToggleOption(Key, !GetToggleOptionValue(Key));
+}
+
+bool STrueScopeWidget::IsToggleOptionChecked(FName Key) const
+{
+	return GetToggleOptionValue(Key);
 }
 
 #undef LOCTEXT_NAMESPACE

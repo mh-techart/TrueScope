@@ -43,12 +43,13 @@ void STrueScopeToolbar::Construct(const FArguments& InArgs,
 			MakeGroup(LOCTEXT("AnalysisLabel", "Analysis"), MakeAnalysisPathControl())
 		];
 
-	// One group per scope that offers display modes — generated from the scopes,
-	// so this list follows whatever the scopes offer (today: waveform RGB/Luma,
-	// histogram Separate/Overlay).
+	// One group per scope that offers display modes or toggle options —
+	// generated from the scopes, so this list follows whatever the scopes offer
+	// (waveform RGB/Luma, histogram modes, vectorscope zoom + Show Guides).
 	for (const TPair<ETrueScopeType, TSharedPtr<STrueScopeWidget>>& Scope : InScopes)
 	{
-		if (!Scope.Value.IsValid() || Scope.Value->GetDisplayModes().IsEmpty())
+		if (!Scope.Value.IsValid()
+			|| (Scope.Value->GetDisplayModes().IsEmpty() && Scope.Value->GetToggleOptions().IsEmpty()))
 		{
 			continue;
 		}
@@ -179,7 +180,46 @@ TSharedRef<SWidget> STrueScopeToolbar::MakeDisplayModeControl(ETrueScopeType Typ
 			];
 	}
 
+	// Toggle options after the modes (phase-6.2): same button style, but an
+	// independent on/off — clicking flips it rather than selecting it.
+	for (const FTrueScopeToggleOption& Toggle : Scope->GetToggleOptions())
+	{
+		Box->AddSlot()
+			.AutoWidth()
+			.Padding(0.0f, 0.0f, ButtonSpacing, 0.0f)
+			[
+				MakeToggleButton(Toggle.Label, Toggle.Tooltip, WeakScope, Toggle.Key)
+			];
+	}
+
 	return Box;
+}
+
+TSharedRef<SWidget> STrueScopeToolbar::MakeToggleButton(const FText& Label, const FText& Tooltip,
+	TWeakPtr<STrueScopeWidget> Scope, FName Key)
+{
+	return SNew(SCheckBox)
+		.Style(FAppStyle::Get(), "DetailsView.SectionButton")
+		.ToolTipText(Tooltip)
+		.IsChecked_Lambda([Scope, Key]()
+		{
+			const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin();
+			return Pinned.IsValid() && Pinned->GetToggleOptionValue(Key)
+				? ECheckBoxState::Checked
+				: ECheckBoxState::Unchecked;
+		})
+		.OnCheckStateChanged_Lambda([Scope, Key](ECheckBoxState NewState)
+		{
+			if (const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin())
+			{
+				Pinned->ApplyToggleOption(Key, NewState == ECheckBoxState::Checked);
+			}
+		})
+		[
+			SNew(STextBlock)
+			.Text(Label)
+			.TextStyle(FAppStyle::Get(), "SmallText")
+		];
 }
 
 TSharedRef<SWidget> STrueScopeToolbar::MakeMeasurementRateControl()

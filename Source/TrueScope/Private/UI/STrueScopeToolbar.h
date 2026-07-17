@@ -55,6 +55,10 @@ private:
 	TSharedRef<SWidget> MakeOptionButton(const FText& Label, const FText& Tooltip,
 		FSimpleDelegate OnSelected, TAttribute<bool> IsSelected);
 
+	/** Independent on/off button for a scope's toggle option (phase-6.2). */
+	TSharedRef<SWidget> MakeToggleButton(const FText& Label, const FText& Tooltip,
+		TWeakPtr<STrueScopeWidget> Scope, FName Key);
+
 	void HandleSetAnalysisPath(bool bUseGpu);
 	bool IsAnalysisPathSelected(bool bGpu) const;
 

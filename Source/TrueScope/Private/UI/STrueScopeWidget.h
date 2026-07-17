@@ -27,6 +27,21 @@ struct FTrueScopeDisplayMode
 };
 
 /**
+ * One on/off display option of a scope (phase-6.2) — independent of the
+ * radio-style display modes, e.g. the vectorscope's "Show Guides". Like the
+ * modes, toggles surface in both the right-click menu and the toolbar and are
+ * persisted per scope.
+ */
+struct FTrueScopeToggleOption
+{
+	/** Stable, scope-local settings key (not localized, never renamed). */
+	FName Key;
+
+	FText Label;
+	FText Tooltip;
+};
+
+/**
  * Base class for all scope widgets. Provides:
  *
  * - Result access: polls the analyzer at a fixed UI rate (active timer);
@@ -120,6 +135,28 @@ public:
 	 */
 	void ApplyDisplayMode(int32 ModeId);
 
+	/**
+	 * On/off display options this scope offers (phase-6.2); empty (default)
+	 * means none. Surfaced in the toolbar and the right-click menu exactly like
+	 * the display modes, so a scope that adds a toggle gains it in both places.
+	 */
+	virtual TArrayView<const FTrueScopeToggleOption> GetToggleOptions() const
+	{
+		return TArrayView<const FTrueScopeToggleOption>();
+	}
+
+	/** Current value of a toggle option; false for unknown keys. */
+	virtual bool GetToggleOptionValue(FName Key) const
+	{
+		return false;
+	}
+
+	/**
+	 * Flip a toggle option, repaint, and remember the choice across restarts —
+	 * the shared entry point of menu and toolbar (mirror of ApplyDisplayMode).
+	 */
+	void ApplyToggleOption(FName Key, bool bValue);
+
 	/** Which scope this is; the key its persisted options are stored under. */
 	ETrueScopeType GetScopeType() const
 	{
@@ -193,6 +230,11 @@ protected:
 	{
 	}
 
+	/** Set a toggle option's value; ApplyToggleOption repaints afterwards. */
+	virtual void SetToggleOptionValue(FName /*Key*/, bool /*bValue*/)
+	{
+	}
+
 private:
 	EActiveTimerReturnType PollAnalyzer(double InCurrentTime, float InDeltaTime);
 
@@ -208,6 +250,8 @@ private:
 
 	TSharedRef<SWidget> BuildContextMenu();
 	bool IsDisplayModeActive(int32 ModeId) const;
+	void HandleFlipToggleOption(FName Key);
+	bool IsToggleOptionChecked(FName Key) const;
 	void HandleSetUseGpuAnalysis(bool bUseGpu);
 	bool IsAnalysisPathActive(bool bGpu) const;
 

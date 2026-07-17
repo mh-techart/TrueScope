@@ -53,4 +53,18 @@ public:
 
 	/** Remembers a scope's display mode and writes the config out. */
 	void SetScopeDisplayMode(ETrueScopeType Type, int32 ModeId);
+
+	/**
+	 * Per-scope on/off display options (phase-6.2, e.g. the vectorscope's Show
+	 * Guides), keyed "<scope key>.<option key>" — same stable-key rationale as
+	 * ScopeDisplayModes.
+	 */
+	UPROPERTY(config)
+	TMap<FName, bool> ScopeToggleOptions;
+
+	/** True and fills OutValue if a value is remembered for the toggle. */
+	bool GetScopeToggleOption(ETrueScopeType Type, FName Key, bool& OutValue) const;
+
+	/** Remembers a scope toggle's value and writes the config out. */
+	void SetScopeToggleOption(ETrueScopeType Type, FName Key, bool bValue);
 };
