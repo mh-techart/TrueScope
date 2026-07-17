@@ -341,13 +341,17 @@ namespace
 		Parameters.OutputSize = OutputSize;
 		Parameters.LineThickness = HistogramLineThickness;
 		// The widget's exact curve colours (TrueScopeDraw.h), so both paths
-		// draw pixel-identical colours by construction.
+		// draw pixel-identical colours by construction. Fills are passed as-is
+		// (numerically what the widget's ToFColor(false) packing renders); the
+		// line colour goes through the shared Slate-vertex encoding — see
+		// GetHistogramLineRasterColor for why the raw linear value would come
+		// out darker than the CPU line.
 		Parameters.FillColorR = FVector4f(TrueScope::Draw::HistogramFillColors[0]);
 		Parameters.FillColorG = FVector4f(TrueScope::Draw::HistogramFillColors[1]);
 		Parameters.FillColorB = FVector4f(TrueScope::Draw::HistogramFillColors[2]);
-		Parameters.LineColorR = FVector4f(TrueScope::Draw::HistogramLineColors[0]);
-		Parameters.LineColorG = FVector4f(TrueScope::Draw::HistogramLineColors[1]);
-		Parameters.LineColorB = FVector4f(TrueScope::Draw::HistogramLineColors[2]);
+		Parameters.LineColorR = FVector4f(TrueScope::Draw::GetHistogramLineRasterColor(0));
+		Parameters.LineColorG = FVector4f(TrueScope::Draw::GetHistogramLineRasterColor(1));
+		Parameters.LineColorB = FVector4f(TrueScope::Draw::GetHistogramLineRasterColor(2));
 	}
 }
 

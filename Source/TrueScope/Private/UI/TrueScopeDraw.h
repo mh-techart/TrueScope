@@ -58,6 +58,31 @@ namespace TrueScope::Draw
 	 */
 	inline constexpr float HistogramLineThickness = 1.0f;
 
+	/**
+	 * The histogram outline colour as the GPU raster shader must receive it to
+	 * match the CPU line's brightness (work order 13 Fix 2). Slate packs
+	 * MakeLines tints into 8-bit vertex colours with an sRGB ENCODE
+	 * (FSlateElementBatcher::PackVertexColor — bSRGBVertexColor is true for
+	 * the RHI renderer, SlateRHIRenderingPolicy::IsVertexColorInLinearSpace
+	 * returns false) and its shaders then use those bytes without decoding, so
+	 * the encoded value IS what reaches the screen. The GPU raster is shown
+	 * through NoGamma, value-preserving as well — but it was fed the LINEAR
+	 * colour, which for mid-tones lands visibly darker (0.25 linear encodes to
+	 * ~0.537). Fills never disagreed because the widget packs them with
+	 * ToFColor(false), numerically the same linear values the shader gets.
+	 *
+	 * One function derived from the one shared constant, so the two paths
+	 * cannot drift apart again. The round-trip through FColor quantizes to
+	 * 8 bits exactly like Slate's vertex path does; alpha stays linear, also
+	 * like Slate's.
+	 */
+	inline FLinearColor GetHistogramLineRasterColor(int32 Channel)
+	{
+		const FColor Encoded = HistogramLineColors[Channel].ToFColor(/*bSRGB*/ true);
+		return FLinearColor(
+			Encoded.R / 255.0f, Encoded.G / 255.0f, Encoded.B / 255.0f, Encoded.A / 255.0f);
+	}
+
 	/** Fixed-size chrome around the plot area. */
 	inline constexpr float PlotPadding = 6.0f;
 	inline constexpr float ValueLabelStripWidth = 30.0f;
