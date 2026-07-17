@@ -16,9 +16,6 @@ namespace
 	/** Fixed-size margin inside the square, leaving room for the target labels. */
 	constexpr float GraticulePadding = 14.0f;
 
-	/** Below this the graticule stops being readable; draw background only. */
-	constexpr float MinPlotSide = 48.0f;
-
 	/** Fixed-size graticule chrome, independent of the scope's scale. */
 	constexpr float TargetBoxHalfSize = 5.0f;
 	constexpr float TargetLabelOffset = 9.0f;
@@ -140,11 +137,16 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 		FSlateRect(0.0f, 0.0f, PanelSize.X, PanelSize.Y));
 
 	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
-	const float PlotSide = Content.GetSize().X - 2.0f * GraticulePadding;
-	if (PlotSide < MinPlotSide)
+
+	// Too small to read: the shared hint mechanism says so (phase-6.1 Task 5).
+	// The vectorscope hits this first of all scopes — its content rect is the
+	// largest centered SQUARE, so a wide but flat panel shrinks it in both axes.
+	if (IsTooSmallToRead(Content.GetSize()))
 	{
-		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
+		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
+
+	const float PlotSide = Content.GetSize().X - 2.0f * GraticulePadding;
 
 	const FVector2f Center(Content.Left + Content.GetSize().X * 0.5f, Content.Top + Content.GetSize().Y * 0.5f);
 	const float Radius = PlotSide * 0.5f;

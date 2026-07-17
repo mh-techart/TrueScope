@@ -52,6 +52,16 @@ namespace
 		return LOCTEXT("NoData",
 			"No data \u2014 nothing measured yet.\nFocus a Level Editor viewport to measure.");
 	}
+
+	/**
+	 * Below the readable size (phase-6.1 Task 5). Deliberately one short line:
+	 * the panel that triggers it has no room for a second one, and a hint that
+	 * does not fit is not drawn at all.
+	 */
+	FText GetTooSmallHintText()
+	{
+		return LOCTEXT("PanelTooSmall", "Panel too small");
+	}
 }
 
 void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
@@ -161,8 +171,19 @@ int32 STrueScopeWidget::DrawPausedHint(FSlateWindowElementList& OutDrawElements,
 int32 STrueScopeWidget::DrawScopeHints(FSlateWindowElementList& OutDrawElements, int32 LayerId,
 	const FGeometry& AllottedGeometry, const FSlateRect& Content) const
 {
-	// Paused wins: it means values are being HELD (data exists and stays
-	// readable under the hint), which is more specific than "no data".
+	// Too small wins over everything (phase-6.1 Task 5): at this size the scope
+	// conveys nothing, so what it would otherwise say about its data is moot —
+	// and only one hint can fit anyway. Below the size where even this hint's
+	// plate fits, DrawCenteredHint stays silent, which is the intended
+	// degradation: nothing, never clipped text.
+	if (TrueScope::Draw::IsTooSmallToRead(Content.GetSize()))
+	{
+		return TrueScope::Draw::DrawCenteredHint(OutDrawElements, LayerId, AllottedGeometry, Content,
+			GetTooSmallHintText());
+	}
+
+	// Paused wins over "no data": it means values are being HELD (data exists and
+	// stays readable under the hint), which is more specific than "no data".
 	if (ShouldDrawPausedHint())
 	{
 		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);

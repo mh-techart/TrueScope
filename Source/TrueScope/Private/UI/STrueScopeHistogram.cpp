@@ -149,13 +149,15 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
 	LayerId = DrawBackground(OutDrawElements, LayerId, AllottedGeometry, Content);
 
+	// Too small to read: the shared hint mechanism says so (phase-6.1 Task 5).
+	if (IsTooSmallToRead(Content.GetSize()))
+	{
+		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
+	}
+
 	// Plot area: fixed-size padding and bottom label strip.
 	const FSlateRect Plot(Content.Left + PlotPadding, Content.Top + PlotPadding,
 		Content.Right - PlotPadding, Content.Bottom - PlotPadding - ValueLabelStripHeight);
-	if (Plot.GetSize().X < 16.0f || Plot.GetSize().Y < 16.0f)
-	{
-		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
-	}
 
 	// One 0-1023 value axis spanning all channel sub-plots.
 	LayerId = DrawValueAxisX(OutDrawElements, LayerId, AllottedGeometry, Plot, Content, GetHistogramGraticuleLevels());

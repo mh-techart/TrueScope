@@ -139,13 +139,15 @@ int32 STrueScopeParade::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
 	LayerId = DrawBackground(OutDrawElements, LayerId, AllottedGeometry, Content);
 
+	// Too small to read: the shared hint mechanism says so (phase-6.1 Task 5).
+	if (IsTooSmallToRead(Content.GetSize()))
+	{
+		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
+	}
+
 	// Plot area: fixed-size left label strip and padding.
 	const FSlateRect Plot(Content.Left + ValueLabelStripWidth, Content.Top + PlotPadding,
 		Content.Right - PlotPadding, Content.Bottom - PlotPadding);
-	if (Plot.GetSize().X < 32.0f || Plot.GetSize().Y < 16.0f)
-	{
-		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
-	}
 
 	// Density sections, drawn under the graticule. Each section samples only
 	// its own channel's texture (colour already baked in), so it is drawn with

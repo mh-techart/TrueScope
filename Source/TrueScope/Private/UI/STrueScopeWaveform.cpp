@@ -157,13 +157,16 @@ int32 STrueScopeWaveform::OnPaint(const FPaintArgs& Args, const FGeometry& Allot
 	const FSlateRect Content = GetScopeContentRect(AllottedGeometry);
 	LayerId = DrawBackground(OutDrawElements, LayerId, AllottedGeometry, Content);
 
+	// Too small to read: the shared hint mechanism says so (phase-6.1 Task 5)
+	// instead of drawing a plot the fixed chrome has eaten.
+	if (IsTooSmallToRead(Content.GetSize()))
+	{
+		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
+	}
+
 	// Plot area: fixed-size left label strip and padding.
 	const FSlateRect Plot(Content.Left + ValueLabelStripWidth, Content.Top + PlotPadding,
 		Content.Right - PlotPadding, Content.Bottom - PlotPadding);
-	if (Plot.GetSize().X < 32.0f || Plot.GetSize().Y < 16.0f)
-	{
-		return DrawPausedHint(OutDrawElements, LayerId, AllottedGeometry, Content);
-	}
 
 	// The GPU producer rasterizes the trace at exactly this plot rect in device
 	// pixels, so it is drawn 1:1 rather than upscaled (phase-6.1 Task 1).

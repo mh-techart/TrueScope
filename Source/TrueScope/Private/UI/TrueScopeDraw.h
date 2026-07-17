@@ -68,6 +68,26 @@ namespace TrueScope::Draw
 	inline constexpr float HintPlatePaddingY = 6.0f;
 
 	/**
+	 * Below this content size a scope stops being readable — its fixed chrome
+	 * (label strip, padding, graticule) eats the plot, and what is left conveys
+	 * nothing (phase-6.1 Task 5). Scopes show a short hint there instead of a
+	 * broken render; below the size where even the hint plate fits,
+	 * DrawCenteredHint draws nothing rather than clipped text.
+	 *
+	 * The vectorscope reaches this first because it is aspect-locked: its content
+	 * rect is the largest centered SQUARE, so a wide, flat panel shrinks it in
+	 * both axes at once.
+	 */
+	inline constexpr float MinReadableScopeWidth = 180.0f;
+	inline constexpr float MinReadableScopeHeight = 120.0f;
+
+	/** The readable-size rule, pure so it can be tested without Slate. */
+	inline bool IsTooSmallToRead(FVector2f ContentSize)
+	{
+		return ContentSize.X < MinReadableScopeWidth || ContentSize.Y < MinReadableScopeHeight;
+	}
+
+	/**
 	 * Full scale of the normalized 10-bit value axis shared by waveform, parade
 	 * and histogram (architecture.md, "Scales") — a convention, not a claim
 	 * about the source's bit depth.
