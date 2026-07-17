@@ -27,6 +27,26 @@ namespace
 	{
 		return Level / static_cast<float>(ScaleMax);
 	}
+
+	/**
+	 * Minor scale ticks (phase-6.2 Task 3): short fixed-size marks beside the
+	 * label strip — length sized to the gap between labels and plot, so they
+	 * can never run into the label text.
+	 */
+	constexpr float MinorTickLength = 4.0f;
+	const FLinearColor MinorTickColor(0.5f, 0.5f, 0.5f, 0.5f);
+
+	/** All minor tick axis values of a labelled-level list. */
+	TArray<float> BuildMinorTickValues(TArrayView<const int32> Levels)
+	{
+		TArray<float> Values;
+		Values.Reserve(FMath::Max(0, Levels.Num() - 1) * MinorTicksPerDivision);
+		for (int32 Index = 0; Index + 1 < Levels.Num(); ++Index)
+		{
+			GetMinorTickValues(Levels[Index], Levels[Index + 1], Values);
+		}
+		return Values;
+	}
 }
 
 void BindRasterBrush(FSlateBrush& Brush, UTextureRenderTarget2D* Target, FIntPoint RasterSize)
@@ -113,6 +133,17 @@ int32 DrawValueAxisY(FSlateWindowElementList& OutDrawElements, int32 LayerId,
 			LabelString, LabelFont, ESlateDrawEffect::None, LabelColor);
 	}
 
+	// Minor ticks between the labelled majors (phase-6.2 Task 3): short marks
+	// in the gap between label strip and plot — at fixed size, like the labels,
+	// and at value positions the majors leave free, so nothing can collide.
+	for (float Value : BuildMinorTickValues(Levels))
+	{
+		const float Y = Plot.Bottom - Plot.GetSize().Y * (Value / ScaleMax);
+		FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(),
+			{FVector2f(Plot.Left - MinorTickLength, Y), FVector2f(Plot.Left, Y)},
+			ESlateDrawEffect::None, MinorTickColor, /*bAntialias*/ true, 1.0f);
+	}
+
 	return LayerId + 1;
 }
 
@@ -139,6 +170,17 @@ int32 DrawValueAxisX(FSlateWindowElementList& OutDrawElements, int32 LayerId,
 		FSlateDrawElement::MakeText(OutDrawElements, LayerId,
 			AllottedGeometry.ToPaintGeometry(LabelSize, FSlateLayoutTransform(FVector2f(LabelX, Plot.Bottom + 2.0f))),
 			LabelString, LabelFont, ESlateDrawEffect::None, LabelColor);
+	}
+
+	// Minor ticks between the labelled majors (phase-6.2 Task 3), pointing
+	// into the bottom label strip — the histogram scale stays at the bottom
+	// edge (spec), and the ticks sit between the labels' value positions.
+	for (float Value : BuildMinorTickValues(Levels))
+	{
+		const float X = Plot.Left + Plot.GetSize().X * (Value / ScaleMax);
+		FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(),
+			{FVector2f(X, Plot.Bottom), FVector2f(X, Plot.Bottom + MinorTickLength)},
+			ESlateDrawEffect::None, MinorTickColor, /*bAntialias*/ true, 1.0f);
 	}
 
 	return LayerId + 1;

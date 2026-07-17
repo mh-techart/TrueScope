@@ -45,6 +45,43 @@ bool FTrueScopeValueScaleTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeScaleMinorTicksTest,
+	"TrueScope.UI.ScaleMinorTicks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeScaleMinorTicksTest::RunTest(const FString&)
+{
+	using namespace TrueScope::Draw;
+
+	// Resolve's scales show three short intermediate ticks between labelled
+	// majors (phase-6.2 Task 3); the rule is pure, so pin it headless.
+	TestEqual(TEXT("Three minor ticks per division"), MinorTicksPerDivision, 3);
+
+	// Between two histogram majors (0 and 256): quarters of the gap.
+	TArray<float> Values;
+	GetMinorTickValues(0, 256, Values);
+	TestEqual(TEXT("A division yields three tick values"), Values.Num(), 3);
+	if (Values.Num() == 3)
+	{
+		TestEqual(TEXT("First tick sits at the quarter"), Values[0], 64.0f, 0.001f);
+		TestEqual(TEXT("Second tick sits at the half"), Values[1], 128.0f, 0.001f);
+		TestEqual(TEXT("Third tick sits at three quarters"), Values[2], 192.0f, 0.001f);
+	}
+
+	// The last waveform division ends on 1023, not 1024 — the ticks must
+	// subdivide the real (uneven) gap, not an assumed one.
+	Values.Reset();
+	GetMinorTickValues(896, ScaleMax, Values);
+	TestEqual(TEXT("Uneven final division still yields three ticks"), Values.Num(), 3);
+	if (Values.Num() == 3)
+	{
+		TestTrue(TEXT("Ticks stay inside the division"),
+			Values[0] > 896.0f && Values[2] < static_cast<float>(ScaleMax));
+	}
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeHistogramChannelLayoutTest,
 	"TrueScope.UI.HistogramChannelLayout",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
