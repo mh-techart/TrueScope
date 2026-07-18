@@ -117,20 +117,22 @@ Every 5° (72 ticks), alternating long/short so they are countable.
   untouched.
 
 ### Task 1 acceptance
-- [ ] Skin tone line at 123.0°, centre to rim, neutral white; the derivation +
+- [x] Skin tone line at 123.0°, centre to rim, neutral white; the derivation +
       three confirmations recorded next to the constant.
-- [ ] Hue ring: inner edge on the existing circle radius, grows outward only, never
+- [x] Hue ring: inner edge on the existing circle radius, grows outward only, never
       intrudes into the plotting area — **verify geometrically, measure it**; hues
       generated from the Cb/Cr formula (not hand-placed) and therefore in register
       with the six targets.
-- [ ] 5° ticks: 72, alternating, inward; the non-alignment with targets is correct
+- [x] 5° ticks: 72, alternating, inward; the non-alignment with targets is correct
       and commented.
-- [ ] 100 % targets each on their own chroma-derived radius (not a shared one).
-- [ ] 2× zoom works; circle stays circular and aspect-locked at extreme panel
+- [x] 100 % targets each on their own chroma-derived radius (not a shared one).
+- [x] 2× zoom works; circle stays circular and aspect-locked at extreme panel
       shapes (no regression).
-- [ ] All of the above behind "Show Guides" in the toolbar; SMPTE-colorbars test
+- [x] All of the above behind "Show Guides" in the toolbar; SMPTE-colorbars test
       still lands the density in the six targets (graticule changes must not touch
-      the density).
+      the density). *(Superseded by the work-order-15 amendment: ring + ticks are
+      permanent, the skin line has its own "Show Skin Tone Line" toggle, and the
+      markers are a 75 %/100 %/Both selector — see the Amendments section.)*
 
 ## Task 2 — Histogram YRGB (4-channel) display mode
 
@@ -153,11 +155,11 @@ Resolve does.
 - Must work identically on both CPU and GPU paths, via the same producers.
 
 ### Task 2 acceptance
-- [ ] YRGB mode selectable from the toolbar; shows four channels; RGB stays default.
-- [ ] The luma curve derives from the existing integer-exact luma bins (verify: its
+- [x] YRGB mode selectable from the toolbar; shows four channels; RGB stays default.
+- [x] The luma curve derives from the existing integer-exact luma bins (verify: its
       bins match the waveform's luma bins for the same frame).
-- [ ] Identical on CPU and GPU paths — MCP screenshots both.
-- [ ] Shared-scale rule preserved; no flat-topping (still count→height, linear).
+- [x] Identical on CPU and GPU paths — MCP screenshots both.
+- [x] Shared-scale rule preserved; no flat-topping (still count→height, linear).
 
 ## Task 3 — Scale intermediate ticks (parade + histogram)
 
@@ -170,17 +172,17 @@ Adopt the same on both scopes.
 - Fixed-size UI elements, as the labels already are (legible at any panel size).
 
 ### Task 3 acceptance
-- [ ] Parade and histogram scales show three minor ticks between majors; histogram
+- [x] Parade and histogram scales show three minor ticks between majors; histogram
       scale still at the bottom edge; legible at small and large panel sizes.
 
 ## Overall acceptance
-- [ ] Builds clean, no new warnings.
-- [ ] Tasks 1–3 acceptance met.
-- [ ] Full automation suite green (CPU headless + GPU-RHI), count checked; the
+- [x] Builds clean, no new warnings.
+- [x] Tasks 1–3 acceptance met.
+- [x] Full automation suite green (CPU headless + GPU-RHI), count checked; the
       bin-equivalence tests unchanged and still green (this phase draws, it does not
       bin).
-- [ ] No new TrueScope warnings/errors in the Output Log.
-- [ ] Human sign-off: vectorscope graticule vs. Resolve (skin line angle, ring
+- [x] No new TrueScope warnings/errors in the Output Log.
+- [x] Human sign-off: vectorscope graticule vs. Resolve (skin line angle, ring
       register, ticks), YRGB mode, scale ticks — visual check on a real viewport.
 
 ## Explicitly out of scope
@@ -229,3 +231,65 @@ they contradict the task text above, this section wins:
 Deferred from the same review → `backlog.md`: **Vectorscope 2× zoom orientation
 aids** (markers/ring currently scale out of view when zoomed; Resolve keeps
 them fixed).
+
+## Verification record — phase complete (human sign-off 2026-07-18)
+
+Tasks 1–3 landed 2026-07-17 (work order 14); the vectorscope corrections from
+the visual review landed 2026-07-18 across work orders 15 and 16. Editor access
+for live verification ran over the direct-HTTP MCP fallback (harness tools
+unavailable those sessions; permitted path, stated per the dev-rules).
+
+- **Task 1 (vectorscope graticule):**
+  - *Skin tone line* at the conventional 123.0° (`SkinToneLineAngleDegrees`,
+    derivation + three confirmations recorded at the constant); measured on the
+    live screenshot at 122.8°. Behind its own **"Show Skin Tone Line"** toggle
+    (work order 15); with it off the ring and all 72 ticks remain (verified).
+  - *Hue ring* generated from the Cb/Cr formula (`BuildHueRingStops`), so it is
+    in register with the six targets by construction — the graticule test
+    confirms each target angle carries its own hue, and the red→yellow 72° /
+    yellow→green 55° non-uniform spacing (a hand-placed HSV wheel fails the
+    test). Inner edge measured +0.6 px outside the circle radius: outward only,
+    no intrusion.
+  - *5° ticks*: 72, alternating long/short (measured ≈5.8 px vs the 2.7 % of
+    radius spec), inward; the deliberate non-alignment with the targets is
+    commented in code.
+  - *Marker radii — the calibration that took two revisions.* The graticule
+    circle is the **derived maximum 100 % chroma** (magenta/green, 0.5957),
+    computed from the BT.709 matrix (`GetVectorscopeCircleChroma`), never a
+    literal. Derived r/R pinned by `TrueScope.UI.VectorscopeGraticule`; magenta
+    and green 100 % sit exactly ON the circle, all others inside. On-screen
+    measurement of all 12 boxes agreed with the derived table to 0.022 R
+    (measurement-limited by the box outline width and the letter labels; the
+    exact placement is pinned analytically to ±0.0005 R). Teeth proven: hard-
+    coding the circle to the earlier 0.8 or 0.5 guesses each fails the test.
+    Full derivation + pitfalls in `architecture.md`, "Color standard reference".
+  - *2× zoom* scales the density, markers and ring by one shared factor around
+    the neutral centre; everything outside the content square clips, the aspect
+    lock is untouched (verified: 75 % boxes at doubled radius, 100 % + ring
+    correctly clipped, zero stray saturation).
+  - *Markers option* 75 % / 100 % / Both (default 75 %, work order 15), operated
+    live from the toolbar.
+- **Task 2 (histogram YRGB):** four stacked bands (Luma on top, then R, G, B);
+  the luma curve is the column sum of the waveform's integer-exact luma bins on
+  both paths — `TrueScope.GPU.HistogramLumaBinEquivalence` shows the GPU luma
+  histogram equals the CPU one bit-exactly. RGB stays the default. Luma
+  participates in the YRGB shared maximum (recorded decision). Verified live on
+  CPU and GPU paths.
+- **Task 3 (scale ticks):** three minor ticks between the labelled majors on the
+  parade (and waveform, via the shared axis drawer) and the histogram, whose
+  scale stays at the bottom edge; probe-verified 24/24 and 12/12 expected
+  positions. Test `TrueScope.UI.ScaleMinorTicks` (incl. the uneven 896–1023
+  division).
+- **Suite:** 36/36 green on `-nullrhi` and on the real Metal RHI
+  (`-RenderOffscreen`), count sanity-checked each run; the phase-5.2
+  bin-equivalence tests unchanged and green; zero new warnings; no TrueScope
+  warnings/errors in the live Output Log.
+- **New docs:** `architecture.md` gained the top-level **"Color standard
+  reference"** (BT.709-6, sRGB == Rec.709 for scopes, the pipeline schema, the
+  five pitfalls, the derived radius table) as the source of truth for scope
+  colour math (work order 16).
+- **Human sign-off:** confirmed by the human on 2026-07-18.
+
+Next: **M6.3** — appearance calibration (density-to-brightness curve, histogram
+gain), which stays deferred until the "measure Resolve" reference exists (see
+"Explicitly out of scope" above).
