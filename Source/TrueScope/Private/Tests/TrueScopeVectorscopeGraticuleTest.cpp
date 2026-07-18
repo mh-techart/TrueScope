@@ -95,41 +95,60 @@ bool FTrueScopeVectorscopeGraticuleTest::RunTest(const FString&)
 		TargetMagnitude(TEXT("Mg")) > TargetMagnitude(TEXT("R"))
 			&& TargetMagnitude(TEXT("R")) > TargetMagnitude(TEXT("Yl")));
 
-	// Radial calibration (work order 15, Fix 1): the circle is a fixed 0.8
-	// chroma radius, so on screen the 100 % targets land at the spec's
-	// measured Resolve radii — INSIDE the rim, and further out than the
-	// matching 75 % boxes. With the old circle-at-0.5 scale, magenta's 1.19
-	// would have put it far outside the rim.
-	TestEqual(TEXT("The circle is the fixed 0.8 chroma radius measured from Resolve"),
-		VectorscopeCircleChroma, 0.8f);
+	// Radial calibration (work order 16): the circle IS the maximum 100 %
+	// chroma magnitude — magenta/green, 0.5957 — DERIVED from the matrix, so
+	// no 100 % marker can ever fall outside, by construction. A guessed 0.5
+	// pushed Mg/G outside; a guessed 0.8 shrank everything (it came from
+	// misreading the measured Resolve radii, which were the 75 % boxes).
+	const float CircleChroma = GetVectorscopeCircleChroma();
+	TestEqual(TEXT("The circle is the derived max 100% chroma (magenta/green)"),
+		CircleChroma, 0.5957f, 0.0005f);
+	TestEqual(TEXT("The circle equals the magenta 100% magnitude exactly"),
+		CircleChroma, TargetMagnitude(TEXT("Mg")), 1.0e-6f);
+
 	auto ScreenRadius = [&](const TCHAR* Label, TArrayView<const FVectorscopeTarget> Targets)
 	{
 		for (const FVectorscopeTarget& Target : Targets)
 		{
 			if (FCString::Strcmp(Target.Label, Label) == 0)
 			{
-				return Magnitude(Target.Chroma) / VectorscopeCircleChroma;
+				return Magnitude(Target.Chroma) / CircleChroma;
 			}
 		}
 		return 0.0f;
 	};
-	TestEqual(TEXT("100% Mg/G draw at 0.745 R (Resolve reference)"),
-		ScreenRadius(TEXT("Mg"), Targets100), 0.745f, 0.005f);
-	TestEqual(TEXT("100% R/Cy draw at ~0.64 R (Resolve reference)"),
-		ScreenRadius(TEXT("R"), Targets100), 0.64f, 0.005f);
-	TestEqual(TEXT("100% Yl/B draw at ~0.63 R (Resolve reference)"),
-		ScreenRadius(TEXT("Yl"), Targets100), 0.63f, 0.005f);
+
+	// The work order's derived r/R table, pinned pairwise (Mg/G, R/Cy, Yl/B
+	// share radii by symmetry). Magenta/green 100 % sit EXACTLY ON the circle
+	// (r/R = 1.0) — correct and matching Resolve; do not "pull them inward".
+	struct FExpectedRadius
+	{
+		const TCHAR* Label;
+		float R100;
+		float R75;
+	};
+	const FExpectedRadius ExpectedRadii[] = {
+		{TEXT("Mg"), 1.0000f, 0.7500f},
+		{TEXT("G"), 1.0000f, 0.7500f},
+		{TEXT("R"), 0.8612f, 0.6459f},
+		{TEXT("Cy"), 0.8612f, 0.6459f},
+		{TEXT("Yl"), 0.8429f, 0.6322f},
+		{TEXT("B"), 0.8429f, 0.6322f},
+	};
+	for (const FExpectedRadius& Expected : ExpectedRadii)
+	{
+		TestEqual(*FString::Printf(TEXT("100%% %s draws at %.4f R"), Expected.Label, Expected.R100),
+			ScreenRadius(Expected.Label, Targets100), Expected.R100, 0.0005f);
+		TestEqual(*FString::Printf(TEXT("75%% %s draws at %.4f R"), Expected.Label, Expected.R75),
+			ScreenRadius(Expected.Label, Targets75), Expected.R75, 0.0005f);
+	}
 	for (const FVectorscopeTarget& Target : Targets100)
 	{
-		TestTrue(*FString::Printf(TEXT("100%% %s draws inside the rim"), Target.Label),
-			Magnitude(Target.Chroma) / VectorscopeCircleChroma < 1.0f);
-		TestTrue(*FString::Printf(TEXT("100%% %s draws further out than its 75%% box"), Target.Label),
-			ScreenRadius(Target.Label, Targets100) > ScreenRadius(Target.Label, Targets75));
+		// On the rim is legal (Mg/G); beyond it is not — no real colour can
+		// exceed the max 100 % chroma, so neither may a marker.
+		TestTrue(*FString::Printf(TEXT("100%% %s never exceeds the rim"), Target.Label),
+			Magnitude(Target.Chroma) / CircleChroma <= 1.0f + 1.0e-4f);
 	}
-	// The whole chroma square stays inside the circle: its corner is at
-	// 0.5*sqrt(2)/0.8 of the radius.
-	TestTrue(TEXT("The chroma square's corners stay inside the rim"),
-		0.5f * UE_SQRT_2 / VectorscopeCircleChroma < 1.0f);
 
 	// Hue ring register (phase-6.2 Task 1b): stops are generated from the same
 	// Cb/Cr formula as the targets, so the stop nearest each 100 % target's

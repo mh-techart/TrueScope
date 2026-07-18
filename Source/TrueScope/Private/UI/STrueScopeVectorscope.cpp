@@ -75,7 +75,7 @@ namespace
 	 * Chroma (Cb, Cr) -> local widget space: SquareSide is the on-screen side
 	 * of the [-0.5, 0.5] chroma square (one chroma unit per side). Since work
 	 * order 15 that square is SMALLER than the circle's diameter — the circle
-	 * is a fixed chroma radius (TrueScope::VectorscopeCircleChroma), and the
+	 * is a fixed chroma radius (TrueScope::GetVectorscopeCircleChroma()), and the
 	 * caller derives SquareSide from it, one shared scale for density and
 	 * markers.
 	 */
@@ -289,14 +289,14 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 	const float DrawnSide = PlotSide * ZoomFactor;
 	const float Radius = DrawnSide * 0.5f;
 
-	// Radial calibration (work order 15, Fix 1): the circle is a FIXED chroma
-	// radius (TrueScope::VectorscopeCircleChroma, Resolve's convention), so
-	// the [-0.5, 0.5] chroma square — density AND all markers — spans only
-	// this fraction of the circle's diameter. One scale for everything: the
-	// trace stays in register with the boxes, and both marker sets sit inside
-	// the rim (100 % further out than 75 %). Zoom multiplies DrawnSide, so
-	// square and markers scale together by construction.
-	const float ChromaSquareSide = DrawnSide * (0.5f / TrueScope::VectorscopeCircleChroma);
+	// Radial calibration (work order 16): the circle is the DERIVED maximum
+	// 100 % chroma magnitude (TrueScope::GetVectorscopeCircleChroma), so the
+	// [-0.5, 0.5] chroma square — density AND all markers — spans this
+	// fraction of the circle's diameter. One scale for everything: the trace
+	// stays in register with the boxes, no 100 % marker can exceed the rim by
+	// construction (magenta/green sit exactly ON it), and zoom multiplies
+	// DrawnSide, so square and markers scale together.
+	const float ChromaSquareSide = DrawnSide * (0.5f / TrueScope::GetVectorscopeCircleChroma());
 
 	// The GPU producer rasterizes the density square at exactly this size in
 	// device pixels, so it is drawn 1:1 rather than upscaled (phase-6.1 Task 1).
@@ -310,9 +310,12 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 	OutDrawElements.PushClip(FSlateClippingZone(AllottedGeometry.ToPaintGeometry(
 		FVector2f(Content.GetSize()), FSlateLayoutTransform(FVector2f(Content.GetTopLeft())))));
 
-	// Density plot: the whole [-0.5, 0.5] chroma square — which now sits fully
-	// inside the circle (its corners reach 0.707/0.8 = 0.88 R). The brush
-	// holds whichever producer's texture is current: the CPU path's transient
+	// Density plot: the whole [-0.5, 0.5] chroma square. Its empty corners
+	// reach past the rim (0.707/0.5957 = 1.19 R), which is harmless: chroma is
+	// linear in R'G'B', so the gamut's Cb/Cr projection is the hexagon whose
+	// vertices are the six 100 % points — no real colour exists beyond the
+	// circle, and the graticule draws above the square. The brush holds
+	// whichever producer's texture is current: the CPU path's transient
 	// texture or the GPU path's render target.
 	if (TraceBrush.GetResourceObject())
 	{
@@ -431,7 +434,7 @@ int32 STrueScopeVectorscope::DrawHueRing(FSlateWindowElementList& OutDrawElement
 	// The ring's INNER edge sits exactly on the circle radius and it grows
 	// OUTWARD only — it must never intrude into the plotting area, because the
 	// circle is the scope's fixed chroma reference
-	// (TrueScope::VectorscopeCircleChroma) and the reading must not change
+	// (TrueScope::GetVectorscopeCircleChroma()) and the reading must not change
 	// (phase-6.2 Task 1b).
 	const float RingWidth = FMath::Clamp(Radius * HueRingWidthFraction, HueRingWidthMin, HueRingWidthMax);
 

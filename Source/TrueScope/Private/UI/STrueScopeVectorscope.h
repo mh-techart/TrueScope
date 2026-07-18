@@ -45,9 +45,10 @@ enum class ETrueScopeVectorscopeMarkers : int32
  * 5-degree ticks are permanent orientation (work order 15, like Resolve); the
  * skin tone line has its own "Show Skin Tone Line" toggle (default on); the
  * target-box sets are selected via the Markers option (75 % / 100 % / Both,
- * default 75 %). The radial scale puts the circle at a FIXED chroma amplitude
- * (TrueScope::VectorscopeCircleChroma), so both marker sets and the density
- * sit inside the rim exactly as in Resolve.
+ * default 75 %). The radial scale puts the circle at the DERIVED maximum
+ * 100 % chroma (TrueScope::GetVectorscopeCircleChroma), so no marker can
+ * exceed the rim by construction — magenta/green 100 % sit exactly ON it,
+ * everything else inside, matching Resolve.
  *
  * Aspect-locked (architecture guardrail): the plot is always a centered
  * square, so the graticule circle stays a circle and never an ellipse — an

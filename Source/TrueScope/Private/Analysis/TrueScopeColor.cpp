@@ -167,6 +167,23 @@ TArrayView<const FVectorscopeTarget> GetVectorscopeTargets100()
 	return Targets;
 }
 
+float GetVectorscopeCircleChroma()
+{
+	// Computed from the derived 100 % targets, never a literal (work order 16):
+	// the circle IS the maximum 100 % chroma magnitude — magenta/green, 0.5957.
+	static const float MaxChroma = []
+	{
+		float Max = 0.0f;
+		for (const FVectorscopeTarget& Target : GetVectorscopeTargets100())
+		{
+			Max = FMath::Max(Max,
+				FMath::Sqrt(Target.Chroma.Cb * Target.Chroma.Cb + Target.Chroma.Cr * Target.Chroma.Cr));
+		}
+		return Max;
+	}();
+	return MaxChroma;
+}
+
 float ChromaAngleDegrees(const FChroma& Chroma)
 {
 	const float Degrees = FMath::RadiansToDegrees(FMath::Atan2(Chroma.Cr, Chroma.Cb));

@@ -97,21 +97,29 @@ namespace TrueScope
 	int32 PixelToLumaBin(const FColor& Color);
 
 	/**
-	 * Chroma amplitude the vectorscope's graticule circle represents (work
-	 * order 15, Fix 1). The circle is a FIXED chroma radius, not a per-hue
-	 * gamut boundary — the radial scale is r = |chroma| / this constant.
+	 * Chroma amplitude the vectorscope's graticule circle represents: the
+	 * MAXIMUM 100 % color-bar chroma magnitude, i.e. magenta/green (work
+	 * order 16). The radial scale is r = |chroma| / this value.
 	 *
-	 * 0.8 is measured from Resolve, not invented: the phase-6.2 spec's Resolve
-	 * screenshot puts the 100 % targets at 0.745 R (Mg/G), ~0.64 R (R/Cy) and
-	 * ~0.63 R (Yl/B); dividing their BT.709 chroma magnitudes by those radii
-	 * gives 0.5956/0.745 = 0.799, 0.5133/0.64 = 0.802, 0.5021/0.63 = 0.797 —
-	 * one constant, 0.8, within measurement error on all three pairs. With the
-	 * earlier circle-at-0.5 calibration the 100 % targets (chroma 0.50-0.60)
-	 * landed OUTSIDE the rim, which is the work-order-15 bug. Density and both
-	 * marker sets share this one scale, so the trace stays in register with
-	 * the boxes by construction.
+	 * DERIVED, not guessed — this is why it is a function of the computed
+	 * targets and not a literal. For magenta (R'=B'=1, G'=0):
+	 *   Y'  = Kr + Kb = 0.2126 + 0.0722 = 0.2848
+	 *   Cb  = (1 - Y') / (2 (1 - Kb)) = 0.7152 / 1.8556 = 0.38543
+	 *   Cr  = (1 - Y') / (2 (1 - Kr)) = 0.7152 / 1.5748 = 0.45415
+	 *   |c| = sqrt(Cb^2 + Cr^2)       = 0.5957   (green: same by symmetry)
+	 * Chroma is linear in R'G'B', so the gamut's Cb/Cr projection is a hexagon
+	 * whose vertices are the six 100 % points — no real color can exceed this
+	 * magnitude, so no 100 % marker can ever fall outside the rim, by
+	 * construction. Magenta and green 100 % sit EXACTLY ON the circle (r/R =
+	 * 1.0) — correct and matching Resolve; do not "pull them inward".
+	 *
+	 * History, so the wrong values do not come back: 0.5 (the per-axis Cb/Cr
+	 * bound) pushed Mg/G outside the rim; 0.8 came from misreading the spec's
+	 * measured Resolve radii (0.745/0.64/0.63 R) as the 100 % boxes — they
+	 * were the 75 % boxes, whose derived radii are 0.75/0.6459/0.6322 R under
+	 * THIS calibration. Both were work-order-16's "guessed circle" mistakes.
 	 */
-	inline constexpr float VectorscopeCircleChroma = 0.8f;
+	float GetVectorscopeCircleChroma();
 
 	/** One graticule target of the vectorscope: a 75 % color-bar position. */
 	struct FVectorscopeTarget
