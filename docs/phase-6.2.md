@@ -197,3 +197,29 @@ Also out: making the GPU path the shipped default (M7); HDR / non-Rec.709 scale 
 graticule behaviour (backlog); the ΔE2000 perceptual harness (backlog); the
 testpattern generator (backlog); window layout options (post-M6). Ideas →
 `docs/backlog.md`.
+
+## Amendments from the visual review (work order 15, 2026-07-18)
+
+Three Task-1 details were corrected after the human's Resolve comparison; where
+they contradict the task text above, this section wins:
+
+1. **Radial calibration.** The graticule circle is a **fixed chroma radius of
+   0.8** (`TrueScope::VectorscopeCircleChroma`), Resolve's convention — derived
+   from this spec's own measured radii (0.5956/0.745 ≈ 0.5133/0.64 ≈
+   0.5021/0.63 ≈ 0.8). The earlier build mapped the circle to chroma 0.5 (the
+   tight Cb/Cr bound), which pushed the 100 % targets (chroma 0.50–0.60)
+   *outside* the rim. Density and both marker sets share the one scale, so the
+   trace stays in register with the boxes and the whole chroma square now sits
+   inside the circle. Zoom scales everything together.
+2. **Markers option.** Target boxes are selectable in the toolbar:
+   **75 % / 100 % / Both**, default **75 %** (SDR broadcast convention; 100 %
+   serves HDR/cinema/streaming targets). Letters go on the outermost displayed
+   set.
+3. **"Show Guides" split.** The hue ring and the 5° ticks are **always
+   visible** (permanent orientation, like Resolve); only the skin tone line is
+   toggled, via **"Show Skin Tone Line"** (default on). The Task-1 acceptance
+   line "all of the above behind Show Guides" is superseded accordingly.
+
+Deferred from the same review → `backlog.md`: **Vectorscope 2× zoom orientation
+aids** (markers/ring currently scale out of view when zoomed; Resolve keeps
+them fixed).

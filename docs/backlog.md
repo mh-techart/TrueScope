@@ -94,6 +94,15 @@ mechanism rather than leaving stale traces.
 
 ## Deferred features
 
+- **Vectorscope 2× zoom orientation aids** — at 2× zoom TrueScope currently drops
+  the target markers and outer ring (technically correct — they no longer apply at
+  the zoomed scale), which loses visual orientation. Resolve instead keeps the
+  markers and ring fixed and lets the plotted values grow past them, expecting the
+  user to understand the markers don't apply while zoomed. Design a better
+  orientation treatment for the zoomed state (e.g. keep a faint ring/markers for
+  reference, or a scaled graticule) rather than removing them entirely. Appearance
+  only. Reference: the human's 2× zoom comparison screenshots (Resolve vs.
+  TrueScope).
 - **Cine Camera source via SceneCaptureComponent2D** — measure a selected
   camera *without* piloting it. Original MVP path, superseded by the
   viewport-only decision. Opt-in convenience only; must never become a
