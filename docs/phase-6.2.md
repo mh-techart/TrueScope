@@ -203,14 +203,20 @@ testpattern generator (backlog); window layout options (post-M6). Ideas →
 Three Task-1 details were corrected after the human's Resolve comparison; where
 they contradict the task text above, this section wins:
 
-1. **Radial calibration.** The graticule circle is a **fixed chroma radius of
-   0.8** (`TrueScope::VectorscopeCircleChroma`), Resolve's convention — derived
-   from this spec's own measured radii (0.5956/0.745 ≈ 0.5133/0.64 ≈
-   0.5021/0.63 ≈ 0.8). The earlier build mapped the circle to chroma 0.5 (the
-   tight Cb/Cr bound), which pushed the 100 % targets (chroma 0.50–0.60)
-   *outside* the rim. Density and both marker sets share the one scale, so the
-   trace stays in register with the boxes and the whole chroma square now sits
-   inside the circle. Zoom scales everything together.
+1. **Radial calibration** *(corrected again by work order 16 — this is the
+   final form)*: the graticule circle is the **derived maximum 100 % chroma
+   magnitude** — magenta/green, 0.5957 — computed from the BT.709 matrix in
+   code (`TrueScope::GetVectorscopeCircleChroma`), never a literal. No 100 %
+   marker can exceed the rim by construction; magenta/green 100 % sit exactly
+   ON the circle (correct, matches Resolve). Derived radii: 100 % at
+   1.0000/0.8612/0.8429 R, 75 % at 0.7500/0.6459/0.6322 R (Mg·G / R·Cy / Yl·B)
+   — the 75 % values match this spec's measured Resolve radii (0.745/0.64/
+   0.63 R), which had been mislabelled as the 100 % set; that misreading
+   produced work order 15's interim 0.8 guess, and the original circle-at-0.5
+   (the per-axis Cb/Cr bound) had pushed Mg/G outside the rim. Density and
+   both marker sets share the one scale, so the trace stays in register with
+   the boxes; zoom scales everything together. Full derivation and pitfalls:
+   `architecture.md`, "Color standard reference".
 2. **Markers option.** Target boxes are selectable in the toolbar:
    **75 % / 100 % / Both**, default **75 %** (SDR broadcast convention; 100 %
    serves HDR/cinema/streaming targets). Letters go on the outermost displayed

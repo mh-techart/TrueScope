@@ -94,6 +94,13 @@ mechanism rather than leaving stale traces.
 
 ## Deferred features
 
+- **HDR / wide-gamut colorbar verification (Rec.2020 / BT.2111)** — DaVinci can
+  generate EBU, SMPTE, and BT.2111 HLG/PQ (Narrow/Full) colorbars. When TrueScope
+  gains Rec.2020 / HDR support, verify the vectorscope/parade/waveform against
+  these generated bars, deriving the Rec.2020 matrix and target radii the same way
+  Rec.709 was done (documented in "Color standard reference"). Not now — current
+  scopes measure Rec.709; HDR bars would only confuse verification until the
+  color-space handling exists.
 - **Vectorscope 2× zoom orientation aids** — at 2× zoom TrueScope currently drops
   the target markers and outer ring (technically correct — they no longer apply at
   the zoomed scale), which loses visual orientation. Resolve instead keeps the
