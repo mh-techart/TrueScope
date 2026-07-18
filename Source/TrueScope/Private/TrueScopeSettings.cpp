@@ -59,3 +59,25 @@ void UTrueScopeSettings::SetScopeToggleOption(ETrueScopeType Type, FName Key, bo
 	ScopeToggleOptions.Add(FullKey, bValue);
 	SaveConfig();
 }
+
+bool UTrueScopeSettings::GetScopeOptionGroupValue(ETrueScopeType Type, FName Key, int32& OutValue) const
+{
+	if (const int32* Value = ScopeOptionGroupValues.Find(MakeToggleKey(Type, Key)))
+	{
+		OutValue = *Value;
+		return true;
+	}
+	return false;
+}
+
+void UTrueScopeSettings::SetScopeOptionGroupValue(ETrueScopeType Type, FName Key, int32 ValueId)
+{
+	const FName FullKey = MakeToggleKey(Type, Key);
+	if (const int32* Existing = ScopeOptionGroupValues.Find(FullKey); Existing && *Existing == ValueId)
+	{
+		return; // unchanged; do not rewrite the ini on every repaint-triggering click
+	}
+
+	ScopeOptionGroupValues.Add(FullKey, ValueId);
+	SaveConfig();
+}

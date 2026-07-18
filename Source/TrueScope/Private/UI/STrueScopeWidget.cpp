@@ -96,6 +96,25 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 		}
 	}
 
+	// Option groups likewise (work order 15), validated against the group's own
+	// options so a stale ini cannot select a choice the group does not have.
+	for (const FTrueScopeOptionGroup& Group : GetOptionGroups())
+	{
+		int32 SavedValue = 0;
+		if (!UTrueScopeSettings::Get().GetScopeOptionGroupValue(ScopeType, Group.Key, SavedValue))
+		{
+			continue;
+		}
+		for (const FTrueScopeDisplayMode& Option : Group.Options)
+		{
+			if (Option.Id == SavedValue)
+			{
+				SetOptionGroupValue(Group.Key, SavedValue);
+				break;
+			}
+		}
+	}
+
 	if (Analyzer)
 	{
 		RegisterActiveTimer(ResultPollPeriodSeconds,
@@ -259,7 +278,7 @@ FReply STrueScopeWidget::OnMouseButtonUp(const FGeometry& MyGeometry, const FPoi
 TSharedRef<SWidget> STrueScopeWidget::BuildContextMenu()
 {
 	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr);
-	if (!GetDisplayModes().IsEmpty() || !GetToggleOptions().IsEmpty())
+	if (!GetDisplayModes().IsEmpty() || !GetToggleOptions().IsEmpty() || !GetOptionGroups().IsEmpty())
 	{
 		MenuBuilder.BeginSection(TEXT("TrueScopeDisplayModes"), LOCTEXT("DisplaySection", "Display"));
 		for (const FTrueScopeDisplayMode& Mode : GetDisplayModes())
@@ -270,6 +289,20 @@ TSharedRef<SWidget> STrueScopeWidget::BuildContextMenu()
 					FCanExecuteAction(),
 					FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsDisplayModeActive, Mode.Id)),
 				NAME_None, EUserInterfaceActionType::RadioButton);
+		}
+		for (const FTrueScopeOptionGroup& Group : GetOptionGroups())
+		{
+			for (const FTrueScopeDisplayMode& Option : Group.Options)
+			{
+				MenuBuilder.AddMenuEntry(Option.Label, FText::GetEmpty(), FSlateIcon(),
+					FUIAction(
+						FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSelectOptionGroup, Group.Key,
+							Option.Id),
+						FCanExecuteAction(),
+						FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsOptionGroupValueActive, Group.Key,
+							Option.Id)),
+					NAME_None, EUserInterfaceActionType::RadioButton);
+			}
 		}
 		for (const FTrueScopeToggleOption& Toggle : GetToggleOptions())
 		{
@@ -344,6 +377,23 @@ void STrueScopeWidget::HandleFlipToggleOption(FName Key)
 bool STrueScopeWidget::IsToggleOptionChecked(FName Key) const
 {
 	return GetToggleOptionValue(Key);
+}
+
+void STrueScopeWidget::ApplyOptionGroup(FName Key, int32 ValueId)
+{
+	SetOptionGroupValue(Key, ValueId);
+	UTrueScopeSettings::Get().SetScopeOptionGroupValue(ScopeType, Key, ValueId);
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void STrueScopeWidget::HandleSelectOptionGroup(FName Key, int32 ValueId)
+{
+	ApplyOptionGroup(Key, ValueId);
+}
+
+bool STrueScopeWidget::IsOptionGroupValueActive(FName Key, int32 ValueId) const
+{
+	return GetOptionGroupValue(Key) == ValueId;
 }
 
 #undef LOCTEXT_NAMESPACE

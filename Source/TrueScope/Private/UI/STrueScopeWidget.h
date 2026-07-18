@@ -28,9 +28,9 @@ struct FTrueScopeDisplayMode
 
 /**
  * One on/off display option of a scope (phase-6.2) — independent of the
- * radio-style display modes, e.g. the vectorscope's "Show Guides". Like the
- * modes, toggles surface in both the right-click menu and the toolbar and are
- * persisted per scope.
+ * radio-style display modes, e.g. the vectorscope's "Show Skin Tone Line".
+ * Like the modes, toggles surface in both the right-click menu and the
+ * toolbar and are persisted per scope.
  */
 struct FTrueScopeToggleOption
 {
@@ -39,6 +39,22 @@ struct FTrueScopeToggleOption
 
 	FText Label;
 	FText Tooltip;
+};
+
+/**
+ * A secondary radio group of a scope (work order 15) — a mutually exclusive
+ * choice that is NOT the scope's display mode, e.g. the vectorscope's marker
+ * selection (75 % / 100 % / Both) or, later, the histogram gain. Surfaces in
+ * the toolbar and the right-click menu like the display modes; persisted per
+ * scope under the group's stable key.
+ */
+struct FTrueScopeOptionGroup
+{
+	/** Stable, scope-local settings key (not localized, never renamed). */
+	FName Key;
+
+	/** The radio choices: scope-local ids with their labels. */
+	TArray<FTrueScopeDisplayMode> Options;
 };
 
 /**
@@ -157,6 +173,21 @@ public:
 	 */
 	void ApplyToggleOption(FName Key, bool bValue);
 
+	/** Secondary radio groups this scope offers (work order 15); empty default. */
+	virtual TArrayView<const FTrueScopeOptionGroup> GetOptionGroups() const
+	{
+		return TArrayView<const FTrueScopeOptionGroup>();
+	}
+
+	/** Selected option id of a group; 0 for unknown keys. */
+	virtual int32 GetOptionGroupValue(FName Key) const
+	{
+		return 0;
+	}
+
+	/** Select a group option, repaint, persist — shared by menu and toolbar. */
+	void ApplyOptionGroup(FName Key, int32 ValueId);
+
 	/** Which scope this is; the key its persisted options are stored under. */
 	ETrueScopeType GetScopeType() const
 	{
@@ -235,6 +266,11 @@ protected:
 	{
 	}
 
+	/** Set a group's selected option; ApplyOptionGroup repaints afterwards. */
+	virtual void SetOptionGroupValue(FName /*Key*/, int32 /*ValueId*/)
+	{
+	}
+
 private:
 	EActiveTimerReturnType PollAnalyzer(double InCurrentTime, float InDeltaTime);
 
@@ -252,6 +288,8 @@ private:
 	bool IsDisplayModeActive(int32 ModeId) const;
 	void HandleFlipToggleOption(FName Key);
 	bool IsToggleOptionChecked(FName Key) const;
+	void HandleSelectOptionGroup(FName Key, int32 ValueId);
+	bool IsOptionGroupValueActive(FName Key, int32 ValueId) const;
 	void HandleSetUseGpuAnalysis(bool bUseGpu);
 	bool IsAnalysisPathActive(bool bGpu) const;
 

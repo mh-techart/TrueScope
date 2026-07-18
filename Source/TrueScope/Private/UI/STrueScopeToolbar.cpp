@@ -49,7 +49,8 @@ void STrueScopeToolbar::Construct(const FArguments& InArgs,
 	for (const TPair<ETrueScopeType, TSharedPtr<STrueScopeWidget>>& Scope : InScopes)
 	{
 		if (!Scope.Value.IsValid()
-			|| (Scope.Value->GetDisplayModes().IsEmpty() && Scope.Value->GetToggleOptions().IsEmpty()))
+			|| (Scope.Value->GetDisplayModes().IsEmpty() && Scope.Value->GetToggleOptions().IsEmpty()
+				&& Scope.Value->GetOptionGroups().IsEmpty()))
 		{
 			continue;
 		}
@@ -180,8 +181,39 @@ TSharedRef<SWidget> STrueScopeToolbar::MakeDisplayModeControl(ETrueScopeType Typ
 			];
 	}
 
-	// Toggle options after the modes (phase-6.2): same button style, but an
-	// independent on/off — clicking flips it rather than selecting it.
+	// Secondary radio groups after the modes (work order 15): same radio
+	// behaviour as the display modes, driven through ApplyOptionGroup.
+	for (const FTrueScopeOptionGroup& Group : Scope->GetOptionGroups())
+	{
+		for (const FTrueScopeDisplayMode& Option : Group.Options)
+		{
+			const FName GroupKey = Group.Key;
+			const int32 OptionId = Option.Id;
+			Box->AddSlot()
+				.AutoWidth()
+				.Padding(0.0f, 0.0f, ButtonSpacing, 0.0f)
+				[
+					MakeOptionButton(Option.Label,
+						FText::Format(LOCTEXT("OptionGroupTooltip", "{0}: show {1}"),
+							TrueScope::GetScopeTypeDisplayName(Type), Option.Label),
+						FSimpleDelegate::CreateLambda([WeakScope, GroupKey, OptionId]()
+						{
+							if (const TSharedPtr<STrueScopeWidget> Pinned = WeakScope.Pin())
+							{
+								Pinned->ApplyOptionGroup(GroupKey, OptionId);
+							}
+						}),
+						TAttribute<bool>::CreateLambda([WeakScope, GroupKey, OptionId]()
+						{
+							const TSharedPtr<STrueScopeWidget> Pinned = WeakScope.Pin();
+							return Pinned.IsValid() && Pinned->GetOptionGroupValue(GroupKey) == OptionId;
+						}))
+				];
+		}
+	}
+
+	// Toggle options last (phase-6.2): same button style, but an independent
+	// on/off — clicking flips it rather than selecting it.
 	for (const FTrueScopeToggleOption& Toggle : Scope->GetToggleOptions())
 	{
 		Box->AddSlot()

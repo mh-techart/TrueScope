@@ -67,4 +67,17 @@ public:
 
 	/** Remembers a scope toggle's value and writes the config out. */
 	void SetScopeToggleOption(ETrueScopeType Type, FName Key, bool bValue);
+
+	/**
+	 * Per-scope secondary radio groups (work order 15, e.g. the vectorscope's
+	 * marker selection), keyed "<scope key>.<group key>" like the toggles.
+	 */
+	UPROPERTY(config)
+	TMap<FName, int32> ScopeOptionGroupValues;
+
+	/** True and fills OutValue if a selection is remembered for the group. */
+	bool GetScopeOptionGroupValue(ETrueScopeType Type, FName Key, int32& OutValue) const;
+
+	/** Remembers a group's selection and writes the config out. */
+	void SetScopeOptionGroupValue(ETrueScopeType Type, FName Key, int32 ValueId);
 };
