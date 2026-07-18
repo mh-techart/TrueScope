@@ -111,6 +111,85 @@ receives. Consequences, by design:
   exports with their own OCIO output transform are a different signal than
   the viewport — TrueScope measures the viewport.
 
+## Color standard reference
+
+The source of truth for all scope color math (work order 16) — for developers
+and agents (the pitfalls below already bit this project) and for artists and
+studios (a documented standard builds trust; echo it in README/tutorials).
+The vectorscope draws a mathematical standard, not a matter of taste: every
+constant here is derived from the standard, never tuned by eye.
+
+### Standards
+
+- TrueScope's Rec.709 math follows **ITU-R BT.709-6** — matrix from items
+  3.2/3.3: https://www.itu.int/rec/R-REC-BT.709-6-201506-I
+- **sRGB == Rec.709 for scope purposes.** sRGB shares BT.709 primaries and
+  white point; its Y'CbCr (sYCC) uses the same BT.709 matrix. sRGB differs
+  only in the transfer function (gamma), which shifts perceived brightness,
+  NOT chroma angle/radius. So sRGB and Rec.709 produce identical vectorscope
+  geometry, and Unreal's combined "sRGB/Rec.709" project option is exact for
+  scope purposes.
+- Future: Rec.2020 / HDR (PQ, HLG) will need their own matrices and target
+  radii — a separate phase (see backlog, incl. the BT.2111 colorbar
+  verification entry). Each color space TrueScope supports must document which
+  standard it follows and how it is implemented.
+
+### Pipeline
+
+```
+RGB (Rec.709 primaries)
+  ↓  [transfer function: scopes work on gamma-encoded R'G'B' — display-referred.
+  ↓   TrueScope samples AFTER the tonemapper, so the image is already display-referred.]
+R'G'B' (gamma-encoded)
+  ↓  ITU-R BT.709 matrix (Kr=0.2126, Kg=0.7152, Kb=0.0722; denom 1.8556 / 1.5748)
+Y'CbCr
+  ↓  take Cb, Cr only (Y' = luma, not plotted on the vectorscope)
+(Cb, Cr)  — Cartesian; THIS is the plotted plane
+  ↓  screen mapping ONLY: Cb→x, Cr→y (flip y-up→y-down); axis orientation so
+  ↓  red is upper, blue right (broadcast convention)
+  ↓  ⚠ NO NTSC/YIQ rotation — Rec.709 scopes plot Cb/Cr un-rotated
+pixel position
+  ↓  polar reading is DERIVED, not an extra transform:
+  ↓  hue = atan2(Cr, Cb), saturation = sqrt(Cb² + Cr²)
+markers at standard color-bar (Cb,Cr) positions; circle radius = max 100% chroma
+```
+
+### Common pitfalls (each of these already bit this project)
+
+1. **No NTSC/YIQ rotation.** Old NTSC vectorscopes rotated to the I/Q axes
+   (skin line at 123° via rotation). Modern Rec.709 Cb/Cr scopes (Resolve,
+   FCP) do NOT rotate. Adding a rotation shifts every marker. Verified:
+   measured Resolve targets match un-rotated Cb/Cr (magenta 49.7°, not the
+   NTSC 61°).
+2. **Cartesian compute vs. polar display.** The scope computes in Cartesian
+   Cb/Cr and only *reads* as polar (angle = hue, radius = saturation). Don't
+   conflate them.
+3. **Gamma-encoded vs. linear.** Scopes operate on gamma-encoded R'G'B'
+   (display-referred), not linear RGB. Feeding linear RGB shifts all results.
+4. **Circle radius = max 100 % chroma, not an abstract value.** It equals the
+   magenta/green 100 % magnitude (0.5957) and is computed from the matrix in
+   code (`TrueScope::GetVectorscopeCircleChroma`), never a literal. Guessed
+   values (0.5, 0.8) put markers outside or misplace them — this is exactly
+   what went wrong before (work orders 15/16).
+5. **Skin tone line 123.0° is a convention, not a standard** (see the
+   vectorscope graticule notes: the NTSC I-axis expressed in Cb/Cr; confirmed
+   three independent ways, recorded at the constant).
+
+### Marker radii (derived)
+
+Normalized radii r/R with R = circle radius = max 100 % chroma (0.5957).
+Magenta/green 100 % sit exactly ON the circle — correct and matching Resolve;
+do not "pull them inward". Pinned by `TrueScope.UI.VectorscopeGraticule`.
+
+| Target  | angle° | 100 % r/R | 75 % r/R |
+|---------|--------|-----------|----------|
+| Magenta | 49.7   | 1.0000    | 0.7500   |
+| Red     | 102.9  | 0.8612    | 0.6459   |
+| Yellow  | 174.8  | 0.8429    | 0.6322   |
+| Green   | 229.7  | 1.0000    | 0.7500   |
+| Cyan    | 282.9  | 0.8612    | 0.6459   |
+| Blue    | 354.8  | 0.8429    | 0.6322   |
+
 ## Settled decisions
 
 | Topic | Decision | Rationale |
