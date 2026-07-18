@@ -69,6 +69,60 @@ requires it.
 6. Naming: module `TrueScope`, Slate widgets `STrueScope*`, plain classes
    `FTrueScope*`, UObjects `UTrueScope*`.
 
+## Verification methodology
+
+- **Measure or derive before you build; don't guess target values.** Anything that
+  follows an external standard or reference (color-space math, marker positions,
+  readback cost, calibration curves) has a *correct* value — derive it from the
+  standard or measure it from a reference, and pin it in a test. Guessing a
+  constant and tuning by eye has repeatedly been wrong here (vectorscope circle
+  calibration, readback cost). If a value looks like a matter of taste but isn't,
+  treat it as math.
+- **Verify "is it live?" with a moving source.** A static subject makes "not
+  updating" indistinguishable from "unchanged". To confirm a scope actually
+  measures live, use a visibly moving source (e.g. a never-still particle effect)
+  with the viewport in Realtime — then "frozen" and "updating" are distinguishable.
+- **Two-part acceptance: automated test AND human eye.** The automated test catches
+  what the eye misses (a single wrong bin, an off-by-one); the human visual check
+  catches what the test doesn't model (gamma/brightness, stroke width, upscaling
+  softness). Neither alone is sufficient for a visual feature. Bin-equivalence
+  compares counts; appearance is a separate check.
+- **Prove a regression test has teeth.** Don't just assert a test passes — perturb
+  the thing it guards (off-by-one, swapped channel, reverted constant), confirm it
+  fails, then revert. A test never seen to fail proves nothing.
+- **Separate what is measured from the host state it samples.** Some costs are the
+  plugin's own; others are properties of the editor state the plugin merely samples
+  (e.g. on Metal the readback Lock cost is ~1–2× the host frame-time, not a plugin
+  cost). Label host-dependent numbers as such and record their conditions; never
+  compare two such numbers taken under different conditions.
+- **Document deliberate "looks wrong" choices next to the code.** When something is
+  intentionally counter-intuitive (ticks not aligning with targets; per-hue marker
+  radii not sharing one circle; 100% magenta/green sitting on the rim; skin line at
+  123° un-rotated), write the derivation in a comment so a future reader (or agent)
+  doesn't "fix" it back into a bug.
+- **The shipped path is the maintained path.** Whatever ships as default is what
+  gets exercised and stays correct; a path only used in tests rots. Choose defaults
+  accordingly, and keep non-default paths covered by tests that actually run.
+
+## Work-order process
+
+This project is developed in two layers, and contributors should keep them
+separate:
+- **Planning layer** (a chat/agent used for design): drafts phase specs, weighs
+  options, records decisions, maintains the backlog and architecture. It does not
+  edit the repo directly — it produces **work orders** (self-contained instructions,
+  with any new doc content embedded as text so the implementer writes the file).
+- **Implementation layer** (Claude Code in the repo): reads the plan, researches
+  the engine source first for risky work, implements, builds, runs the tests and
+  MCP verification, commits, and reports back.
+- **Decision gate:** phase specs and decision-level questions go to the human before
+  code. Implementation details do not — they belong in the implementation layer,
+  iterated to completion, not litigated in planning. Risky phases start with a
+  Task-0 research step (read the engine source), report findings, then code.
+- **Round trip:** implementation reports results to planning, which reviews against
+  the spec, records what was learned in the docs, and issues the next work order.
+  Findings that would help future contributors go into the docs, not just the chat.
+
 ## Unreal Editor control via MCP (Epic's unreal-mcp plugin)
 
 The Claude Code plugin `unreal-engine-skills-for-claude-code` (Epic, MIT)
