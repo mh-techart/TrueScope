@@ -96,6 +96,23 @@ namespace TrueScope
 	 */
 	int32 PixelToLumaBin(const FColor& Color);
 
+	/**
+	 * Chroma amplitude the vectorscope's graticule circle represents (work
+	 * order 15, Fix 1). The circle is a FIXED chroma radius, not a per-hue
+	 * gamut boundary — the radial scale is r = |chroma| / this constant.
+	 *
+	 * 0.8 is measured from Resolve, not invented: the phase-6.2 spec's Resolve
+	 * screenshot puts the 100 % targets at 0.745 R (Mg/G), ~0.64 R (R/Cy) and
+	 * ~0.63 R (Yl/B); dividing their BT.709 chroma magnitudes by those radii
+	 * gives 0.5956/0.745 = 0.799, 0.5133/0.64 = 0.802, 0.5021/0.63 = 0.797 —
+	 * one constant, 0.8, within measurement error on all three pairs. With the
+	 * earlier circle-at-0.5 calibration the 100 % targets (chroma 0.50-0.60)
+	 * landed OUTSIDE the rim, which is the work-order-15 bug. Density and both
+	 * marker sets share this one scale, so the trace stays in register with
+	 * the boxes by construction.
+	 */
+	inline constexpr float VectorscopeCircleChroma = 0.8f;
+
 	/** One graticule target of the vectorscope: a 75 % color-bar position. */
 	struct FVectorscopeTarget
 	{

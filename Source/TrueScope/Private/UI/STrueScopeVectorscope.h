@@ -27,11 +27,27 @@ enum class ETrueScopeVectorscopeMode : int32
 };
 
 /**
+ * Which target-box sets the vectorscope shows (work order 15, Fix 2).
+ * Default is 75 % only: the SDR broadcast convention and the M4 state; the
+ * 100 % boxes matter for HDR / cinema / streaming targets, so those users opt
+ * in — offering both keeps TrueScope useful beyond pure broadcast.
+ */
+enum class ETrueScopeVectorscopeMarkers : int32
+{
+	Bars75 = 0,
+	Bars100 = 1,
+	Both = 2,
+};
+
+/**
  * Vectorscope: density of the frame's pixels over the BT.709 (Cb, Cr) plane,
- * with the standard graticule and its six 75 % color-bar targets
- * (R/Mg/B/Cy/G/Yl) drawn anti-aliased on top. "Show Guides" (phase-6.2 Task 1,
- * default on) adds the skin tone line, the hue ring, the 5-degree ticks and
- * the 100 % targets; off reverts to the plain M4 graticule.
+ * with the standard graticule drawn anti-aliased on top. The hue ring and the
+ * 5-degree ticks are permanent orientation (work order 15, like Resolve); the
+ * skin tone line has its own "Show Skin Tone Line" toggle (default on); the
+ * target-box sets are selected via the Markers option (75 % / 100 % / Both,
+ * default 75 %). The radial scale puts the circle at a FIXED chroma amplitude
+ * (TrueScope::VectorscopeCircleChroma), so both marker sets and the density
+ * sit inside the rim exactly as in Resolve.
  *
  * Aspect-locked (architecture guardrail): the plot is always a centered
  * square, so the graticule circle stays a circle and never an ellipse — an
@@ -55,8 +71,11 @@ public:
 
 	virtual bool HasDrawableData() const override;
 
-	/** Settings key of the Show Guides toggle (phase-6.2). */
-	static const FName ShowGuidesKey;
+	/** Settings key of the Show Skin Tone Line toggle (work order 15). */
+	static const FName SkinToneLineKey;
+
+	/** Settings key of the marker-selection option group (work order 15). */
+	static const FName MarkersKey;
 
 protected:
 	virtual void OnAnalysisResultChanged() override;
@@ -68,6 +87,10 @@ protected:
 	virtual TArrayView<const FTrueScopeToggleOption> GetToggleOptions() const override;
 	virtual bool GetToggleOptionValue(FName Key) const override;
 	virtual void SetToggleOptionValue(FName Key, bool bValue) override;
+
+	virtual TArrayView<const FTrueScopeOptionGroup> GetOptionGroups() const override;
+	virtual int32 GetOptionGroupValue(FName Key) const override;
+	virtual void SetOptionGroupValue(FName Key, int32 ValueId) override;
 
 private:
 	/**
@@ -81,8 +104,15 @@ private:
 
 	ETrueScopeVectorscopeMode Mode = ETrueScopeVectorscopeMode::Normal;
 
-	/** Guides on by default: the graticule is the scope's reading aid. */
-	bool bShowGuides = true;
+	/** See ETrueScopeVectorscopeMarkers for why the default is 75 % only. */
+	ETrueScopeVectorscopeMarkers Markers = ETrueScopeVectorscopeMarkers::Bars75;
+
+	/**
+	 * Skin line on by default (work order 15): it was the shipped default as
+	 * part of the former Show Guides toggle, and it is a useful plausibility
+	 * guide for the MetaHuman-in-viewport case.
+	 */
+	bool bShowSkinToneLine = true;
 
 	/**
 	 * CPU path: (Cb, Cr) density texture, NumVectorBins squared, updated per

@@ -22,7 +22,6 @@ namespace
 	/** Fixed-size graticule chrome, independent of the scope's scale. */
 	constexpr float TargetBoxHalfSize = 5.0f;
 	constexpr float TargetLabelOffset = 9.0f;
-	constexpr int32 CircleSegments = 96;
 
 	const FLinearColor TargetColor(0.75f, 0.75f, 0.75f, 0.55f);
 
@@ -73,13 +72,16 @@ namespace
 	}
 
 	/**
-	 * Chroma (Cb, Cr) -> local widget space. Both axes span [-0.5, 0.5], the
-	 * tight bounding box of the BT.709 gamut, so the plot square maps exactly
-	 * one chroma unit per side and the inscribed circle has radius 0.5.
+	 * Chroma (Cb, Cr) -> local widget space: SquareSide is the on-screen side
+	 * of the [-0.5, 0.5] chroma square (one chroma unit per side). Since work
+	 * order 15 that square is SMALLER than the circle's diameter — the circle
+	 * is a fixed chroma radius (TrueScope::VectorscopeCircleChroma), and the
+	 * caller derives SquareSide from it, one shared scale for density and
+	 * markers.
 	 */
-	FVector2f ChromaToLocal(const TrueScope::FChroma& Chroma, const FVector2f& Center, float PlotSide)
+	FVector2f ChromaToLocal(const TrueScope::FChroma& Chroma, const FVector2f& Center, float SquareSide)
 	{
-		return FVector2f(Center.X + Chroma.Cb * PlotSide, Center.Y - Chroma.Cr * PlotSide);
+		return FVector2f(Center.X + Chroma.Cb * SquareSide, Center.Y - Chroma.Cr * SquareSide);
 	}
 
 	void DrawPolyline(FSlateWindowElementList& OutDrawElements, int32 LayerId, const FGeometry& AllottedGeometry,
@@ -90,7 +92,8 @@ namespace
 	}
 }
 
-const FName STrueScopeVectorscope::ShowGuidesKey(TEXT("ShowGuides"));
+const FName STrueScopeVectorscope::SkinToneLineKey(TEXT("ShowSkinToneLine"));
+const FName STrueScopeVectorscope::MarkersKey(TEXT("Markers"));
 
 void STrueScopeVectorscope::Construct(const FArguments& InArgs,
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
@@ -124,24 +127,56 @@ void STrueScopeVectorscope::SetDisplayModeId(int32 InModeId)
 
 TArrayView<const FTrueScopeToggleOption> STrueScopeVectorscope::GetToggleOptions() const
 {
+	// The hue ring and the 5-degree ticks are deliberately NOT here: they are
+	// permanent orientation (work order 15, like Resolve), not options.
 	static const TArray<FTrueScopeToggleOption> Toggles = {
-		FTrueScopeToggleOption{ShowGuidesKey, LOCTEXT("ShowGuides", "Show Guides"),
-			LOCTEXT("ShowGuidesTooltip",
-				"Show the graticule extensions: skin tone line, hue ring, 5\u00b0 ticks and 100% targets.")},
+		FTrueScopeToggleOption{SkinToneLineKey, LOCTEXT("ShowSkinToneLine", "Show Skin Tone Line"),
+			LOCTEXT("ShowSkinToneLineTooltip",
+				"Show the skin tone line: human skin of every ethnicity clusters at this hue angle.")},
 	};
 	return Toggles;
 }
 
 bool STrueScopeVectorscope::GetToggleOptionValue(FName Key) const
 {
-	return Key == ShowGuidesKey ? bShowGuides : false;
+	return Key == SkinToneLineKey ? bShowSkinToneLine : false;
 }
 
 void STrueScopeVectorscope::SetToggleOptionValue(FName Key, bool bValue)
 {
-	if (Key == ShowGuidesKey)
+	if (Key == SkinToneLineKey)
 	{
-		bShowGuides = bValue;
+		bShowSkinToneLine = bValue;
+	}
+}
+
+TArrayView<const FTrueScopeOptionGroup> STrueScopeVectorscope::GetOptionGroups() const
+{
+	// See ETrueScopeVectorscopeMarkers for the choices and the 75 % default.
+	static const TArray<FTrueScopeOptionGroup> Groups = {
+		FTrueScopeOptionGroup{MarkersKey,
+			{
+				FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeVectorscopeMarkers::Bars75),
+					LOCTEXT("Markers75", "75%")},
+				FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeVectorscopeMarkers::Bars100),
+					LOCTEXT("Markers100", "100%")},
+				FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeVectorscopeMarkers::Both),
+					LOCTEXT("MarkersBoth", "Both")},
+			}},
+	};
+	return Groups;
+}
+
+int32 STrueScopeVectorscope::GetOptionGroupValue(FName Key) const
+{
+	return Key == MarkersKey ? static_cast<int32>(Markers) : 0;
+}
+
+void STrueScopeVectorscope::SetOptionGroupValue(FName Key, int32 ValueId)
+{
+	if (Key == MarkersKey)
+	{
+		Markers = static_cast<ETrueScopeVectorscopeMarkers>(ValueId);
 	}
 }
 
@@ -254,96 +289,90 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 	const float DrawnSide = PlotSide * ZoomFactor;
 	const float Radius = DrawnSide * 0.5f;
 
+	// Radial calibration (work order 15, Fix 1): the circle is a FIXED chroma
+	// radius (TrueScope::VectorscopeCircleChroma, Resolve's convention), so
+	// the [-0.5, 0.5] chroma square — density AND all markers — spans only
+	// this fraction of the circle's diameter. One scale for everything: the
+	// trace stays in register with the boxes, and both marker sets sit inside
+	// the rim (100 % further out than 75 %). Zoom multiplies DrawnSide, so
+	// square and markers scale together by construction.
+	const float ChromaSquareSide = DrawnSide * (0.5f / TrueScope::VectorscopeCircleChroma);
+
 	// The GPU producer rasterizes the density square at exactly this size in
 	// device pixels, so it is drawn 1:1 rather than upscaled (phase-6.1 Task 1).
-	// Under zoom the request is the zoomed size — the visible quarter still
-	// lands one texel on one device pixel.
-	RequestRasterSize(TrueScope::ERasterTarget::Vectorscope, AllottedGeometry, FVector2f(DrawnSide, DrawnSide));
+	// Under zoom the request is the zoomed size — the visible part still lands
+	// one texel on one device pixel.
+	RequestRasterSize(TrueScope::ERasterTarget::Vectorscope, AllottedGeometry,
+		FVector2f(ChromaSquareSide, ChromaSquareSide));
 
 	// Everything scaled draws inside the content square only (matters under
 	// zoom, where trace and graticule extend far beyond it).
 	OutDrawElements.PushClip(FSlateClippingZone(AllottedGeometry.ToPaintGeometry(
 		FVector2f(Content.GetSize()), FSlateLayoutTransform(FVector2f(Content.GetTopLeft())))));
 
-	// Density plot: the whole [-0.5, 0.5] chroma square, so the out-of-circle
-	// corners (100 % green, magenta) remain visible instead of being clipped.
-	// The brush holds whichever producer's texture is current: the CPU path's
-	// transient texture or the GPU path's render target.
+	// Density plot: the whole [-0.5, 0.5] chroma square — which now sits fully
+	// inside the circle (its corners reach 0.707/0.8 = 0.88 R). The brush
+	// holds whichever producer's texture is current: the CPU path's transient
+	// texture or the GPU path's render target.
 	if (TraceBrush.GetResourceObject())
 	{
+		const float HalfSquare = ChromaSquareSide * 0.5f;
 		FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
-			AllottedGeometry.ToPaintGeometry(FVector2f(DrawnSide, DrawnSide),
-				FSlateLayoutTransform(FVector2f(Center.X - Radius, Center.Y - Radius))),
+			AllottedGeometry.ToPaintGeometry(FVector2f(ChromaSquareSide, ChromaSquareSide),
+				FSlateLayoutTransform(FVector2f(Center.X - HalfSquare, Center.Y - HalfSquare))),
 			&TraceBrush, ESlateDrawEffect::NoGamma, FLinearColor::White);
 	}
 	++LayerId;
 
-	// Guides on: the hue ring takes the plain circle's place — its inner edge
-	// IS the 100 % chroma radius. Drawn before the line work so ticks and
+	// Hue ring: permanent orientation (work order 15, like Resolve) — its
+	// inner edge IS the circle. Drawn before the line work so ticks and
 	// targets stay on top.
-	if (bShowGuides)
+	LayerId = DrawHueRing(OutDrawElements, LayerId, AllottedGeometry, Center, Radius);
+
+	// Graticule center cross.
+	DrawPolyline(OutDrawElements, LayerId, AllottedGeometry,
+		{FVector2f(Center.X - Radius, Center.Y), FVector2f(Center.X + Radius, Center.Y)}, GraticuleColor);
+	DrawPolyline(OutDrawElements, LayerId, AllottedGeometry,
+		{FVector2f(Center.X, Center.Y - Radius), FVector2f(Center.X, Center.Y + Radius)}, GraticuleColor);
+	++LayerId;
+
+	// 5-degree ticks: permanent orientation as well, drawn INWARD from the
+	// circle (Resolve's layout: ticks inward, hue ring outward — they cannot
+	// compete). NOTE: the ticks do NOT line up with the six targets, and that
+	// is CORRECT — the target angles (102.9°, 49.7°, ...) are not multiples
+	// of 5. It will look like a bug; do not rotate the ticks to "fix" it
+	// (phase-6.2 spec).
+	for (int32 Tick = 0; Tick < NumTicks; ++Tick)
 	{
-		LayerId = DrawHueRing(OutDrawElements, LayerId, AllottedGeometry, Center, Radius);
+		const float AngleDegrees = Tick * (360.0f / NumTicks);
+		const FVector2f Direction = AngleToDirection(AngleDegrees);
+		// Every second tick long (ticks at multiples of 10 degrees).
+		const float Length = Radius * (Tick % 2 == 0 ? LongTickFraction : ShortTickFraction);
+		DrawPolyline(OutDrawElements, LayerId, AllottedGeometry,
+			{Center + Direction * (Radius - Length), Center + Direction * Radius}, TickColor);
 	}
 
-	// Graticule center cross; with guides off also the plain circle at 100 %
-	// chroma amplitude, the tight bound of Cb and Cr.
+	// Skin tone line, behind its own toggle since work order 15: desaturated
+	// centre to the rim at the conventional angle (see
+	// TrueScope::SkinToneLineAngleDegrees for the derivation and the three
+	// recorded confirmations — the constant is not to be "corrected").
+	if (bShowSkinToneLine)
 	{
-		if (!bShowGuides)
-		{
-			TArray<FVector2f> Circle;
-			Circle.Reserve(CircleSegments + 1);
-			for (int32 Segment = 0; Segment <= CircleSegments; ++Segment)
-			{
-				const float Angle = 2.0f * UE_PI * Segment / CircleSegments;
-				Circle.Add(FVector2f(Center.X + Radius * FMath::Cos(Angle), Center.Y + Radius * FMath::Sin(Angle)));
-			}
-			DrawPolyline(OutDrawElements, LayerId, AllottedGeometry, Circle, GraticuleColor);
-		}
-
 		DrawPolyline(OutDrawElements, LayerId, AllottedGeometry,
-			{FVector2f(Center.X - Radius, Center.Y), FVector2f(Center.X + Radius, Center.Y)}, GraticuleColor);
-		DrawPolyline(OutDrawElements, LayerId, AllottedGeometry,
-			{FVector2f(Center.X, Center.Y - Radius), FVector2f(Center.X, Center.Y + Radius)}, GraticuleColor);
+			{Center, Center + AngleToDirection(TrueScope::SkinToneLineAngleDegrees) * Radius}, SkinToneLineColor);
 	}
 	++LayerId;
 
-	if (bShowGuides)
-	{
-		// 5-degree ticks, drawn INWARD from the circle (Resolve's layout: ticks
-		// inward, hue ring outward — they cannot compete). NOTE: the ticks do
-		// NOT line up with the six targets, and that is CORRECT — the target
-		// angles (102.9°, 49.7°, ...) are not multiples of 5. It will look
-		// like a bug; do not rotate the ticks to "fix" it (phase-6.2 spec).
-		for (int32 Tick = 0; Tick < NumTicks; ++Tick)
-		{
-			const float AngleDegrees = Tick * (360.0f / NumTicks);
-			const FVector2f Direction = AngleToDirection(AngleDegrees);
-			// Every second tick long (ticks at multiples of 10 degrees).
-			const float Length = Radius * (Tick % 2 == 0 ? LongTickFraction : ShortTickFraction);
-			DrawPolyline(OutDrawElements, LayerId, AllottedGeometry,
-				{Center + Direction * (Radius - Length), Center + Direction * Radius}, TickColor);
-		}
-
-		// Skin tone line: desaturated centre to the rim at the conventional
-		// angle (see TrueScope::SkinToneLineAngleDegrees for the derivation and
-		// the three recorded confirmations — the constant is not to be
-		// "corrected").
-		DrawPolyline(OutDrawElements, LayerId, AllottedGeometry,
-			{Center, Center + AngleToDirection(TrueScope::SkinToneLineAngleDegrees) * Radius}, SkinToneLineColor);
-		++LayerId;
-	}
-
-	// The six 75 % targets: fixed-size boxes at their BT.709 positions, each
-	// labelled just outside the box, radially away from center. With guides on,
-	// also the 100 % targets (unlabelled) — each at its OWN chroma-derived
-	// position; the six do not share a radius (phase-6.2 spec, measured).
+	// Target boxes per the Markers option: fixed-size boxes at their BT.709
+	// positions on the shared radial scale — per-hue chroma-derived radii,
+	// never a common circle (phase-6.2 caution; 100 % further out than 75 %,
+	// both inside the rim). Letters go on the outermost displayed set, once.
 	const TSharedRef<FSlateFontMeasure> FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
 	const FSlateFontInfo LabelFont = GetLabelFont();
 
 	auto DrawTargetBox = [&](const TrueScope::FVectorscopeTarget& Target)
 	{
-		const FVector2f Position = ChromaToLocal(Target.Chroma, Center, DrawnSide);
+		const FVector2f Position = ChromaToLocal(Target.Chroma, Center, ChromaSquareSide);
 
 		const float Left = Position.X - TargetBoxHalfSize;
 		const float Right = Position.X + TargetBoxHalfSize;
@@ -356,10 +385,8 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 		return Position;
 	};
 
-	for (const TrueScope::FVectorscopeTarget& Target : TrueScope::GetVectorscopeTargets())
+	auto DrawTargetLabel = [&](const TrueScope::FVectorscopeTarget& Target, const FVector2f& Position)
 	{
-		const FVector2f Position = DrawTargetBox(Target);
-
 		FVector2f Direction = Position - Center;
 		Direction.Normalize();
 
@@ -369,13 +396,26 @@ int32 STrueScopeVectorscope::OnPaint(const FPaintArgs& Args, const FGeometry& Al
 		FSlateDrawElement::MakeText(OutDrawElements, LayerId,
 			AllottedGeometry.ToPaintGeometry(LabelSize, FSlateLayoutTransform(LabelCenter - LabelSize * 0.5f)),
 			LabelString, LabelFont, ESlateDrawEffect::None, LabelColor);
-	}
+	};
 
-	if (bShowGuides)
+	const bool bShow75 = Markers != ETrueScopeVectorscopeMarkers::Bars100;
+	const bool bShow100 = Markers != ETrueScopeVectorscopeMarkers::Bars75;
+	if (bShow75)
+	{
+		for (const TrueScope::FVectorscopeTarget& Target : TrueScope::GetVectorscopeTargets())
+		{
+			const FVector2f Position = DrawTargetBox(Target);
+			if (!bShow100)
+			{
+				DrawTargetLabel(Target, Position);
+			}
+		}
+	}
+	if (bShow100)
 	{
 		for (const TrueScope::FVectorscopeTarget& Target : TrueScope::GetVectorscopeTargets100())
 		{
-			DrawTargetBox(Target);
+			DrawTargetLabel(Target, DrawTargetBox(Target));
 		}
 	}
 	++LayerId;
@@ -390,8 +430,9 @@ int32 STrueScopeVectorscope::DrawHueRing(FSlateWindowElementList& OutDrawElement
 {
 	// The ring's INNER edge sits exactly on the circle radius and it grows
 	// OUTWARD only — it must never intrude into the plotting area, because the
-	// circle is the 100 % saturation reference and the reading of the scope
-	// must not change (phase-6.2 Task 1b).
+	// circle is the scope's fixed chroma reference
+	// (TrueScope::VectorscopeCircleChroma) and the reading must not change
+	// (phase-6.2 Task 1b).
 	const float RingWidth = FMath::Clamp(Radius * HueRingWidthFraction, HueRingWidthMin, HueRingWidthMax);
 
 	static const TArray<TrueScope::FHueRingStop> Stops = []
