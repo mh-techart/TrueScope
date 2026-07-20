@@ -78,6 +78,11 @@ requires it.
   constant and tuning by eye has repeatedly been wrong here (vectorscope circle
   calibration, readback cost). If a value looks like a matter of taste but isn't,
   treat it as math.
+- **Mark every claim by evidence status.** A statement derived from a standard,
+  measured, or verified in the UE 5.8 source is **settled**; anything else —
+  including assumptions carried over from a previous chat or agent — must be
+  labelled **Hypothesis / Unverified assumption** until tested or proven from a
+  safe source, and must not be built upon as if settled.
 - **Verify "is it live?" with a moving source.** A static subject makes "not
   updating" indistinguishable from "unchanged". To confirm a scope actually
   measures live, use a visibly moving source (e.g. a never-still particle effect)
