@@ -157,10 +157,11 @@ mechanism rather than leaving stale traces.
   transforms such as P3 or PQ). V1 is deliberately display-referred
   sRGB/Rec.709 only (see architecture.md).
 - **Toolbar button** to open the TrueScope tab (V1: Window menu only).
-- **Plugin icon (`Resources/Icon128.png`)** — the editor's Plugin Browser
-  logs a missing-Slate-resource line for it; cosmetic only, but needed for a
-  clean log and for Fab/marketplace presentation. Tab icon in the Window
-  menu could reuse it (phase 1 deliberately ships without icons).
+- **Plugin icon + tab icon (assets now available, 2026-07-20)** — the human has
+  provided a **logo (PNG)** and an **icon (SVG)** for the project. Integrate: the
+  Plugin Browser icon (`Resources/Icon128.png`, clears the missing-Slate-resource
+  log line), the Window-menu tab icon (reuse), and optionally the toolbar button
+  (item below). Not phase-critical; good pre-release polish.
 - **Higher refresh rates / per-frame mode** — trivial once the GPU path (M5)
   exists; expose as a setting with a resource-use warning.
 - **Smooth scope drawing via interpolation (decoupled draw rate)** — the
@@ -269,17 +270,15 @@ mechanism rather than leaving stale traces.
   removes the anisotropy) — hence the resolution fix. The stroke's *coverage
   profile* was a separate, genuine bug, fixed earlier (commit "Match Slate's
   antialiased line coverage in the histogram GPU raster").
-- **Density-to-brightness curve tuning ("scopes drowning in dense areas")** —
-  observed in the M3 review: TrueScope's parade density is much denser than
-  Resolve's, so structure drowns in solid fills. The likely cause is **not**
-  capture resolution (lowering it would cost precision in other scopes) but
-  the **intensity mapping**: our count→brightness curve is probably too
-  linear, so dense regions saturate into an undifferentiated mass. Resolve
-  keeps structure visible with a pronounced log/sqrt curve that lifts low
-  densities and saturates high ones early; per-sample opacity is another
-  lever. This is finish-tuning (M6) and should be calibrated **once across
-  all four scopes together** for a consistent look — so tackle it after all
-  scopes exist, not per-scope.
+- **[resolved into M6.3] Density-to-brightness curve ("scopes drowning in dense
+  areas")** — the M3 observation. **Cause found by measurement (2026-07-20),
+  opposite to the original guess:** TrueScope's transfer is **log**
+  (`ln(1+16·C)/ln(1+16·C_max)`), which *over-lifts* sparse cells (one pixel in a
+  540-row column → 31 % brightness) into an undifferentiated bright mass; Resolve's
+  transfer is **linear** (measured). The fix is to go **linear × per-scope gain,
+  hard clip** — not a stronger curve. Compositing was ruled out (D2: TrueScope
+  already desaturates on overlap like Resolve). Decided and specified for **M6.3**
+  — see `architecture.md`, "Density transfer & Trace Brightness".
 - **Export the capture RT for true 1:1 Resolve comparison (M6 density-calibration aid)** —
   TrueScope analyzes a fixed **960×540** bilinear downscale of the viewport
   ViewRect (verified 2026-07-20; see architecture.md scope cross-check). A
@@ -301,17 +300,12 @@ mechanism rather than leaving stale traces.
   `Capture pass ran (WxH)` log line, architecture.md) so the reference is
   reproducible; or drive calibration off the dumped capture RT (item above),
   which removes the viewport-size dependency entirely.
-- **Histogram scale gain: Resolve-style default + exact mode** (M6, together
-  with the density curve above) — the three curves always share one scale
-  (derived from the strongest channel), never per-channel. The option is the
-  **gain** on that shared scale: *Resolve-style* (default) amplifies past the
-  band height so the tallest peak clips while edge detail becomes readable;
-  *Exact* (gain 1.0, M4's current behavior) makes the tallest peak touch the
-  top. Same draw path, one parameter — possibly a slider rather than a
-  toggle. Before fixing details, **measure Resolve**: fixed vs. adaptive
-  gain, and whether its plot is linear or slightly non-linear (sqrt-ish).
-  Test with known bin ratios. Rationale: `architecture.md`, "Histogram
-  vertical scaling".
+- **[resolved into M6.3] Histogram scale gain** — **measured (2026-07-20):**
+  Resolve's histogram is **linear** count → height, **fixed** scale (not
+  peak-normalised), **luma-independent**, band fills at ≈**1.6 % of frame pixels**
+  then clips. **Decided for M6.3:** a **slider with a detent at Exact = 1.0**;
+  default Resolve-style. Shared single scale as before. (Superseded "measure
+  Resolve first".) See `architecture.md`, "Histogram vertical scaling".
 - **Scale behavior across bit depth / HDR / color spaces** — V1 uses a
   normalized 0–1023 scale for the SDR display-referred case (settled in
   architecture.md). Open for later: what the scale should show for HDR
@@ -342,7 +336,8 @@ mechanism rather than leaving stale traces.
   GitHub releases.
 - **Scope display modes** — small per-scope display variants, seen in FCP:
   **Monochrome** (white instead of colored traces), Show Guides toggle,
-  trace-brightness control, and per-scope modes for the parade and the
+  trace-brightness control **(now specified: a per-scope gain slider, M6.3)**,
+  and per-scope modes for the parade and the
   vectorscope. These are display options on a scope, separate from the window
   layout (below). M4 built the mechanism (`FTrueScopeDisplayMode` + the
   right-click menu on `STrueScopeWidget`) and shipped its first two users — the
@@ -451,6 +446,32 @@ mechanism rather than leaving stale traces.
   image-diff harness); deliberately kept out of M5 to not bloat the GPU phase.
   Not a substitute for the strict bin test — the two answer different questions
   (counts vs. appearance).
+
+## Resolve-parity candidates (from the DaVinci Resolve scope manual, 2026-07-20)
+
+Options Resolve offers that TrueScope could add later; display-only unless noted.
+None is M6.3. Most fit the M4 per-scope display-mode mechanism.
+
+- **Waveform Extents** — outline of the true min/max excursions, readable even
+  with a low-pass filter on.
+- **Waveform Low Pass Filter** — denoise the trace for readability (Resolve pairs
+  it with Extents).
+- **Reference Levels** — user Low/High horizontal lines on the waveform (e.g.
+  broadcast-safe 64/940).
+- **Waveform/Parade scale styles** — %, IRE/mV, 12-bit alternatives to the 0–1023
+  axis (the axis-label infra already anticipates %/IRE).
+- **Graticule brightness control** — a separate graticule-intensity slider
+  alongside the Trace-Brightness one.
+- **Vectorscope graticule styles** — Resolve's **Hue Vectors** (reference lines
+  target→centre, fading in saturated regions) and **Simplified** styles, in
+  addition to the hue ring already planned in "Vectorscope graticule extensions".
+- **Chroma (CbCr) waveform mode** — Resolve's waveform has a CbCr mode; TrueScope
+  has Y and RGB. A per-scope display-mode candidate.
+- **Display Qualifier Focus** — hovering the viewer eyedropper highlights the
+  sampled pixels' location in the scope. A later interactivity feature.
+
+(CIE Chromaticity as a 5th scope type is already noted under the extensible
+scope-type architecture.)
 
 ## Vectorscope graticule extensions (M6 polish — display only)
 

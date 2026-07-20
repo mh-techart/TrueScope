@@ -105,6 +105,15 @@ requires it.
   radii not sharing one circle; 100% magenta/green sitting on the rim; skin line at
   123° un-rotated), write the derivation in a comment so a future reader (or agent)
   doesn't "fix" it back into a bug.
+- **Measure both sides with known-population targets — never assume one.** To
+  calibrate a scope against a reference tool (Resolve), build synthetic targets
+  whose pixel populations are *exactly known* (neutral bars of known per-column
+  pixel count; full-height strips of known area per luma), feed them through
+  *both* tools, and fit the reference's transfer/gain from its rendered output.
+  Measure TrueScope's own transfer too (headless, through the shipping code) —
+  don't assume it from a prior note. The density/histogram calibration (2026-07-20)
+  was settled this way; a carried-over "log" assumption was nearly built on until
+  both sides were actually measured. Pin the fitted result in a test.
 - **The shipped path is the maintained path.** Whatever ships as default is what
   gets exercised and stays correct; a path only used in tests rots. Choose defaults
   accordingly, and keep non-default paths covered by tests that actually run.
@@ -278,22 +287,65 @@ CVar). Report the verified query commands; only then use them to confirm state.
   (scalability, `ScreenPercentage`, `t.MaxFPS`, VSync, High-DPI, which scene,
   idle vs. interacting) is not a result.
 
-## Resolve cross-check conditions
+## Resolve cross-check — conditions & procedure
 
-The scope cross-check against DaVinci Resolve is a **manual** human step
-(High-Res screenshot → compare by eye/measurement). For it to be valid:
+The scope cross-check against DaVinci Resolve is a manual human step (Unreal
+High-Res screenshot → import into Resolve → compare scope values). The *principle
+and what to compare* live in `architecture.md` (testing strategy); the *conditions
+and procedure* are here.
 
-- **Disable temporal AA before comparing:** `r.AntiAliasingMethod 0` (off) or
-  `1` (FXAA — runs *after* the capture hook, harmless). Never TAA (`2`) or TSR
-  (`4`): they jitter the image sub-pixel frame-to-frame, so the scopes and the
-  screenshot are never the same frame. Invisible at coarse correlation, but it
-  will cost hours during M6 density-curve calibration.
-- `r.ScreenPercentage 100` (one screenshot pixel = one measured pixel).
-- **High DPI on** for cross-checks (finer scopes) — this is the *only* setting
-  that differs between cross-check (High-DPI on) and benchmark (High-DPI off).
-- Camera fully still; Lumen converged; auto-exposure settled; no self-animating
-  actors in the reference scene (the VolumetricCloud that used to drift has been
-  removed — keep the reference motionless).
+**Repeatable plate — console route (verified 2026-07-20):**
+
+- Pilot a level **CineCameraActor** — its filmback fixes framing + aspect, so the
+  artist's viewport size/aspect is irrelevant and its letterbox bars do not enter
+  the capture (measured — `architecture.md`, capture geometry).
+- **Game View on** (`G`) — hides gizmos/billboards, which `HighResShot` does not
+  auto-hide and which never appear in TrueScope's capture.
+- **Realtime off** (`Ctrl+R`) — freezes temporal effects (particles, weather,
+  self-animating actors) so the scope's captured frame and the PNG are the *same*
+  still; the frame still renders. Truth signal: the `Capture pass ran` log
+  timestamp stops advancing.
+- **AA off**: `r.AntiAliasingMethod 0`. **Never FXAA (1), TAA (2) or TSR (4).**
+  TrueScope's capture hook runs *before* FXAA (after-tonemap, priority 0; FXAA is
+  later in the chain), so with FXAA on the PNG is post-FXAA while the scopes
+  measured pre-FXAA — an edge mismatch that costs hours in density calibration.
+  TAA/TSR jitter sub-pixel frame-to-frame. Off is the only condition where PNG and
+  capture agree. *(This supersedes the earlier "FXAA … harmless" note — it is not
+  harmless for pixel-exact work.)*
+- `r.ScreenPercentage 100`.
+- **`HighResShot <W>x<H> 0 0 0`** in the console → exact resolution independent of
+  window size and retina/High-DPI scale (no viewport resizing needed), rendered at
+  the camera's filmback aspect (no bars). Written to `Saved/Screenshots/MacEditor/`.
+  **Do not impose the comparison resolution as a framing constraint** — pick any
+  W×H with **height ≥ 1080 px** (TrueScope analyses at 540 px, so ≥1080 loses no
+  detail; more is fine), then match Resolve's timeline to the PNG. Claude Code may
+  produce these plates itself; the human manual route is the fallback.
+- Subject & exposure: engine **ColorCalibrator**, **fixed exposure** (manual
+  EV100) so the still and the scope moment agree. Camera fully still; Lumen
+  converged; auto-exposure settled; no self-animating actors in the reference
+  scene (the VolumetricCloud that used to drift has been removed — keep the
+  reference motionless).
+
+**Resolve side:** import the PNG on a timeline of **the same pixel dimensions**,
+8-bit, **sRGB**, clip **Data Levels = Full** (the 64–940 vs 0–1023 mismatch is the
+classic false alarm). Undock the Scopes into a floating window; compare **values on
+each scale**, not raw appearance.
+
+**High DPI:** with the explicit-resolution `HighResShot` route the PNG is
+unaffected by the editor's High-DPI setting; it only affects the crispness of
+TrueScope's *on-screen* panels for the visual side-by-side — set it as preferred
+for that. *(Replaces the earlier "High-DPI on is the only cross-check/benchmark
+difference" claim, now moot for the PNG.)*
+
+**Pixel-exact option:** `HighResShot 960x540` matches the capture's pixel count
+(hence its density normalisation) but is a *native* render, not the downscaled
+image the scopes actually see; true 1:1 needs dumping the capture RT — see
+`backlog.md`.
+
+**Pin the ViewRect for density calibration:** the capture target is fixed 960×540
+but the source ViewRect varies with window size, so the downscale ratio (and fine
+density readings) vary — read the ViewRect off `Capture pass ran (WxH)` and keep it
+fixed across a calibration run, or drive off the dumped capture RT.
 
 ## Definition of done (every task)
 
