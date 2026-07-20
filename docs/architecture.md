@@ -365,9 +365,15 @@ Scopes are mathematically verifiable — exploit that:
      controlled, gizmo-free frame: pilot a level **CineCameraActor** (its
      filmback fixes framing + aspect), enable **Game View** (hides
      gizmos/billboards — verified necessary: `HighResShot` does not auto-hide
-     them), **disable Realtime** (freezes temporal effects; the frame still
-     renders), set AA **off or FXAA** and `r.ScreenPercentage 100`, then run
-     `HighResShot <W>x<H> 0 0 0` in the console. Output resolution is exact and
+     them), **disable Realtime** (freezes temporal effects — particles, weather,
+     self-animating actors — so the scope's captured frame and the PNG are the
+     same still; the frame still renders), set **AA off**
+     (`r.AntiAliasingMethod 0`) — never TAA/TSR, and prefer off over FXAA here
+     because FXAA runs *after* TrueScope's after-tonemap capture hook, so it
+     would leave the PNG post-FXAA while the scopes measured pre-FXAA (an
+     edge-only mismatch that matters for the pixel-exact 960×540 case) — and
+     `r.ScreenPercentage 100`, then run `HighResShot <W>x<H> 0 0 0` in the
+     console. Output resolution is exact and
      independent of window size / retina scale (so resizing the viewport is
      unnecessary), and `HighResShot` renders at the camera's filmback aspect —
      no bars in the PNG regardless of viewport aspect. Written to
