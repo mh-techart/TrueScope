@@ -280,6 +280,17 @@ mechanism rather than leaving stale traces.
   lever. This is finish-tuning (M6) and should be calibrated **once across
   all four scopes together** for a consistent look — so tackle it after all
   scopes exist, not per-scope.
+- **Export the capture RT for true 1:1 Resolve comparison (M6 density-calibration aid)** —
+  TrueScope analyzes a fixed **960×540** bilinear downscale of the viewport
+  ViewRect (verified 2026-07-20; see architecture.md scope cross-check). A
+  `HighResShot 960x540` gets Resolve close — matching pixel count, hence
+  matching density normalization — but it is a *native* 960×540 render, not the
+  *downscaled* image TrueScope actually measured, so it is not literally
+  pixel-identical. For the finest density-curve calibration, add a
+  dev/diagnostic command that dumps
+  `FTrueScopeViewExtension::GetCaptureRenderTarget()` to a PNG: that is the exact
+  set of pixels the scopes see, giving true one-PNG-pixel = one-measured-pixel.
+  Natural companion to the "frozen reference image" cross-check automation below.
 - **Histogram scale gain: Resolve-style default + exact mode** (M6, together
   with the density curve above) — the three curves always share one scale
   (derived from the strongest channel), never per-channel. The option is the

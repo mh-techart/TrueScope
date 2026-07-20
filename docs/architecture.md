@@ -347,6 +347,32 @@ Scopes are mathematically verifiable — exploit that:
      Resolve provides waveform, parade and vectorscope.
    - Backlog: also cross-check against Final Cut Pro's scopes before a public
      release (not installed on the dev machine yet).
+   - **Verified capture geometry (measured 2026-07-20).** TrueScope samples the
+     post-tonemap `SceneColor.ViewRect` — the view's *render rectangle*, not the
+     whole viewport window — and bilinearly downscales it, aspect-stretched,
+     into a **fixed 960×540** working target (`TrueScope::CaptureWidth/Height`,
+     `TrueScopeViewExtension`; RGB only). Two consequences: (a) piloting a
+     **CineCameraActor whose filmback aspect differs from the viewport** does
+     **not** leak its black letterbox bars into the scopes — the ViewRect is the
+     constrained image region (logged 1132×637 = 16:9 from a viewport that was
+     *not* 16:9), so the bars lie outside it and the artist's viewport size is
+     free. (b) The scopes are resolution-normalized, so agreement does not
+     require matching resolutions; but for a **pixel-exact** comparison the PNG
+     should be **960×540** (the capture's own pixel count). Literal
+     one-PNG-pixel = one-measured-pixel would need dumping the capture RT itself
+     — see `backlog.md`.
+   - **Repeatable cross-check plate (console route, verified 2026-07-20).** For a
+     controlled, gizmo-free frame: pilot a level **CineCameraActor** (its
+     filmback fixes framing + aspect), enable **Game View** (hides
+     gizmos/billboards — verified necessary: `HighResShot` does not auto-hide
+     them), **disable Realtime** (freezes temporal effects; the frame still
+     renders), set AA **off or FXAA** and `r.ScreenPercentage 100`, then run
+     `HighResShot <W>x<H> 0 0 0` in the console. Output resolution is exact and
+     independent of window size / retina scale (so resizing the viewport is
+     unnecessary), and `HighResShot` renders at the camera's filmback aspect —
+     no bars in the PNG regardless of viewport aspect. Written to
+     `Saved/Screenshots/MacEditor/`. This supersedes the "multiplier 1.0" step
+     above when an exact, repeatable resolution is wanted.
 
 ## Licensing red line
 
