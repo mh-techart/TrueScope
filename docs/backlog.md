@@ -291,6 +291,16 @@ mechanism rather than leaving stale traces.
   `FTrueScopeViewExtension::GetCaptureRenderTarget()` to a PNG: that is the exact
   set of pixels the scopes see, giving true one-PNG-pixel = one-measured-pixel.
   Natural companion to the "frozen reference image" cross-check automation below.
+- **Downscale-ratio reproducibility caveat (M6 density calibration)** — the
+  capture target is always 960×540, but the *source* `SceneColor.ViewRect`
+  varies with viewport/window size, so the bilinear downscale *ratio* varies
+  with it. Consequence: the exact 960×540 pixel values (and therefore the fine
+  density readings) differ slightly for the *same scene* at different viewport
+  sizes — a small but real source of run-to-run variance. When calibrating the
+  density-to-brightness curve, **pin the ViewRect/window size** (read it off the
+  `Capture pass ran (WxH)` log line, architecture.md) so the reference is
+  reproducible; or drive calibration off the dumped capture RT (item above),
+  which removes the viewport-size dependency entirely.
 - **Histogram scale gain: Resolve-style default + exact mode** (M6, together
   with the density curve above) — the three curves always share one scale
   (derived from the strongest channel), never per-channel. The option is the

@@ -75,6 +75,14 @@ receives. Consequences, by design:
   pass must run *after* the OCIO pass (pass selection / extension priority),
   otherwise scopes silently diverge from the viewport. Verified by an M2
   acceptance test.
+- **The hook sits after Tonemap and after OCIO, but before FXAA.** TrueScope
+  subscribes to the after-Tonemap callback at extension priority 0 — below the
+  OCIO display extension's 100, so it samples the post-OCIO image (above). FXAA,
+  however, runs *later* in the chain than this hook, so the scopes measure the
+  **pre-FXAA** image. Practical consequence for the Resolve cross-check: use
+  **AA off** (`r.AntiAliasingMethod 0`), never FXAA — otherwise the reference
+  PNG (post-FXAA) and the scope capture (pre-FXAA) differ at edges. TAA/TSR are
+  excluded outright (sub-pixel jitter frame-to-frame).
 - **Capture exists only while the viewport's `PostProcessing` show flag is on**
   (verified in 5.8 source + live diagnostic, work order 13 / 2026-07-17). With
   the flag off the renderer takes its *minimal* post-processing path, and that
@@ -361,6 +369,15 @@ Scopes are mathematically verifiable — exploit that:
      should be **960×540** (the capture's own pixel count). Literal
      one-PNG-pixel = one-measured-pixel would need dumping the capture RT itself
      — see `backlog.md`.
+   - **Diagnostic instrument — verify what TrueScope is actually sampling.** Set
+     `LogTrueScope` to Verbose; each accepted capture logs
+     `Capture pass ran (WxH)` with `SceneColor.ViewRect`'s dimensions (and the
+     one-time `First viewport capture (…→…)` line reports source→target). This
+     is how the constrained-camera bar question above was settled without
+     guessing: a camera constrained to 16:9 in a non-16:9 viewport logged
+     `1132x637` (= 16:9, the camera aspect), proving the ViewRect is the
+     constrained region. The same line is the truth signal for Realtime state —
+     its timestamp stops advancing when Realtime is off.
    - **Repeatable cross-check plate (console route, verified 2026-07-20).** For a
      controlled, gizmo-free frame: pilot a level **CineCameraActor** (its
      filmback fixes framing + aspect), enable **Game View** (hides
