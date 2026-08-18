@@ -300,12 +300,32 @@ mechanism rather than leaving stale traces.
   `Capture pass ran (WxH)` log line, architecture.md) so the reference is
   reproducible; or drive calibration off the dumped capture RT (item above),
   which removes the viewport-size dependency entirely.
-- **[resolved into M6.3] Histogram scale gain** — **measured (2026-07-20):**
-  Resolve's histogram is **linear** count → height, **fixed** scale (not
-  peak-normalised), **luma-independent**, band fills at ≈**1.6 % of frame pixels**
-  then clips. **Decided for M6.3:** a **slider with a detent at Exact = 1.0**;
-  default Resolve-style. Shared single scale as before. (Superseded "measure
-  Resolve first".) See `architecture.md`, "Histogram vertical scaling".
+- **[resolved into M6.3] Histogram scale gain** — **re-measured 2026-08-17**
+  (superseding the 2026-07-20 reading, which had recorded an unexplained
+  `≈1.6 % of frame pixels` and an "Exact" detent that does not exist in Resolve):
+  Resolve's histogram uses a **fixed** shared scale — not normalised to the frame's
+  own peak — that is **linear** in count and **resolution-independent**, clipping a
+  bin once it holds more than ≈**1.67 % of all the frame's pixels**. Its gain slider
+  is linear in that threshold (3.34 % at the left end → ≈0 at the right end), which
+  is why its right end is unusable. **Decided for M6.3:** same fixed-scale principle,
+  default threshold 1.67 % of all frame pixels, but a **logarithmic** gain slider
+  (±3 doublings, centre = default) instead of Resolve's linear-in-threshold one. The
+  "Exact" detent is dropped — see the new backlog item "Fit-the-peak histogram view".
+  See `architecture.md`, "Histogram vertical scaling" and "Gain slider law".
+- **Fit-the-peak histogram view (self-adjusting, never clips)** — the behaviour
+  TrueScope shipped in M4–M6.2: the shared scale is derived from the frame's own
+  tallest bin, so the highest peak always just touches the band top and nothing is
+  ever clipped. M6.3 replaced it with a fixed scale (see `architecture.md`,
+  "Histogram vertical scaling") because a scale that moves with the content makes
+  two shots incomparable. It remains a legitimate view — it is the only one that
+  guarantees nothing is hidden by clipping — but it is **not** what the gain slider
+  provides: the slider is a fixed multiplier, so a setting that fits one frame will
+  not fit the next, whereas this view re-fits itself per frame. **Priority: low.**
+  M6.3's slider reaches a clip threshold of 13.3 % of frame pixels at the left end,
+  which already covers all but extreme content, so the practical need is small. If
+  it is ever built, it must be a clearly separate mode, never a position on the gain
+  slider — the two use different normalisation bases and merging them is the same
+  class of confusion that caused the M4 histogram bug.
 - **Scale behavior across bit depth / HDR / color spaces** — V1 uses a
   normalized 0–1023 scale for the SDR display-referred case (settled in
   architecture.md). Open for later: what the scale should show for HDR

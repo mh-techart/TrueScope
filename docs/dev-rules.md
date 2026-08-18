@@ -92,6 +92,17 @@ requires it.
   catches what the test doesn't model (gamma/brightness, stroke width, upscaling
   softness). Neither alone is sufficient for a visual feature. Bin-equivalence
   compares counts; appearance is a separate check.
+- **Define every number where it first appears.** Any measured constant, derived
+  figure, or coined term carries its definition at first mention in a doc: what it
+  is a fraction *of*, one concrete worked value, how it was obtained, and why it is
+  that value. "Band fills at 1.6 %" is not usable by a later reader; "a bin holding
+  1.67 % of all frame pixels fills the band — ≈8 650 pixels in a 960×540 capture —
+  measured against Resolve on 2026-08-17" is. If a number has no measured origin
+  because it was simply chosen, say so explicitly and call it a chosen working
+  value, so nobody later mistakes it for evidence. This rule exists because
+  `≈1.6 % of frame pixels` sat in `architecture.md` for a month with no stated
+  origin, was never confirmed by the human, and turned out to be roughly right for
+  the wrong reason — an unexplained number is indistinguishable from a guess.
 - **Prove a regression test has teeth.** Don't just assert a test passes — perturb
   the thing it guards (off-by-one, swapped channel, reverted constant), confirm it
   fails, then revert. A test never seen to fail proves nothing.
@@ -330,6 +341,32 @@ and procedure* are here.
 8-bit, **sRGB**, clip **Data Levels = Full** (the 64–940 vs 0–1023 mismatch is the
 classic false alarm). Undock the Scopes into a floating window; compare **values on
 each scale**, not raw appearance.
+
+- **The timeline resolution must match the test image's own resolution.** Resolve's
+  scopes measure the *timeline* image, not the file. A 960×540 image dropped into an
+  HD timeline is upscaled to 1920×1080 before it reaches the scope, which both
+  changes the pixel count and creates intermediate values along every edge — the
+  known counts the whole method depends on no longer exist. One timeline per image
+  size.
+- **8-bit test images populate only every fourth bin of a 10-bit histogram.** Value
+  128 lands in bin 512, 129 in bin 516, and the three bins between stay empty. The
+  result is a comb of one-bin spikes roughly 1.7 screen pixels wide, whose apex
+  height cannot be read reliably off a screenshot (measured comb heights came out
+  ~8 % above what the isolated tall features predicted). Read the *isolated tall*
+  features, not the fine structure — or generate 10-bit test images. This is an
+  artefact of the test image, not a property of the tool under test.
+- **Prove a peak is clipped rather than merely tall.** A clipped one-bin spike still
+  looks pointed: the flat cut is only 2–3 screen pixels wide. Two reliable proofs,
+  neither needing sub-pixel reading: (a) two bins with clearly different counts that
+  draw at *exactly* the same height are both sitting at the ceiling; (b) change the
+  gain and see what moves — unclipped features scale with it, a clipped one does not
+  move at all.
+- **Data Levels vs the scope scale.** Resolve's scope scale always reads full-range
+  0–1023 regardless of the project's Video/Data Levels setting — that setting governs
+  how the *file's* values are interpreted on the way in, not how the scope is
+  labelled. This is why the cross-check specifies Full for full-range PNG test
+  images: get it wrong and the values are silently expanded or compressed before
+  they reach the scope, while the axis looks unchanged.
 
 **High DPI:** with the explicit-resolution `HighResShot` route the PNG is
 unaffected by the editor's High-DPI setting; it only affects the crispness of
