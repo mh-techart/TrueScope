@@ -179,11 +179,12 @@ bool FTrueScopeWaveformModeSelectionTest::RunTest(const FString&)
 
 	TArray<FColor> RgbTexels;
 	RgbTexels.SetNumUninitialized(NumTexels);
-	STrueScopeWaveform::BuildTexels(Result, ETrueScopeWaveformMode::Rgb, RgbTexels);
+	constexpr float WaveformGain = 1.0f;   // the calibrated default, unscaled
+	STrueScopeWaveform::BuildTexels(Result, ETrueScopeWaveformMode::Rgb, WaveformGain, RgbTexels);
 
 	TArray<FColor> LumaTexels;
 	LumaTexels.SetNumUninitialized(NumTexels);
-	STrueScopeWaveform::BuildTexels(Result, ETrueScopeWaveformMode::Luma, LumaTexels);
+	STrueScopeWaveform::BuildTexels(Result, ETrueScopeWaveformMode::Luma, WaveformGain, LumaTexels);
 
 	auto TexelAt = [](const TArray<FColor>& Texels, int32 Bin)
 	{

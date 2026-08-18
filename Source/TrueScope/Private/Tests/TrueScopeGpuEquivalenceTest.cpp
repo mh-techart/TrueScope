@@ -225,17 +225,18 @@ namespace
 	/**
 	 * Test-only round trip for the histogram (phase-5.2): uploads Pixels, runs
 	 * exactly the runtime chain — column binning, then the histogram reduce —
-	 * and reads back the 1D per-channel histogram plus the shared maximum.
+	 * and reads back the 1D per-channel histogram. Since M6.3 the reduce emits
+	 * only the bins: the curve scale is the fixed clip threshold, computed
+	 * game-side, so there is no per-frame maximum on either path to compare.
 	 */
-	bool RunGpuHistogramReduce(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins,
-		uint32& OutSharedMax)
+	bool RunGpuHistogramReduce(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins)
 	{
 		constexpr int32 NumCells = FResult::NumChannels * FResult::NumBins;
 		constexpr uint32 NumBytes = NumCells * sizeof(uint32);
 
 		bool bReadbackOk = false;
 		ENQUEUE_RENDER_COMMAND(TrueScopeGpuHistogramEquivalenceRun)(
-			[&Pixels, Size, &OutBins, &OutSharedMax, &bReadbackOk](FRHICommandListImmediate& RHICmdList)
+			[&Pixels, Size, &OutBins, &bReadbackOk](FRHICommandListImmediate& RHICmdList)
 			{
 				const FRHITextureCreateDesc Desc =
 					FRHITextureCreateDesc::Create2D(TEXT("TrueScope.EquivalenceInput"), Size.X, Size.Y, PF_B8G8R8A8)
@@ -246,7 +247,6 @@ namespace
 					Size.X * sizeof(FColor), reinterpret_cast<const uint8*>(Pixels.GetData()));
 
 				FRHIGPUBufferReadback BinsReadback(TEXT("TrueScope.EquivalenceReadback"));
-				FRHIGPUBufferReadback MaxReadback(TEXT("TrueScope.EquivalenceMaxReadback"));
 				{
 					FRDGBuilder GraphBuilder(RHICmdList);
 					FRDGTextureRef Input =
@@ -255,24 +255,20 @@ namespace
 					const TrueScope::FHistogramReduceOutputs Outputs =
 						TrueScope::AddHistogramReducePass(GraphBuilder, ColumnBins, Size.X);
 					AddEnqueueCopyPass(GraphBuilder, &BinsReadback, Outputs.Bins, NumBytes);
-					AddEnqueueCopyPass(GraphBuilder, &MaxReadback, Outputs.SharedMax, sizeof(uint32));
 					GraphBuilder.Execute();
 				}
 
 				RHICmdList.SubmitAndBlockUntilGPUIdle();
-				if (BinsReadback.IsReady() && MaxReadback.IsReady())
+				if (BinsReadback.IsReady())
 				{
 					const uint32* BinsData = static_cast<const uint32*>(BinsReadback.Lock(NumBytes));
-					const uint32* MaxData = static_cast<const uint32*>(MaxReadback.Lock(sizeof(uint32)));
-					if (BinsData && MaxData)
+					if (BinsData)
 					{
 						OutBins.SetNumUninitialized(NumCells);
 						FMemory::Memcpy(OutBins.GetData(), BinsData, NumBytes);
-						OutSharedMax = *MaxData;
 						bReadbackOk = true;
 					}
 					BinsReadback.Unlock();
-					MaxReadback.Unlock();
 				}
 			});
 		FlushRenderingCommands();
@@ -726,8 +722,7 @@ bool FTrueScopeGpuHistogramBinEquivalenceTest::RunTest(const FString&)
 
 		// The runtime GPU binning + reduce, read back (test-only round trip).
 		TArray<uint32> GpuBins;
-		uint32 GpuSharedMax = 0;
-		if (!RunGpuHistogramReduce(Image.Pixels, Image.Size, GpuBins, GpuSharedMax))
+		if (!RunGpuHistogramReduce(Image.Pixels, Image.Size, GpuBins))
 		{
 			AddError(FString::Printf(TEXT("%s: GPU histogram readback failed"), *Image.Name));
 			continue;
@@ -749,9 +744,17 @@ bool FTrueScopeGpuHistogramBinEquivalenceTest::RunTest(const FString&)
 			}
 		}
 
-		// The shared curve scale must be the same number the CPU draw derives.
-		TestEqual(*FString::Printf(TEXT("%s: GPU shared maximum matches the CPU shared scale"), *Image.Name),
-			GpuSharedMax, STrueScopeHistogram::GetSharedMaxCount(CpuResult));
+		// The curve scale needs no comparison of readback values since M6.3 —
+		// both paths compute it from the analysed frame size and the gain — but
+		// it must be the SAME number, so pin the two computations against each
+		// other for the size this image was analysed at.
+		const float CpuThreshold =
+			STrueScopeHistogram::GetClipThresholdCount(CpuResult, TrueScope::DefaultGainMultiplier);
+		const float GpuThreshold = TrueScope::HistogramClipThresholdCount(
+			static_cast<int64>(Image.Size.X) * static_cast<int64>(Image.Size.Y),
+			TrueScope::DefaultGainMultiplier);
+		TestEqual(*FString::Printf(TEXT("%s: both paths derive the same clip threshold"), *Image.Name),
+			GpuThreshold, CpuThreshold);
 	}
 
 	return true;
@@ -772,17 +775,18 @@ namespace
 	/**
 	 * Test-only round trip for the luma reduce (phase-6.2): the same runtime
 	 * chain as RunGpuHistogramReduce, reading back ALL reduce channels (the
-	 * three colour channels plus luma) and the luma maximum.
+	 * three colour channels plus luma). Like the colour reduce, it emits only
+	 * bins since M6.3 — the luma band is drawn against the same fixed threshold
+	 * as every other curve, so there is no luma maximum left to read.
 	 */
-	bool RunGpuHistogramLumaReduce(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins,
-		uint32& OutLumaMax)
+	bool RunGpuHistogramLumaReduce(const TArray<FColor>& Pixels, FIntPoint Size, TArray<uint32>& OutBins)
 	{
 		constexpr int32 NumCells = TrueScope::ColumnBinChannels * FResult::NumBins;
 		constexpr uint32 NumBytes = NumCells * sizeof(uint32);
 
 		bool bReadbackOk = false;
 		ENQUEUE_RENDER_COMMAND(TrueScopeGpuHistogramLumaEquivalenceRun)(
-			[&Pixels, Size, &OutBins, &OutLumaMax, &bReadbackOk](FRHICommandListImmediate& RHICmdList)
+			[&Pixels, Size, &OutBins, &bReadbackOk](FRHICommandListImmediate& RHICmdList)
 			{
 				const FRHITextureCreateDesc Desc =
 					FRHITextureCreateDesc::Create2D(TEXT("TrueScope.EquivalenceInput"), Size.X, Size.Y, PF_B8G8R8A8)
@@ -793,7 +797,6 @@ namespace
 					Size.X * sizeof(FColor), reinterpret_cast<const uint8*>(Pixels.GetData()));
 
 				FRHIGPUBufferReadback BinsReadback(TEXT("TrueScope.EquivalenceReadback"));
-				FRHIGPUBufferReadback MaxReadback(TEXT("TrueScope.EquivalenceMaxReadback"));
 				{
 					FRDGBuilder GraphBuilder(RHICmdList);
 					FRDGTextureRef Input =
@@ -802,24 +805,20 @@ namespace
 					const TrueScope::FHistogramReduceOutputs Outputs =
 						TrueScope::AddHistogramReducePass(GraphBuilder, ColumnBins, Size.X);
 					AddEnqueueCopyPass(GraphBuilder, &BinsReadback, Outputs.Bins, NumBytes);
-					AddEnqueueCopyPass(GraphBuilder, &MaxReadback, Outputs.LumaMax, sizeof(uint32));
 					GraphBuilder.Execute();
 				}
 
 				RHICmdList.SubmitAndBlockUntilGPUIdle();
-				if (BinsReadback.IsReady() && MaxReadback.IsReady())
+				if (BinsReadback.IsReady())
 				{
 					const uint32* BinsData = static_cast<const uint32*>(BinsReadback.Lock(NumBytes));
-					const uint32* MaxData = static_cast<const uint32*>(MaxReadback.Lock(sizeof(uint32)));
-					if (BinsData && MaxData)
+					if (BinsData)
 					{
 						OutBins.SetNumUninitialized(NumCells);
 						FMemory::Memcpy(OutBins.GetData(), BinsData, NumBytes);
-						OutLumaMax = *MaxData;
 						bReadbackOk = true;
 					}
 					BinsReadback.Unlock();
-					MaxReadback.Unlock();
 				}
 			});
 		FlushRenderingCommands();
@@ -853,8 +852,7 @@ bool FTrueScopeGpuHistogramLumaBinEquivalenceTest::RunTest(const FString&)
 		}
 
 		TArray<uint32> GpuBins;
-		uint32 GpuLumaMax = 0;
-		if (!RunGpuHistogramLumaReduce(Image.Pixels, Image.Size, GpuBins, GpuLumaMax))
+		if (!RunGpuHistogramLumaReduce(Image.Pixels, Image.Size, GpuBins))
 		{
 			AddError(FString::Printf(TEXT("%s: GPU luma histogram readback failed"), *Image.Name));
 			continue;
@@ -865,11 +863,9 @@ bool FTrueScopeGpuHistogramLumaBinEquivalenceTest::RunTest(const FString&)
 		// stricter than the parade's +/-1 boundary rule.
 		const TArrayView<const uint32> GpuLumaBins(
 			GpuBins.GetData() + TrueScope::LumaBinChannel * FResult::NumBins, FResult::NumBins);
-		uint32 CpuLumaMax = 0;
 		bool bBinsEqual = true;
 		for (int32 Bin = 0; Bin < FResult::NumBins; ++Bin)
 		{
-			CpuLumaMax = FMath::Max(CpuLumaMax, CpuLumaBins[Bin]);
 			if (GpuLumaBins[Bin] != CpuLumaBins[Bin])
 			{
 				AddError(FString::Printf(TEXT("%s: luma bin %d differs (cpu %u, gpu %u)"),
@@ -880,13 +876,21 @@ bool FTrueScopeGpuHistogramLumaBinEquivalenceTest::RunTest(const FString&)
 		TestTrue(*FString::Printf(TEXT("%s: GPU luma histogram matches the CPU luma histogram exactly"),
 			*Image.Name), bBinsEqual);
 
-		// The YRGB scale ingredient: LumaMax is the luma histogram's peak, and
-		// max(SharedMax, LumaMax) equals the CPU widget's YRGB shared maximum.
-		TestEqual(*FString::Printf(TEXT("%s: GPU luma maximum matches the CPU luma peak"), *Image.Name),
-			GpuLumaMax, CpuLumaMax);
-		TestEqual(*FString::Printf(TEXT("%s: YRGB shared maximum agrees between the paths"), *Image.Name),
-			FMath::Max(GpuLumaMax, STrueScopeHistogram::GetSharedMaxCount(CpuResult)),
-			STrueScopeHistogram::GetYrgbSharedMaxCount(CpuResult, CpuLumaBins));
+		// The YRGB scale (M6.3): luma is drawn against the same fixed threshold
+		// as the colour curves, so "shares one scale" is now the statement that
+		// an equal count draws an equal height in either band.
+		const float Threshold =
+			STrueScopeHistogram::GetClipThresholdCount(CpuResult, TrueScope::DefaultGainMultiplier);
+		uint32 CpuLumaPeak = 0;
+		for (int32 Bin = 0; Bin < FResult::NumBins; ++Bin)
+		{
+			CpuLumaPeak = FMath::Max(CpuLumaPeak, CpuLumaBins[Bin]);
+		}
+		// Stated against the formula rather than against itself, so a luma band
+		// given a scale of its own would fail here.
+		TestEqual(*FString::Printf(TEXT("%s: the luma peak draws at its frame fraction"), *Image.Name),
+			STrueScopeHistogram::GetCurveHeight(CpuLumaPeak, Threshold),
+			FMath::Min(static_cast<float>(CpuLumaPeak) / Threshold, 1.0f), 1e-6f);
 	}
 
 	return true;

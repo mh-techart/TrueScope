@@ -93,6 +93,8 @@ protected:
 	virtual int32 GetOptionGroupValue(FName Key) const override;
 	virtual void SetOptionGroupValue(FName Key, int32 ValueId) override;
 
+	virtual const FTrueScopeGainOption* GetGainOption() const override;
+
 private:
 	/**
 	 * The hue ring (phase-6.2 Task 1b): a colour-graded strip whose inner edge

@@ -10,6 +10,7 @@
 class FTrueScopeAnalyzer;
 class FTrueScopeCaptureGate;
 class FTrueScopeGpuAnalysis;
+class FTrueScopeDisplayGains;
 class FTrueScopeRasterSizes;
 class FTrueScopeViewExtension;
 
@@ -40,6 +41,14 @@ public:
 	 * display resolution. Null in commandlets, like the other services.
 	 */
 	TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe> GetRasterSizes() const { return RasterSizes; }
+
+	/**
+	 * The user's per-scope gain multipliers (M6.3): the density scopes' Trace
+	 * Brightness and the histogram's Histogram Gain. Published by the scope
+	 * widgets, read by both analysis paths. Null in commandlets, like the
+	 * other services.
+	 */
+	TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe> GetDisplayGains() const { return DisplayGains; }
 
 	/**
 	 * UI-selected analysis path: true = GPU (performance), false = CPU
@@ -75,11 +84,15 @@ public:
 
 private:
 	void OnPostEngineInit();
+
+	/** Applies the remembered gain multipliers before the first capture (M6.3). */
+	void SeedDisplayGainsFromSettings();
 	TSharedRef<class SDockTab> SpawnTrueScopeTab(const class FSpawnTabArgs& SpawnTabArgs);
 
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 	TSharedPtr<FTrueScopeCaptureGate, ESPMode::ThreadSafe> CaptureGate;
 	TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe> RasterSizes;
+	TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe> DisplayGains;
 	TSharedPtr<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe> GpuAnalysis;
 	TSharedPtr<FTrueScopeViewExtension, ESPMode::ThreadSafe> ViewExtension;
 };

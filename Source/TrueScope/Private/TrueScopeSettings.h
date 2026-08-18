@@ -80,4 +80,24 @@ public:
 
 	/** Remembers a group's selection and writes the config out. */
 	void SetScopeOptionGroupValue(ETrueScopeType Type, FName Key, int32 ValueId);
+
+	/**
+	 * Per-scope gain multipliers (M6.3: the density scopes' Trace Brightness
+	 * and the histogram's Histogram Gain), keyed "<scope key>.<gain key>" like
+	 * the toggles.
+	 *
+	 * What is stored is the MULTIPLIER, where 1.0 means "this scope's
+	 * calibrated default" — never the slider position and never a derived
+	 * percentage. That is deliberate: recalibrating a scope's default gain, or
+	 * changing the slider's +/-3-doubling range, must not silently move every
+	 * existing user's setting to a different picture.
+	 */
+	UPROPERTY(config)
+	TMap<FName, float> ScopeGainMultipliers;
+
+	/** True and fills OutValue if a multiplier is remembered for the gain. */
+	bool GetScopeGainMultiplier(ETrueScopeType Type, FName Key, float& OutValue) const;
+
+	/** Remembers a gain multiplier and writes the config out. */
+	void SetScopeGainMultiplier(ETrueScopeType Type, FName Key, float Value);
 };

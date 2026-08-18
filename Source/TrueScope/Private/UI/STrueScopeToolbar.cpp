@@ -3,12 +3,15 @@
 
 #include "UI/STrueScopeToolbar.h"
 
+#include "Analysis/TrueScopeDisplayGains.h"
 #include "Capture/TrueScopeViewExtension.h"
 #include "Styling/AppStyle.h"
 #include "TrueScopeModule.h"
+#include "UI/STrueScopeGainSlider.h"
 #include "UI/STrueScopeWidget.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -20,6 +23,13 @@ namespace
 	/** Editor-theme spacing; the toolbar is chrome, so nothing here scales. */
 	constexpr float GroupSpacing = 12.0f;
 	constexpr float ButtonSpacing = 2.0f;
+
+	/**
+	 * Gain slider width. Wide enough that the +/-3 doublings of travel are
+	 * draggable in meaningful steps (one doubling is a sixth of this), narrow
+	 * enough that four scopes' toolbars still fit a docked tab.
+	 */
+	constexpr float GainSliderWidth = 90.0f;
 
 	FText GetMeasurementRateLabel(float RateHz)
 	{
@@ -50,7 +60,7 @@ void STrueScopeToolbar::Construct(const FArguments& InArgs,
 	{
 		if (!Scope.Value.IsValid()
 			|| (Scope.Value->GetDisplayModes().IsEmpty() && Scope.Value->GetToggleOptions().IsEmpty()
-				&& Scope.Value->GetOptionGroups().IsEmpty()))
+				&& Scope.Value->GetOptionGroups().IsEmpty() && Scope.Value->GetGainOption() == nullptr))
 		{
 			continue;
 		}
@@ -224,7 +234,76 @@ TSharedRef<SWidget> STrueScopeToolbar::MakeDisplayModeControl(ETrueScopeType Typ
 			];
 	}
 
+	// The gain slider closes the group (M6.3): it is the only continuous
+	// control here, so it reads as a separate kind of thing after the buttons.
+	if (const FTrueScopeGainOption* Gain = Scope->GetGainOption())
+	{
+		Box->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(6.0f, 0.0f, 0.0f, 0.0f)
+			[
+				MakeGainControl(WeakScope, *Gain)
+			];
+	}
+
 	return Box;
+}
+
+TSharedRef<SWidget> STrueScopeToolbar::MakeGainControl(TWeakPtr<STrueScopeWidget> Scope,
+	const FTrueScopeGainOption& Option)
+{
+	const FName Key = Option.Key;
+
+	return SNew(SHorizontalBox)
+
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+		[
+			SNew(STextBlock)
+			.Text(Option.Label)
+			.ToolTipText(Option.Tooltip)
+			.TextStyle(FAppStyle::Get(), "SmallText")
+			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+		]
+
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		[
+			SNew(SBox)
+			.WidthOverride(GainSliderWidth)
+			[
+				// The slider works in POSITION space and the scope stores a
+				// GAIN, so both directions go through the shared law — there is
+				// no second copy of it to drift.
+				SNew(STrueScopeGainSlider)
+				.ToolTipText(Option.Tooltip)
+				.Value_Lambda([Scope]()
+				{
+					const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin();
+					return Pinned.IsValid()
+						? TrueScope::GainToSliderPosition(Pinned->GetGainMultiplier())
+						: 0.5f;
+				})
+				.OnValueChanged_Lambda([Scope](float NewPosition)
+				{
+					if (const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin())
+					{
+						Pinned->ApplyGainMultiplier(TrueScope::SliderPositionToGain(NewPosition));
+					}
+				})
+				.OnResetRequested_Lambda([Scope]()
+				{
+					if (const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin())
+					{
+						Pinned->ResetGainMultiplier();
+					}
+				})
+			]
+		];
 }
 
 TSharedRef<SWidget> STrueScopeToolbar::MakeToggleButton(const FText& Label, const FText& Tooltip,

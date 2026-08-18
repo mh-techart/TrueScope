@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Analysis/TrueScopeAnalysisResult.h"
+#include "Analysis/TrueScopeDisplayGains.h"
 #include "Analysis/TrueScopeRasterSizes.h"
 #include "CoreMinimal.h"
 #include "RenderGraphFwd.h"
@@ -61,19 +62,10 @@ namespace TrueScope
 		 */
 		FRDGBufferRef Bins = nullptr;
 
-		/**
-		 * One uint: the strongest COLOUR channel's peak — the shared curve
-		 * scale of the RGB modes, luma deliberately excluded so those modes
-		 * draw exactly as before phase-6.2.
-		 */
-		FRDGBufferRef SharedMax = nullptr;
-
-		/**
-		 * One uint: the luma histogram's peak. The YRGB draw pass scales by
-		 * max(SharedMax, LumaMax) — the shared maximum over all four displayed
-		 * curves, mirroring STrueScopeHistogram::GetYrgbSharedMaxCount.
-		 */
-		FRDGBufferRef LumaMax = nullptr;
+		// No per-frame maximum is reduced since M6.3: the curve scale is the
+		// fixed clip threshold (TrueScope::HistogramClipThresholdCount), so
+		// every curve — colour channels and luma alike — is on one scale by
+		// construction rather than by reducing this frame's peak.
 	};
 
 	/**
@@ -116,7 +108,8 @@ class FTrueScopeGpuAnalysis : public TSharedFromThis<FTrueScopeGpuAnalysis, ESPM
 {
 public:
 	FTrueScopeGpuAnalysis(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-		const TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe>& InRasterSizes);
+		const TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe>& InRasterSizes,
+		const TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe>& InDisplayGains);
 
 	//~ Begin FGCObject interface
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
@@ -200,6 +193,19 @@ private:
 
 	/** The widgets' plot rects in device pixels — what the targets are sized to. */
 	TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe> RasterSizes;
+
+	/**
+	 * The sliders' display gains (M6.3). Sampled once per capture on the game
+	 * thread into the snapshots below, exactly as the raster sizes are, so the
+	 * render thread never reads the atomics and a mid-capture slider move
+	 * cannot make one pass disagree with another.
+	 */
+	TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe> DisplayGains;
+
+	float ParadeGainRenderThread = TrueScope::DefaultGainMultiplier;
+	float WaveformGainRenderThread = TrueScope::DefaultGainMultiplier;
+	float VectorscopeGainRenderThread = TrueScope::DefaultGainMultiplier;
+	float HistogramGainRenderThread = TrueScope::DefaultGainMultiplier;
 
 	/**
 	 * The regions the passes rasterize this capture, snapshotted on the game

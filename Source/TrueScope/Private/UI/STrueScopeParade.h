@@ -43,6 +43,8 @@ public:
 protected:
 	virtual void OnAnalysisResultChanged() override;
 
+	virtual const FTrueScopeGainOption* GetGainOption() const override;
+
 private:
 	/**
 	 * CPU path: per-channel density textures built from the result's intensity

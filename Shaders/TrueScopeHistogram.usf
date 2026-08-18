@@ -20,23 +20,23 @@
 	   vector draw's layer order (fills R, G, B, then lines R, G, B).
 
 	THE MAPPING (the M4 bug class this phase must not reintroduce):
-	count -> curve HEIGHT is LINEAR against the shared strongest-channel
-	maximum — CountToCurveHeight below, the shader mirror of
-	STrueScopeHistogram::GetCurveHeight. It is deliberately NOT the log
-	CountToIntensity density mapping of the parade/waveform/vectorscope
-	shaders: used as a height, the log curve flat-tops every curve and lets a
-	channel's rarest outlier pixels decide where it appears to end. The two
-	mappings stay separately named in code (architecture, "Two distinct count
-	mappings"). The three curves share ONE scale (the strongest channel's
-	peak), never per-channel (settled decision; the M6 gain option is out of
-	scope here — this is M4's exact shared-scale behaviour, gain 1.0).
+	count -> curve HEIGHT is LINEAR against a FIXED clip threshold count
+	(M6.3) — CountToCurveHeight below, the shader mirror of
+	STrueScopeHistogram::GetCurveHeight. The threshold is a fraction of the
+	analysed frame's pixel count, computed host-side and passed in as
+	ClipThresholdCount; counts at or above it reach the top of the band and
+	hard-clip there. It is deliberately NOT the density CountToIntensity
+	mapping of the parade/waveform/vectorscope shaders — the two mappings stay
+	separately named in code (architecture, "Two distinct count mappings").
+	All curves share ONE scale (settled decision); with a fixed threshold that
+	now holds BY CONSTRUCTION — there is no per-frame maximum to reduce, and
+	the RGB and YRGB modes are on the same scale automatically.
 
 	NUM_BINS, REDUCE_GROUP_SIZE and THREADGROUP_SIZE are set by the host code
 	from FTrueScopeAnalysisResult so shader and CPU layout cannot drift. Since
 	phase-6.2 the reduce also sums the column-bin buffer's fourth (luma)
 	channel — the SAME integer-exact luma bins the waveform plots — for the
-	YRGB mode's fourth band; the RGB modes and their shared maximum read the
-	colour channels only, exactly as before.
+	YRGB mode's fourth band.
 */
 
 #include "/Engine/Public/Platform.ush"
@@ -48,14 +48,12 @@
 #define NUM_TOTAL_CHANNELS 4
 
 // ---------------------------------------------------------------------------
-// Pass 1: column bins -> per-channel histogram + shared/luma maxima
+// Pass 1: column bins -> per-channel histogram
 // ---------------------------------------------------------------------------
 
 Buffer<uint> ColumnBinsIn;   // [Channel * (Width * NUM_BINS) + Column * NUM_BINS + Bin]
 int SourceWidth;
 RWBuffer<uint> HistogramOut; // [Channel * NUM_BINS + Bin], NUM_TOTAL_CHANNELS channels
-RWBuffer<uint> SharedMaxOut; // one uint: max count over the three COLOUR channels
-RWBuffer<uint> LumaMaxOut;   // one uint: max count of the luma channel (YRGB scale)
 
 [numthreads(REDUCE_GROUP_SIZE, 1, 1)]
 void HistogramReduceCS(uint3 Thread : SV_DispatchThreadID)
@@ -66,9 +64,9 @@ void HistogramReduceCS(uint3 Thread : SV_DispatchThreadID)
 		return;
 	}
 
+	const uint ChannelStride = uint(SourceWidth) * NUM_BINS;
 	const uint Channel = Cell / NUM_BINS;
 	const uint Bin = Cell % NUM_BINS;
-	const uint ChannelStride = uint(SourceWidth) * NUM_BINS;
 
 	// Deterministic serial sum per cell — no atomics needed for the sum
 	// itself, so the counts are exact by construction.
@@ -79,16 +77,8 @@ void HistogramReduceCS(uint3 Thread : SV_DispatchThreadID)
 	}
 
 	HistogramOut[Cell] = Sum;
-	// Luma stays out of the RGB modes' shared maximum (their scale is exactly
-	// phase-5.2's); the YRGB draw takes max(SharedMax, LumaMax) instead.
-	if (Channel < uint(NUM_HIST_CHANNELS))
-	{
-		InterlockedMax(SharedMaxOut[0], Sum);
-	}
-	else
-	{
-		InterlockedMax(LumaMaxOut[0], Sum);
-	}
+	// No maximum is reduced here since M6.3: the scale is the fixed clip
+	// threshold, so nothing about the draw depends on this frame's peak.
 }
 
 // ---------------------------------------------------------------------------
@@ -96,8 +86,9 @@ void HistogramReduceCS(uint3 Thread : SV_DispatchThreadID)
 // ---------------------------------------------------------------------------
 
 Buffer<uint> HistogramIn;
-Buffer<uint> SharedMaxIn;
-Buffer<uint> LumaMaxIn;
+// Count that fills a band exactly, computed host-side as
+// TrueScope::HistogramClipThresholdCount(frame pixels, histogram gain).
+float ClipThresholdCount;
 int2 OutputSize;
 float LineThickness;     // outline thickness in output texels (TrueScope::Draw)
 // The widget's exact curve colours (fill translucent, line stronger), passed
@@ -120,22 +111,23 @@ RWTexture2D<float4> YrgbROut;
 RWTexture2D<float4> YrgbGOut;
 RWTexture2D<float4> YrgbBOut;
 
-// The LINEAR count -> curve height mapping against the shared maximum — the
-// shader mirror of STrueScopeHistogram::GetCurveHeight. NOT CountToIntensity:
-// that log curve maps counts to density-texel BRIGHTNESS and must never be
-// used as a height (the M4 flat-topping bug).
-float CountToCurveHeight(uint Count, uint SharedMax)
+// The LINEAR count -> curve height mapping against the fixed clip threshold —
+// the shader mirror of STrueScopeHistogram::GetCurveHeight (itself
+// TrueScope::CountToCurveHeight). NOT CountToIntensity: that maps counts to
+// density-texel BRIGHTNESS and must never be used as a height (the M4
+// flat-topping bug).
+float CountToCurveHeight(uint Count)
 {
-	if (Count == 0u || SharedMax == 0u)
+	if (Count == 0u || ClipThresholdCount <= 0.0)
 	{
 		return 0.0;
 	}
-	return float(Count) / float(SharedMax);
+	return min(float(Count) / ClipThresholdCount, 1.0);
 }
 
-float ChannelHeight(uint Channel, uint Bin, uint SharedMax)
+float ChannelHeight(uint Channel, uint Bin)
 {
-	return CountToCurveHeight(HistogramIn[Channel * NUM_BINS + Bin], SharedMax);
+	return CountToCurveHeight(HistogramIn[Channel * NUM_BINS + Bin]);
 }
 
 float DistanceToSegment(float2 P, float2 A, float2 B)
@@ -185,7 +177,7 @@ float SlateLineCoverage(float Distance)
  * reaches from the curve down to the plot bottom, the outline runs along the
  * curve. X/Y are the texel center in output texel space.
  */
-void CurveCoverage(uint Channel, float2 TexelCenter, uint SharedMax, out float FillCoverage, out float LineCoverage)
+void CurveCoverage(uint Channel, float2 TexelCenter, out float FillCoverage, out float LineCoverage)
 {
 	const float W = float(OutputSize.x);
 	const float H = float(OutputSize.y);
@@ -194,8 +186,8 @@ void CurveCoverage(uint Channel, float2 TexelCenter, uint SharedMax, out float F
 	const float BinCoord = TexelCenter.x * float(NUM_BINS - 1) / W;
 	const int Segment = clamp(int(BinCoord), 0, NUM_BINS - 2);
 	const float T = BinCoord - float(Segment);
-	const float Height = lerp(ChannelHeight(Channel, uint(Segment), SharedMax),
-		ChannelHeight(Channel, uint(Segment + 1), SharedMax), T);
+	const float Height = lerp(ChannelHeight(Channel, uint(Segment)),
+		ChannelHeight(Channel, uint(Segment + 1)), T);
 	const float CurveY = (1.0 - Height) * H;
 	FillCoverage = saturate(TexelCenter.y - CurveY + 0.5);
 
@@ -207,9 +199,9 @@ void CurveCoverage(uint Channel, float2 TexelCenter, uint SharedMax, out float F
 	for (int Index = FirstSegment; Index <= LastSegment; ++Index)
 	{
 		const float2 A = float2(float(Index) * W / float(NUM_BINS - 1),
-			(1.0 - ChannelHeight(Channel, uint(Index), SharedMax)) * H);
+			(1.0 - ChannelHeight(Channel, uint(Index))) * H);
 		const float2 B = float2(float(Index + 1) * W / float(NUM_BINS - 1),
-			(1.0 - ChannelHeight(Channel, uint(Index + 1), SharedMax)) * H);
+			(1.0 - ChannelHeight(Channel, uint(Index + 1))) * H);
 		Distance = min(Distance, DistanceToSegment(TexelCenter, A, B));
 	}
 	LineCoverage = SlateLineCoverage(Distance);
@@ -250,7 +242,7 @@ void HistogramDrawStackedCS(uint3 Thread : SV_DispatchThreadID)
 	{
 		float FillCoverage;
 		float LineCoverage;
-		CurveCoverage(Channel, TexelCenter, SharedMaxIn[0], FillCoverage, LineCoverage);
+		CurveCoverage(Channel, TexelCenter, FillCoverage, LineCoverage);
 
 		float4 Accumulated = float4(0.0, 0.0, 0.0, 0.0);
 		Accumulated = CompositeOver(Accumulated, FillColors[Channel], FillCoverage);
@@ -272,10 +264,9 @@ void HistogramDrawYrgbCS(uint3 Thread : SV_DispatchThreadID)
 	}
 	const float2 TexelCenter = float2(Thread.xy) + 0.5;
 
-	// The YRGB scale: the shared maximum over all FOUR displayed curves —
-	// luma participates (STrueScopeHistogram::GetYrgbSharedMaxCount's mirror).
-	const uint YrgbMax = max(SharedMaxIn[0], LumaMaxIn[0]);
-
+	// Since M6.3 the YRGB bands need no separate scale: the fixed clip
+	// threshold is the same for every curve, so luma and the colour channels
+	// are already on one scale (settled decision, now by construction).
 	// Bands in display order Y, R, G, B (luma on top, Resolve's layout); the
 	// bands are disjoint rects, so per-band fill-under-line compositing is
 	// exact — same as the stacked RGB set.
@@ -289,7 +280,7 @@ void HistogramDrawYrgbCS(uint3 Thread : SV_DispatchThreadID)
 	{
 		float FillCoverage;
 		float LineCoverage;
-		CurveCoverage(BandChannels[Band], TexelCenter, YrgbMax, FillCoverage, LineCoverage);
+		CurveCoverage(BandChannels[Band], TexelCenter, FillCoverage, LineCoverage);
 
 		float4 Accumulated = float4(0.0, 0.0, 0.0, 0.0);
 		Accumulated = CompositeOver(Accumulated, FillColors[Band], FillCoverage);
@@ -320,7 +311,7 @@ void HistogramDrawOverlayCS(uint3 Thread : SV_DispatchThreadID)
 	UNROLL
 	for (uint Channel = 0u; Channel < uint(NUM_HIST_CHANNELS); ++Channel)
 	{
-		CurveCoverage(Channel, TexelCenter, SharedMaxIn[0], FillCoverage[Channel], LineCoverage[Channel]);
+		CurveCoverage(Channel, TexelCenter, FillCoverage[Channel], LineCoverage[Channel]);
 	}
 
 	// All three channels share the plot: composite in exactly the CPU vector

@@ -42,6 +42,19 @@ void STrueScopeParade::Construct(const FArguments& InArgs,
 	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Parade, /*bMaintainSquareAspect*/ false);
 }
 
+
+const FTrueScopeGainOption* STrueScopeParade::GetGainOption() const
+{
+	// Function-local: LOCTEXT must not run before localization is initialized.
+	static const FTrueScopeGainOption Option{
+		TrueScope::TraceBrightnessGainKey,
+		LOCTEXT("TraceBrightness", "Trace Brightness"),
+		LOCTEXT("TraceBrightnessTooltip",
+			"How bright a given pixel count draws. Centre is this scope's calibrated default; the ends are 1/8x and 8x. Double-click to reset."),
+	};
+	return &Option;
+}
+
 void STrueScopeParade::OnAnalysisResultChanged()
 {
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& Result = GetCachedResult();

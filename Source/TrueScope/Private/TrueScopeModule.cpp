@@ -4,6 +4,7 @@
 #include "TrueScopeModule.h"
 
 #include "Analysis/TrueScopeAnalyzer.h"
+#include "Analysis/TrueScopeDisplayGains.h"
 #include "Analysis/TrueScopeGpuAnalysis.h"
 #include "Analysis/TrueScopeRasterSizes.h"
 #include "Capture/TrueScopeCaptureGate.h"
@@ -18,6 +19,7 @@
 #include "ShaderCore.h"
 #include "TrueScopeSettings.h"
 #include "UI/STrueScopePanel.h"
+#include "UI/TrueScopeType.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
@@ -61,11 +63,45 @@ void FTrueScopeModule::ShutdownModule()
 	}
 	GpuAnalysis.Reset();
 	RasterSizes.Reset();
+	DisplayGains.Reset();
 	CaptureGate.Reset();
 
 	if (FSlateApplication::IsInitialized())
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TrueScopeTabName);
+	}
+}
+
+void FTrueScopeModule::SeedDisplayGainsFromSettings()
+{
+	if (!DisplayGains)
+	{
+		return;
+	}
+
+	const UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
+	auto SeedDensity = [&Settings, this](ETrueScopeType Type, TrueScope::EDensityScope Scope)
+	{
+		float Multiplier = TrueScope::DefaultGainMultiplier;
+		if (Settings.GetScopeGainMultiplier(Type, TrueScope::TraceBrightnessGainKey, Multiplier))
+		{
+			// Clamped like the widget does, so a hand-edited ini cannot seed a
+			// gain the slider is unable to express or undo.
+			DisplayGains->SetDensityGain(Scope, FMath::Clamp(Multiplier,
+				TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier()));
+		}
+	};
+
+	SeedDensity(ETrueScopeType::Parade, TrueScope::EDensityScope::Parade);
+	SeedDensity(ETrueScopeType::Waveform, TrueScope::EDensityScope::Waveform);
+	SeedDensity(ETrueScopeType::Vectorscope, TrueScope::EDensityScope::Vectorscope);
+
+	float HistogramMultiplier = TrueScope::DefaultGainMultiplier;
+	if (Settings.GetScopeGainMultiplier(ETrueScopeType::Histogram, TrueScope::HistogramGainKey,
+		HistogramMultiplier))
+	{
+		DisplayGains->SetHistogramGain(FMath::Clamp(HistogramMultiplier,
+			TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier()));
 	}
 }
 
@@ -81,7 +117,9 @@ void FTrueScopeModule::OnPostEngineInit()
 	Analyzer = MakeShared<FTrueScopeAnalyzer, ESPMode::ThreadSafe>();
 	CaptureGate = MakeShared<FTrueScopeCaptureGate, ESPMode::ThreadSafe>();
 	RasterSizes = MakeShared<FTrueScopeRasterSizes, ESPMode::ThreadSafe>();
-	GpuAnalysis = MakeShared<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe>(Analyzer, RasterSizes);
+	DisplayGains = MakeShared<FTrueScopeDisplayGains, ESPMode::ThreadSafe>();
+	Analyzer->SetDisplayGains(DisplayGains);
+	GpuAnalysis = MakeShared<FTrueScopeGpuAnalysis, ESPMode::ThreadSafe>(Analyzer, RasterSizes, DisplayGains);
 	ViewExtension = FSceneViewExtensions::NewExtension<FTrueScopeViewExtension>(Analyzer, GpuAnalysis, CaptureGate);
 	ViewExtension->BindAnalysisPathCVarSink();
 
@@ -91,6 +129,12 @@ void FTrueScopeModule::OnPostEngineInit()
 	const UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
 	ViewExtension->SetUseGpuAnalysis(Settings.bUseGpuAnalysis);
 	ViewExtension->SetMeasurementRateHz(Settings.MeasurementRateHz);
+
+	// The remembered gains are seeded here rather than left to the widgets
+	// (M6.3): a capture can be analysed before the tab has ever been opened, and
+	// analysing it at the default gain would make the first frame the user sees
+	// after opening the tab differ from every one after it.
+	SeedDisplayGainsFromSettings();
 
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TrueScopeTabName,
 			FOnSpawnTab::CreateRaw(this, &FTrueScopeModule::SpawnTrueScopeTab))

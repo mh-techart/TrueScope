@@ -25,7 +25,7 @@ int32 STrueScopeWaveform::GetTexelCount(const FTrueScopeAnalysisResult& Result)
 }
 
 void STrueScopeWaveform::BuildTexels(const FTrueScopeAnalysisResult& Result, ETrueScopeWaveformMode InMode,
-	TArrayView<FColor> OutTexels)
+	float WaveformGain, TArrayView<FColor> OutTexels)
 {
 	switch (InMode)
 	{
@@ -33,7 +33,7 @@ void STrueScopeWaveform::BuildTexels(const FTrueScopeAnalysisResult& Result, ETr
 		TrueScope::BuildLumaWaveformTexels(Result, OutTexels);
 		break;
 	default:
-		TrueScope::BuildRgbWaveformTexels(Result, OutTexels);
+		TrueScope::BuildRgbWaveformTexels(Result, WaveformGain, OutTexels);
 		break;
 	}
 }
@@ -77,6 +77,19 @@ void STrueScopeWaveform::SetDisplayModeId(int32 InModeId)
 	// The trace lives in a texture, so a mode switch has to re-upload it rather
 	// than wait for the next analysis result (~2.5 Hz away).
 	UpdateTraceTexture();
+}
+
+
+const FTrueScopeGainOption* STrueScopeWaveform::GetGainOption() const
+{
+	// Function-local: LOCTEXT must not run before localization is initialized.
+	static const FTrueScopeGainOption Option{
+		TrueScope::TraceBrightnessGainKey,
+		LOCTEXT("TraceBrightness", "Trace Brightness"),
+		LOCTEXT("TraceBrightnessTooltip",
+			"How bright a given pixel count draws. Centre is this scope's calibrated default; the ends are 1/8x and 8x. Double-click to reset."),
+	};
+	return &Option;
 }
 
 void STrueScopeWaveform::OnAnalysisResultChanged()
@@ -136,7 +149,12 @@ void STrueScopeWaveform::UpdateTraceTexture()
 	// Private BGRA buffer, freed by the async-upload cleanup once the render
 	// thread has consumed it.
 	FColor* Texels = static_cast<FColor*>(FMemory::Malloc(NumTexels * sizeof(FColor)));
-	BuildTexels(*Result, Mode, TArrayView<FColor>(Texels, NumTexels));
+	// Absolute gain: the waveform's calibrated default scaled by the user's
+	// slider multiplier — the same product the analysis producer applies to the
+	// luma trace (FTrueScopeDisplayGains::GetEffectiveDensityGain).
+	const float WaveformGain =
+		TrueScope::GetDefaultDensityGain(TrueScope::EDensityScope::Waveform) * GetGainMultiplier();
+	BuildTexels(*Result, Mode, WaveformGain, TArrayView<FColor>(Texels, NumTexels));
 
 	FUpdateTextureRegion2D* Region = new FUpdateTextureRegion2D(0, 0, 0, 0, Size.X, Size.Y);
 	TraceTexture->UpdateTextureRegions(0, 1, Region, Size.X * sizeof(FColor), sizeof(FColor),

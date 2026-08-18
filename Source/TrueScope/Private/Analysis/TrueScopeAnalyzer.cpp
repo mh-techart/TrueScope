@@ -140,10 +140,20 @@ void FTrueScopeAnalyzer::RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size
 
 	TSharedRef<FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result =
 		MakeShared<FTrueScopeAnalysisResult, ESPMode::ThreadSafe>();
+	// The user's Trace Brightness per density scope, sampled once for this
+	// cycle so all three scopes' images come from one consistent set (M6.3).
+	TrueScope::FDensityGains Gains;
+	if (DisplayGains)
+	{
+		Gains.Parade = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Parade);
+		Gains.Waveform = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Waveform);
+		Gains.Vectorscope = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Vectorscope);
+	}
+
 	TrueScope::AnalyzePixels(Pixels, Size.X, Size.Y, *Result);
-	TrueScope::BuildParadeImage(*Result);
-	TrueScope::BuildLumaWaveformImage(*Result);
-	TrueScope::BuildVectorscopeImage(*Result);
+	TrueScope::BuildParadeImage(*Result, Gains);
+	TrueScope::BuildLumaWaveformImage(*Result, Gains);
+	TrueScope::BuildVectorscopeImage(*Result, Gains);
 
 	const double Now = FPlatformTime::Seconds();
 	Result->AnalysisDurationMs = (Now - AnalysisStartSeconds) * 1000.0;

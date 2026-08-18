@@ -8,7 +8,7 @@
 namespace TrueScope
 {
 
-// The gain constant lives in the header (DensityIntensityGain) so the M5 GPU
+// The transfer and its gains live in the header (FDensityGains) so the M5 GPU
 // intensity pass provably applies the same density curve.
 
 void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, FTrueScopeAnalysisResult& OutResult)
@@ -61,14 +61,15 @@ void AnalyzePixels(TArrayView<const FColor> Pixels, int32 Width, int32 Height, F
 	}
 }
 
-float CountToIntensity(uint32 Count, uint32 MaxCount)
+float CountToIntensity(uint32 Count, uint32 MaxCount, float Gain)
 {
-	if (Count == 0 || MaxCount == 0)
+	if (Count == 0 || MaxCount == 0 || Gain <= 0.0f)
 	{
 		return 0.0f;
 	}
-	return FMath::Loge(1.0f + DensityIntensityGain * static_cast<float>(Count))
-		/ FMath::Loge(1.0f + DensityIntensityGain * static_cast<float>(MaxCount));
+	// Linear, hard-clipped at white (M6.3). The clip is hard because Resolve's
+	// is: above trace max it simply stops getting brighter.
+	return FMath::Min(static_cast<float>(Count) * Gain / static_cast<float>(MaxCount), 1.0f);
 }
 
 namespace
@@ -78,7 +79,8 @@ namespace
 	 * (row 0 = top = highest bin). Shared by the parade's three channel images
 	 * and the luma waveform, so all four traces carry the same density curve.
 	 */
-	void BuildColumnIntensityImage(const TArray<uint32>& Counts, int32 Width, uint32 MaxCount, TArray<uint8>& OutImage)
+	void BuildColumnIntensityImage(const TArray<uint32>& Counts, int32 Width, uint32 MaxCount, float Gain,
+		TArray<uint8>& OutImage)
 	{
 		const int32 Height = FTrueScopeAnalysisResult::NumBins;
 		OutImage.SetNumUninitialized(Width * Height);
@@ -91,13 +93,13 @@ namespace
 			for (int32 Column = 0; Column < Width; ++Column, ++Out)
 			{
 				const int32 CellIndex = Column * FTrueScopeAnalysisResult::NumBins + Bin;
-				*Out = static_cast<uint8>(FMath::RoundToInt(255.0f * CountToIntensity(Cells[CellIndex], MaxCount)));
+				*Out = static_cast<uint8>(FMath::RoundToInt(255.0f * CountToIntensity(Cells[CellIndex], MaxCount, Gain)));
 			}
 		}
 	}
 }
 
-void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult)
+void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult, const FDensityGains& Gains)
 {
 	const int32 Width = InOutResult.SourceSize.X;
 	const int32 Height = FTrueScopeAnalysisResult::NumBins;
@@ -121,12 +123,12 @@ void BuildParadeImage(FTrueScopeAnalysisResult& InOutResult)
 	// fed only channel C, so nothing from the other channels can appear in it.
 	for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
 	{
-		BuildColumnIntensityImage(InOutResult.Parade[Channel], Width, MaxCount,
+		BuildColumnIntensityImage(InOutResult.Parade[Channel], Width, MaxCount, Gains.Parade,
 			InOutResult.ParadeChannelIntensity[Channel]);
 	}
 }
 
-void BuildLumaWaveformImage(FTrueScopeAnalysisResult& InOutResult)
+void BuildLumaWaveformImage(FTrueScopeAnalysisResult& InOutResult, const FDensityGains& Gains)
 {
 	const int32 Width = InOutResult.SourceSize.X;
 	if (Width <= 0 || InOutResult.LumaParade.Num() != Width * FTrueScopeAnalysisResult::NumBins)
@@ -136,10 +138,10 @@ void BuildLumaWaveformImage(FTrueScopeAnalysisResult& InOutResult)
 	}
 
 	const uint32 MaxCount = static_cast<uint32>(InOutResult.SourceSize.Y);
-	BuildColumnIntensityImage(InOutResult.LumaParade, Width, MaxCount, InOutResult.LumaIntensity);
+	BuildColumnIntensityImage(InOutResult.LumaParade, Width, MaxCount, Gains.Waveform, InOutResult.LumaIntensity);
 }
 
-void BuildVectorscopeImage(FTrueScopeAnalysisResult& InOutResult)
+void BuildVectorscopeImage(FTrueScopeAnalysisResult& InOutResult, const FDensityGains& Gains)
 {
 	constexpr int32 NumVectorBins = FTrueScopeAnalysisResult::NumVectorBins;
 	if (InOutResult.Vectorscope.Num() != NumVectorBins * NumVectorBins)
@@ -162,23 +164,48 @@ void BuildVectorscopeImage(FTrueScopeAnalysisResult& InOutResult)
 		for (int32 CbBin = 0; CbBin < NumVectorBins; ++CbBin, ++Out)
 		{
 			*Out = static_cast<uint8>(
-				FMath::RoundToInt(255.0f * CountToIntensity(Counts[CrBin * NumVectorBins + CbBin], MaxCount)));
+				FMath::RoundToInt(255.0f * CountToIntensity(Counts[CrBin * NumVectorBins + CbBin], MaxCount,
+					Gains.Vectorscope)));
 		}
 	}
 }
 
-void BuildRgbWaveformTexels(const FTrueScopeAnalysisResult& Result, TArrayView<FColor> OutTexels)
+void BuildRgbWaveformTexels(const FTrueScopeAnalysisResult& Result, float WaveformGain,
+	TArrayView<FColor> OutTexels)
 {
-	const int32 NumTexels = Result.ParadeImageSize.X * Result.ParadeImageSize.Y;
+	const int32 Width = Result.ParadeImageSize.X;
+	const int32 Height = Result.ParadeImageSize.Y;
+	const int32 NumTexels = Width * Height;
 	check(OutTexels.Num() == NumTexels);
 
-	const uint8* Red = Result.ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelR].GetData();
-	const uint8* Green = Result.ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelG].GetData();
-	const uint8* Blue = Result.ParadeChannelIntensity[FTrueScopeAnalysisResult::ChannelB].GetData();
+	// Mapped from the parade COUNTS rather than from ParadeChannelIntensity,
+	// which the parade scope owns: since M6.3 the two scopes carry independent
+	// Trace Brightness gains, so the waveform must apply its own instead of
+	// inheriting whatever the parade's slider happens to be set to.
+	const uint32* Counts[FTrueScopeAnalysisResult::NumChannels] = {
+		Result.Parade[FTrueScopeAnalysisResult::ChannelR].GetData(),
+		Result.Parade[FTrueScopeAnalysisResult::ChannelG].GetData(),
+		Result.Parade[FTrueScopeAnalysisResult::ChannelB].GetData(),
+	};
+	const uint32 MaxCount = static_cast<uint32>(Result.SourceSize.Y);
 
-	for (int32 Index = 0; Index < NumTexels; ++Index)
+	for (int32 Row = 0; Row < Height; ++Row)
 	{
-		OutTexels[Index] = FColor(Red[Index], Green[Index], Blue[Index], 255);
+		const int32 Bin = (Height - 1) - Row; // row 0 = top = highest value bin
+		for (int32 Column = 0; Column < Width; ++Column)
+		{
+			const int32 CellIndex = Column * FTrueScopeAnalysisResult::NumBins + Bin;
+			uint8 Rgb[FTrueScopeAnalysisResult::NumChannels];
+			for (int32 Channel = 0; Channel < FTrueScopeAnalysisResult::NumChannels; ++Channel)
+			{
+				Rgb[Channel] = static_cast<uint8>(FMath::RoundToInt(
+					255.0f * CountToIntensity(Counts[Channel][CellIndex], MaxCount, WaveformGain)));
+			}
+			OutTexels[Row * Width + Column] = FColor(
+				Rgb[FTrueScopeAnalysisResult::ChannelR],
+				Rgb[FTrueScopeAnalysisResult::ChannelG],
+				Rgb[FTrueScopeAnalysisResult::ChannelB], 255);
+		}
 	}
 }
 

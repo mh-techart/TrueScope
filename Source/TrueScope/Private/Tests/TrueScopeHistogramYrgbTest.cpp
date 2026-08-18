@@ -124,19 +124,59 @@ bool FTrueScopeHistogramYrgbTest::RunTest(const FString&)
 	}
 	TestTrue(TEXT("Luma histogram equals the waveform's luma bins, summed over columns"), bSumsEqual);
 
-	// --- Shared scale with luma participating ------------------------------
-	// The gradient's luma concentrates counts (Height per column) exactly like
-	// the channels, but build an explicit case: a luma peak larger than any
-	// colour peak must raise the YRGB maximum and leave the RGB maximum alone.
+	// --- Shared scale with luma participating (M6.3) -----------------------
+	// Since the clip threshold is FIXED, luma and the colour channels are on one
+	// scale by construction: the scale is a property of the frame size and the
+	// gain, not of any curve's peak. Both halves of that are asserted, because
+	// the pre-M6.3 bug class was exactly a mode ending up on a scale of its own.
+	const float Threshold =
+		STrueScopeHistogram::GetClipThresholdCount(Result, TrueScope::DefaultGainMultiplier);
+	TestTrue(TEXT("The clip threshold is positive for a non-empty frame"), Threshold > 0.0f);
+
+	// A curve that suddenly towers must NOT rescale the others — the whole
+	// point of a fixed threshold. Inflate the strongest colour bin far past the
+	// threshold in a copy and check both the scale and a quiet bin's height.
 	const uint32 RgbMax = STrueScopeHistogram::GetSharedMaxCount(Result);
+	constexpr int32 QuietBin = 3;
+	const uint32 QuietCount = Result.Histogram[FResult::ChannelR][QuietBin];
+	const float QuietHeight = STrueScopeHistogram::GetCurveHeight(QuietCount, Threshold);
+
+	FResult TowerResult = Result;
+	TowerResult.Histogram[FResult::ChannelR][10] = RgbMax + 100000;
+	const float TowerThreshold =
+		STrueScopeHistogram::GetClipThresholdCount(TowerResult, TrueScope::DefaultGainMultiplier);
+	TestEqual(TEXT("A towering bin does not move the scale"), TowerThreshold, Threshold);
+	TestEqual(TEXT("A quiet bin keeps its height when another curve towers"),
+		STrueScopeHistogram::GetCurveHeight(QuietCount, TowerThreshold), QuietHeight);
+	TestEqual(TEXT("The towering bin clips at the band top instead"),
+		STrueScopeHistogram::GetCurveHeight(TowerResult.Histogram[FResult::ChannelR][10], TowerThreshold), 1.0f);
+
+	// Luma is on that same one scale: an equal count draws an equal height, and
+	// nothing about the luma curve enters the threshold.
+	// Stated against the formula rather than against another call of the same
+	// helper: comparing GetCurveHeight to itself would pass no matter what the
+	// YRGB mode did.
+	uint32 BusiestLumaBin = 0;
+	for (int32 Bin = 0; Bin < FResult::NumBins; ++Bin)
+	{
+		BusiestLumaBin = FMath::Max(BusiestLumaBin, LumaBins[Bin]);
+	}
+	TestTrue(TEXT("The synthetic frame has a luma bin worth measuring"), BusiestLumaBin > 0);
+	TestEqual(TEXT("A luma bin draws at count / threshold, the same law as a colour bin"),
+		STrueScopeHistogram::GetCurveHeight(BusiestLumaBin, Threshold),
+		FMath::Min(static_cast<float>(BusiestLumaBin) / Threshold, 1.0f), 1e-6f);
+
 	TArray<uint32> TallLumaBins = LumaBins;
-	TallLumaBins[100] = RgbMax + 1000;
-	TestEqual(TEXT("A dominant luma peak sets the YRGB shared maximum"),
-		STrueScopeHistogram::GetYrgbSharedMaxCount(Result, TallLumaBins), RgbMax + 1000);
-	TestEqual(TEXT("A weak luma curve leaves the shared maximum at the strongest colour channel"),
-		STrueScopeHistogram::GetYrgbSharedMaxCount(Result, TArrayView<const uint32>()), RgbMax);
-	TestEqual(TEXT("The RGB modes' shared maximum never includes luma"),
-		STrueScopeHistogram::GetSharedMaxCount(Result), RgbMax);
+	TallLumaBins[100] = RgbMax + 100000;
+	TestEqual(TEXT("A towering luma bin clips at the band top like a colour bin"),
+		STrueScopeHistogram::GetCurveHeight(TallLumaBins[100], Threshold), 1.0f);
+
+	// The scale depends only on the analysed frame's pixel count and the gain.
+	FResult HalfFrame = Result;
+	HalfFrame.SourceSize.Y = Result.SourceSize.Y / 2;
+	TestEqual(TEXT("Half the frame halves the clip threshold"),
+		STrueScopeHistogram::GetClipThresholdCount(HalfFrame, TrueScope::DefaultGainMultiplier),
+		0.5f * Threshold, 0.001f * Threshold);
 
 	return true;
 }

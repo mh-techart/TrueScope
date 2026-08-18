@@ -106,15 +106,23 @@ RWTexture2D<float4> BlueOut;
 RWTexture2D<float4> WaveformRgbOut;
 RWTexture2D<float4> WaveformLumaOut;
 
-// Same log density mapping as TrueScope::CountToIntensity on the CPU path:
-// count -> texel BRIGHTNESS, lifting sparse cells into visibility.
+// Same LINEAR density mapping as TrueScope::CountToIntensity on the CPU path:
+// count -> texel BRIGHTNESS, hard-clipped at 1.0 = white. Formula-identical to
+// the CPU path by construction (parity); the density-transfer regression pins
+// both sides against the same table.
+//
+// Linear since M6.3, replacing the M4-M6.2 log curve: Resolve's transfer was
+// measured strictly linear, and the log curve lifted a single pixel in a
+// 540-row column to 31 % brightness. IntensityGain is now the scope's
+// effective Trace Brightness (its calibrated default x the user's multiplier),
+// not the old fixed log-shape constant.
 float CountToIntensity(uint Count)
 {
-	if (Count == 0u || MaxCount == 0u)
+	if (Count == 0u || MaxCount == 0u || IntensityGain <= 0.0)
 	{
 		return 0.0;
 	}
-	return log(1.0 + IntensityGain * float(Count)) / log(1.0 + IntensityGain * float(MaxCount));
+	return min(float(Count) * IntensityGain / float(MaxCount), 1.0);
 }
 
 float CellIntensity(uint Channel, int Column, int Row)

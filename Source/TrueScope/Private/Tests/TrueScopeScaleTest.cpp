@@ -226,29 +226,40 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeHistogramCurveScaleTest,
 bool FTrueScopeHistogramCurveScaleTest::RunTest(const FString&)
 {
 	// The histogram's vertical axis is a pixel count, so the curve height must be
-	// proportional to it. Regression guard for the M4 review bug: the log density
-	// mapping (right for the parade's texel *brightness*) drew a bin holding
-	// 0.04 % of the frame at ~60 % height, which flat-topped every curve and let
-	// a handful of outlier pixels decide where a channel appeared to end.
-	constexpr uint32 MaxCount = 14556;   // the frame the bug was found on
+	// proportional to it. Regression guard for the M4 review bug: the density
+	// mapping (right for the parade's texel *brightness*) let a handful of
+	// outlier pixels decide where a channel appeared to end.
+	//
+	// Since M6.3 the scale is a FIXED clip threshold rather than the frame's
+	// peak: a count equal to the threshold fills the band, more clips there, and
+	// the scale is the same for every curve and every frame of the same size.
+	constexpr float Threshold = 14556.0f;   // the frame the M4 bug was found on
 
-	TestEqual(TEXT("Empty bin has no height"), STrueScopeHistogram::GetCurveHeight(0, MaxCount), 0.0f);
-	TestEqual(TEXT("An empty frame draws nothing"), STrueScopeHistogram::GetCurveHeight(10, 0), 0.0f);
-	TestEqual(TEXT("The tallest bin fills the band"), STrueScopeHistogram::GetCurveHeight(MaxCount, MaxCount), 1.0f);
-	TestEqual(TEXT("Half the count is half the height"),
-		STrueScopeHistogram::GetCurveHeight(MaxCount / 2, MaxCount), 0.5f, 0.001f);
-	TestEqual(TEXT("One percent of the count is one percent of the height"),
-		STrueScopeHistogram::GetCurveHeight(MaxCount / 100, MaxCount), 0.01f, 0.001f);
+	TestEqual(TEXT("Empty bin has no height"), STrueScopeHistogram::GetCurveHeight(0, Threshold), 0.0f);
+	TestEqual(TEXT("No threshold draws nothing"), STrueScopeHistogram::GetCurveHeight(10, 0.0f), 0.0f);
+	TestEqual(TEXT("A bin at the threshold fills the band"),
+		STrueScopeHistogram::GetCurveHeight(static_cast<uint32>(Threshold), Threshold), 1.0f);
+	TestEqual(TEXT("One pixel past the threshold clips at the band top"),
+		STrueScopeHistogram::GetCurveHeight(static_cast<uint32>(Threshold) + 1, Threshold), 1.0f);
+	TestEqual(TEXT("Ten times the threshold still just clips"),
+		STrueScopeHistogram::GetCurveHeight(10 * static_cast<uint32>(Threshold), Threshold), 1.0f);
+	TestEqual(TEXT("Half the threshold is half the height"),
+		STrueScopeHistogram::GetCurveHeight(static_cast<uint32>(Threshold) / 2, Threshold), 0.5f, 0.001f);
+	TestEqual(TEXT("One percent of the threshold is one percent of the height"),
+		STrueScopeHistogram::GetCurveHeight(static_cast<uint32>(Threshold) / 100, Threshold), 0.01f, 0.001f);
 
 	// The exact bin that inverted the apparent R/B order against Resolve.
 	constexpr uint32 OutlierCount = 116;
-	const float Height = STrueScopeHistogram::GetCurveHeight(OutlierCount, MaxCount);
+	const float Height = STrueScopeHistogram::GetCurveHeight(OutlierCount, Threshold);
 	TestTrue(TEXT("A 116-pixel outlier bin stays under 2 % of the band height"), Height < 0.02f);
 
-	// Spell out what it used to do, so nobody reintroduces it.
-	const float LogHeight = TrueScope::CountToIntensity(OutlierCount, MaxCount);
-	TestTrue(TEXT("The log density mapping would have drawn that bin above 50 %"), LogHeight > 0.5f);
-	TestTrue(TEXT("The linear scale is far shorter there than the log one"), Height < LogHeight * 0.1f);
+	// Spell out what the density mapping would have done, so nobody swaps the
+	// two mappings back (the M4 bug): at unity gain it draws that same bin at
+	// full height, because a density texel normalises against a column, not a
+	// frame.
+	const float DensityIntensity = TrueScope::CountToIntensity(OutlierCount, 540, 1.0f);
+	TestTrue(TEXT("The density mapping would have drawn that bin far taller"),
+		DensityIntensity > 10.0f * Height);
 
 	return true;
 }

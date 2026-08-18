@@ -225,8 +225,6 @@ namespace
 			SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, ColumnBinsIn)
 			SHADER_PARAMETER(int32, SourceWidth)
 			SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, HistogramOut)
-			SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, SharedMaxOut)
-			SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, LumaMaxOut)
 		END_SHADER_PARAMETER_STRUCT()
 
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -248,8 +246,10 @@ namespace
 	 */
 	BEGIN_SHADER_PARAMETER_STRUCT(FTrueScopeHistogramDrawParameters, )
 		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, HistogramIn)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, SharedMaxIn)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, LumaMaxIn)
+		// The count that fills a band exactly (M6.3), from
+		// TrueScope::HistogramClipThresholdCount — the same scalar for every
+		// curve, which is what makes the shared scale hold by construction.
+		SHADER_PARAMETER(float, ClipThresholdCount)
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, LineThickness)
 		SHADER_PARAMETER(FVector4f, FillColorR)
@@ -365,12 +365,10 @@ namespace
 
 	/** Fills the draw parameters shared by the histogram draw dispatches. */
 	void FillHistogramDrawParameters(FTrueScopeHistogramDrawParameters& Parameters,
-		FRDGBufferSRVRef HistogramSRV, FRDGBufferSRVRef SharedMaxSRV, FRDGBufferSRVRef LumaMaxSRV,
-		FIntPoint OutputSize)
+		FRDGBufferSRVRef HistogramSRV, float ClipThresholdCount, FIntPoint OutputSize)
 	{
 		Parameters.HistogramIn = HistogramSRV;
-		Parameters.SharedMaxIn = SharedMaxSRV;
-		Parameters.LumaMaxIn = LumaMaxSRV;
+		Parameters.ClipThresholdCount = ClipThresholdCount;
 		Parameters.OutputSize = OutputSize;
 		Parameters.LineThickness = HistogramLineThickness;
 		// The widget's exact curve colours (TrueScopeDraw.h), so both paths
@@ -452,23 +450,12 @@ namespace TrueScope
 		FHistogramReduceOutputs Outputs;
 		Outputs.Bins = GraphBuilder.CreateBuffer(
 			FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), NumCells), TEXT("TrueScope.HistogramBins"));
-		Outputs.SharedMax = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("TrueScope.HistogramSharedMax"));
-		Outputs.LumaMax = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1), TEXT("TrueScope.HistogramLumaMax"));
-
-		FRDGBufferUAVRef SharedMaxUAV = GraphBuilder.CreateUAV(FRDGBufferUAVDesc(Outputs.SharedMax, PF_R32_UINT));
-		AddClearUAVPass(GraphBuilder, SharedMaxUAV, 0u);
-		FRDGBufferUAVRef LumaMaxUAV = GraphBuilder.CreateUAV(FRDGBufferUAVDesc(Outputs.LumaMax, PF_R32_UINT));
-		AddClearUAVPass(GraphBuilder, LumaMaxUAV, 0u);
 
 		FTrueScopeHistogramReduceCS::FParameters* Parameters =
 			GraphBuilder.AllocParameters<FTrueScopeHistogramReduceCS::FParameters>();
 		Parameters->ColumnBinsIn = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(ColumnBins, PF_R32_UINT));
 		Parameters->SourceWidth = SourceWidth;
 		Parameters->HistogramOut = GraphBuilder.CreateUAV(FRDGBufferUAVDesc(Outputs.Bins, PF_R32_UINT));
-		Parameters->SharedMaxOut = SharedMaxUAV;
-		Parameters->LumaMaxOut = LumaMaxUAV;
 
 		TShaderMapRef<FTrueScopeHistogramReduceCS> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		FComputeShaderUtils::AddPass(GraphBuilder,
@@ -481,9 +468,11 @@ namespace TrueScope
 }
 
 FTrueScopeGpuAnalysis::FTrueScopeGpuAnalysis(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-	const TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe>& InRasterSizes)
+	const TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe>& InRasterSizes,
+	const TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe>& InDisplayGains)
 	: Analyzer(InAnalyzer)
 	, RasterSizes(InRasterSizes)
+	, DisplayGains(InDisplayGains)
 {
 	// Density targets (parade channels, waveform traces, vectorscope): opaque
 	// black behind the trace, like the CPU path's intensity textures.
@@ -637,10 +626,25 @@ void FTrueScopeGpuAnalysis::CacheResources_GameThread()
 		HistogramOverlayResource = HistogramOverlayTarget->GameThread_GetRenderTargetResource();
 	}
 
+	// The slider gains travel with the raster sizes, sampled once here on the
+	// game thread: the render thread then reads plain floats, so one capture
+	// cannot be rasterized with two different gains if a slider moves mid-frame.
+	const float ParadeGain = DisplayGains
+		? DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Parade)
+		: TrueScope::GetDefaultDensityGain(TrueScope::EDensityScope::Parade);
+	const float WaveformGain = DisplayGains
+		? DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Waveform)
+		: TrueScope::GetDefaultDensityGain(TrueScope::EDensityScope::Waveform);
+	const float VectorscopeGain = DisplayGains
+		? DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Vectorscope)
+		: TrueScope::GetDefaultDensityGain(TrueScope::EDensityScope::Vectorscope);
+	const float HistogramGain = DisplayGains ? DisplayGains->GetHistogramGain() : TrueScope::DefaultGainMultiplier;
+
 	ENQUEUE_RENDER_COMMAND(TrueScopeCacheAnalysisResources)(
 		[WeakThis = AsWeak(), Resources, VectorResource, WaveformRgbResource, WaveformLumaResource,
 			HistogramStackedResources, HistogramYrgbResources, HistogramOverlayResource, ParadeSize, WaveformSize,
-			VectorscopeSize, HistogramStackedSize, HistogramYrgbSize, HistogramOverlaySize](FRHICommandListImmediate&)
+			VectorscopeSize, HistogramStackedSize, HistogramYrgbSize, HistogramOverlaySize, ParadeGain, WaveformGain,
+			VectorscopeGain, HistogramGain](FRHICommandListImmediate&)
 		{
 			if (TSharedPtr<FTrueScopeGpuAnalysis> This =
 				StaticCastWeakPtr<FTrueScopeGpuAnalysis>(WeakThis).Pin())
@@ -665,6 +669,11 @@ void FTrueScopeGpuAnalysis::CacheResources_GameThread()
 				This->HistogramStackedRasterSizeRenderThread = HistogramStackedSize;
 				This->HistogramYrgbRasterSizeRenderThread = HistogramYrgbSize;
 				This->HistogramOverlayRasterSizeRenderThread = HistogramOverlaySize;
+
+				This->ParadeGainRenderThread = ParadeGain;
+				This->WaveformGainRenderThread = WaveformGain;
+				This->VectorscopeGainRenderThread = VectorscopeGain;
+				This->HistogramGainRenderThread = HistogramGain;
 			}
 		});
 }
@@ -737,11 +746,13 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 	FRDGBufferRef Bins = TrueScope::AddColumnBinningPass(GraphBuilder, CaptureTexture, InputSize);
 
 	// Pass 2: counts -> the three single-channel parade density textures and the
-	// two waveform traces (log count -> brightness mapping, same curve constant
-	// as the CPU path). Parade and waveform live in different panels, so each
-	// rasterizes into its own plot rect and they are separate dispatches.
+	// two waveform traces (linear count -> brightness mapping, hard-clipped at
+	// white, same formula as the CPU path). Parade and waveform live in
+	// different panels, so each rasterizes into its own plot rect and they are
+	// separate dispatches — and since M6.3 they carry their own Trace
+	// Brightness gain, hence the per-dispatch gain argument.
 	FRDGBufferSRVRef BinsSRV = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(Bins, PF_R32_UINT));
-	auto MakeColumnIntensityParameters = [&](FIntPoint OutputSize)
+	auto MakeColumnIntensityParameters = [&](FIntPoint OutputSize, float IntensityGain)
 	{
 		FTrueScopeColumnIntensityParameters* Parameters =
 			GraphBuilder.AllocParameters<FTrueScopeColumnIntensityParameters>();
@@ -749,12 +760,13 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 		Parameters->OutputSize = OutputSize;
 		Parameters->SourceWidth = BinGridSize.X;
 		Parameters->MaxCount = static_cast<uint32>(InputSize.Y);
-		Parameters->IntensityGain = TrueScope::DensityIntensityGain;
+		Parameters->IntensityGain = IntensityGain;
 		return Parameters;
 	};
 
 	{
-		FTrueScopeColumnIntensityParameters* Parameters = MakeColumnIntensityParameters(ParadeSize);
+		FTrueScopeColumnIntensityParameters* Parameters =
+			MakeColumnIntensityParameters(ParadeSize, ParadeGainRenderThread);
 
 		FRDGTextureUAVRef ChannelUAV[FTrueScopeAnalysisResult::NumChannels];
 		static const TCHAR* TargetNames[FTrueScopeAnalysisResult::NumChannels] = {
@@ -777,7 +789,8 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 	}
 
 	{
-		FTrueScopeColumnIntensityParameters* Parameters = MakeColumnIntensityParameters(WaveformSize);
+		FTrueScopeColumnIntensityParameters* Parameters =
+			MakeColumnIntensityParameters(WaveformSize, WaveformGainRenderThread);
 		Parameters->WaveformRgbOut = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(
 			RegisterExternalTexture(GraphBuilder, WaveformRgbTexture, TEXT("TrueScope.WaveformRgb"))));
 		Parameters->WaveformLumaOut = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(
@@ -791,7 +804,7 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 	}
 
 	// Vectorscope (phase-5.1): binning pass into the (Cb, Cr) grid, then the
-	// log intensity pass into the vectorscope density target.
+	// intensity pass into the vectorscope density target.
 	{
 		FRDGBufferRef VectorBins = TrueScope::AddVectorscopeBinningPass(GraphBuilder, CaptureTexture, InputSize);
 
@@ -802,7 +815,7 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 		// Max possible count in one (Cb, Cr) cell: the whole frame on one chroma
 		// coordinate — the CPU path's normalization (BuildVectorscopeImage).
 		VectorParameters->MaxCount = static_cast<uint32>(InputSize.X * InputSize.Y);
-		VectorParameters->IntensityGain = TrueScope::DensityIntensityGain;
+		VectorParameters->IntensityGain = VectorscopeGainRenderThread;
 
 		FRDGTextureRef VectorTarget =
 			RegisterExternalTexture(GraphBuilder, VectorscopeTexture, TEXT("TrueScope.Vectorscope"));
@@ -816,22 +829,25 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 	}
 
 	// Histogram (phase-5.2): reduce the column bins into the per-channel 1D
-	// histogram plus the shared maximum, then rasterize the curve textures —
-	// count -> curve HEIGHT, linear against the shared maximum
-	// (CountToCurveHeight), never the log density mapping above.
+	// histogram, then rasterize the curve textures — count -> curve HEIGHT,
+	// linear against the FIXED clip threshold since M6.3 (CountToCurveHeight),
+	// never the density mapping above.
 	{
 		const TrueScope::FHistogramReduceOutputs Histogram =
 			TrueScope::AddHistogramReducePass(GraphBuilder, Bins, InputSize.X);
 		FRDGBufferSRVRef HistogramSRV = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(Histogram.Bins, PF_R32_UINT));
-		FRDGBufferSRVRef SharedMaxSRV = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(Histogram.SharedMax, PF_R32_UINT));
-		FRDGBufferSRVRef LumaMaxSRV = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(Histogram.LumaMax, PF_R32_UINT));
+
+		// The one scale every curve is drawn against, from the analysed
+		// frame's pixel count and the Histogram Gain — the same computation
+		// STrueScopeHistogram::GetClipThresholdCount runs on the CPU path.
+		const float ClipThresholdCount = TrueScope::HistogramClipThresholdCount(
+			static_cast<int64>(InputSize.X) * static_cast<int64>(InputSize.Y), HistogramGainRenderThread);
 
 		// Stacked (Separate Channels RGB) set: one texture per channel.
 		{
 			FTrueScopeHistogramDrawParameters* DrawParameters =
 				GraphBuilder.AllocParameters<FTrueScopeHistogramDrawParameters>();
-			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, SharedMaxSRV, LumaMaxSRV,
-				HistogramStackedSize);
+			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, ClipThresholdCount, HistogramStackedSize);
 			static const TCHAR* StackedNames[FTrueScopeAnalysisResult::NumChannels] = {
 				TEXT("TrueScope.HistogramStackedR"), TEXT("TrueScope.HistogramStackedG"),
 				TEXT("TrueScope.HistogramStackedB")};
@@ -852,13 +868,13 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 				FComputeShaderUtils::GetGroupCount(HistogramStackedSize, ThreadGroupSize));
 		}
 
-		// YRGB band set (phase-6.2): four textures, display order Y, R, G, B;
-		// heights scale by max(SharedMax, LumaMax) — the shared maximum over
-		// all four displayed curves (GetYrgbSharedMaxCount's mirror).
+		// YRGB band set (phase-6.2): four textures, display order Y, R, G, B.
+		// Luma and the colour channels share the RGB modes' scale because the
+		// clip threshold is fixed — no separate YRGB maximum since M6.3.
 		{
 			FTrueScopeHistogramDrawParameters* DrawParameters =
 				GraphBuilder.AllocParameters<FTrueScopeHistogramDrawParameters>();
-			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, SharedMaxSRV, LumaMaxSRV, HistogramYrgbSize);
+			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, ClipThresholdCount, HistogramYrgbSize);
 			static const TCHAR* YrgbNames[FTrueScopeAnalysisResult::NumYrgbCurves] = {
 				TEXT("TrueScope.HistogramYrgbY"), TEXT("TrueScope.HistogramYrgbR"),
 				TEXT("TrueScope.HistogramYrgbG"), TEXT("TrueScope.HistogramYrgbB")};
@@ -884,8 +900,7 @@ void FTrueScopeGpuAnalysis::AddAnalysisPasses_RenderThread(FRDGBuilder& GraphBui
 		{
 			FTrueScopeHistogramDrawParameters* DrawParameters =
 				GraphBuilder.AllocParameters<FTrueScopeHistogramDrawParameters>();
-			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, SharedMaxSRV, LumaMaxSRV,
-				HistogramOverlaySize);
+			FillHistogramDrawParameters(*DrawParameters, HistogramSRV, ClipThresholdCount, HistogramOverlaySize);
 			DrawParameters->OverlayOut = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(RegisterExternalTexture(
 				GraphBuilder, HistogramOverlayTexture, TEXT("TrueScope.HistogramOverlay"))));
 

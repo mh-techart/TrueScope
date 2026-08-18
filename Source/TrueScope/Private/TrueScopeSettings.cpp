@@ -81,3 +81,28 @@ void UTrueScopeSettings::SetScopeOptionGroupValue(ETrueScopeType Type, FName Key
 	ScopeOptionGroupValues.Add(FullKey, ValueId);
 	SaveConfig();
 }
+
+bool UTrueScopeSettings::GetScopeGainMultiplier(ETrueScopeType Type, FName Key, float& OutValue) const
+{
+	if (const float* Value = ScopeGainMultipliers.Find(MakeToggleKey(Type, Key)))
+	{
+		OutValue = *Value;
+		return true;
+	}
+	return false;
+}
+
+void UTrueScopeSettings::SetScopeGainMultiplier(ETrueScopeType Type, FName Key, float Value)
+{
+	const FName FullKey = MakeToggleKey(Type, Key);
+	// A slider drags through many values, so an exact-equality guard would let
+	// nearly every mouse move rewrite the ini; compare with a tolerance.
+	if (const float* Existing = ScopeGainMultipliers.Find(FullKey);
+		Existing && FMath::IsNearlyEqual(*Existing, Value, UE_KINDA_SMALL_NUMBER))
+	{
+		return;
+	}
+
+	ScopeGainMultipliers.Add(FullKey, Value);
+	SaveConfig();
+}

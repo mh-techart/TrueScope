@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Analysis/TrueScopeAnalysisResult.h"
+#include "Analysis/TrueScopeDisplayGains.h"
 #include "Analysis/TrueScopeRasterSizes.h"
 #include "Containers/ArrayView.h"
 #include "CoreMinimal.h"
@@ -55,6 +56,28 @@ struct FTrueScopeOptionGroup
 
 	/** The radio choices: scope-local ids with their labels. */
 	TArray<FTrueScopeDisplayMode> Options;
+};
+
+/**
+ * A scope's gain slider (M6.3) — the density scopes' "Trace Brightness" and
+ * the histogram's "Histogram Gain". A scope has at most one; scopes that
+ * declare none simply have no gain control.
+ *
+ * Both follow the shared logarithmic law (TrueScopeDisplayGains.h): equal
+ * travel means equal multiplication, +/-3 doublings, 1.0x exactly at centre,
+ * continuous rather than detented, centre marked and snapping, double-click
+ * resets, and NO numeric readout. The missing readout is deliberate (human
+ * decision): a displayed "1.0x" reads as the officially correct setting, and
+ * less experienced artists then feel obliged to leave it alone instead of
+ * adjusting it to what they need to see.
+ */
+struct FTrueScopeGainOption
+{
+	/** Stable, scope-local settings key (not localized, never renamed). */
+	FName Key;
+
+	FText Label;
+	FText Tooltip;
 };
 
 /**
@@ -188,6 +211,37 @@ public:
 	/** Select a group option, repaint, persist — shared by menu and toolbar. */
 	void ApplyOptionGroup(FName Key, int32 ValueId);
 
+	/**
+	 * This scope's gain slider, or null if it has none (M6.3). See
+	 * FTrueScopeGainOption; the value itself is held by the base class, so
+	 * every scope persists and publishes it the same way.
+	 */
+	virtual const FTrueScopeGainOption* GetGainOption() const
+	{
+		return nullptr;
+	}
+
+	/**
+	 * The user's gain MULTIPLIER for this scope: 1.0 = the scope's calibrated
+	 * default, which is what the slider's centre stands for. The absolute gain
+	 * the transfer applies is this times that default
+	 * (FTrueScopeDisplayGains::GetEffectiveDensityGain), so recalibrating a
+	 * default never moves an existing user's stored setting.
+	 */
+	float GetGainMultiplier() const
+	{
+		return GainMultiplier;
+	}
+
+	/** Set the gain, persist it, publish it to both analysis paths, repaint. */
+	void ApplyGainMultiplier(float Multiplier);
+
+	/** Double-click behaviour: back to centre (1.0x). */
+	void ResetGainMultiplier()
+	{
+		ApplyGainMultiplier(TrueScope::DefaultGainMultiplier);
+	}
+
 	/** Which scope this is; the key its persisted options are stored under. */
 	ETrueScopeType GetScopeType() const
 	{
@@ -298,10 +352,23 @@ private:
 	/** Where the scopes publish their plot rects for the GPU producer. */
 	TSharedPtr<FTrueScopeRasterSizes, ESPMode::ThreadSafe> RasterSizes;
 
+	/**
+	 * Where the scopes publish their gain multipliers (M6.3), read by BOTH the
+	 * CPU analysis task and the GPU producer — the same widget -> both-paths
+	 * direction as RasterSizes.
+	 */
+	TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe> DisplayGains;
+
 	TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> CachedResult;
 	uint64 LastSeenSerial = 0;
 	ETrueScopeType ScopeType = ETrueScopeType::Waveform;
 	bool bMaintainSquareAspect = false;
+
+	/** The user's gain multiplier; 1.0 = this scope's calibrated default. */
+	float GainMultiplier = TrueScope::DefaultGainMultiplier;
+
+	/** Publishes GainMultiplier to the analysis paths under this scope's slot. */
+	void PublishGainMultiplier() const;
 
 	/** When the last result arrived; negative until the staleness clock starts. */
 	double LastResultTimeSeconds = -1.0;

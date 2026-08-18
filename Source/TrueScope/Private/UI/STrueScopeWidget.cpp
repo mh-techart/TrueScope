@@ -69,6 +69,7 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 {
 	Analyzer = InAnalyzer;
 	RasterSizes = FTrueScopeModule::Get().GetRasterSizes();
+	DisplayGains = FTrueScopeModule::Get().GetDisplayGains();
 	ScopeType = InScopeType;
 	bMaintainSquareAspect = bInMaintainSquareAspect;
 
@@ -113,6 +114,22 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 				break;
 			}
 		}
+	}
+
+	// The gain slider likewise (M6.3). What is stored is the multiplier, so a
+	// later recalibration of this scope's default gain — or a change to the
+	// slider's range — leaves the user's remembered setting meaning the same
+	// thing. Clamped to the slider's endpoints so a hand-edited ini cannot put
+	// a scope at a gain the slider cannot express or undo.
+	if (const FTrueScopeGainOption* Gain = GetGainOption())
+	{
+		float SavedGain = TrueScope::DefaultGainMultiplier;
+		if (UTrueScopeSettings::Get().GetScopeGainMultiplier(ScopeType, Gain->Key, SavedGain))
+		{
+			GainMultiplier = FMath::Clamp(SavedGain,
+				TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier());
+		}
+		PublishGainMultiplier();
 	}
 
 	if (Analyzer)
@@ -377,6 +394,51 @@ void STrueScopeWidget::HandleFlipToggleOption(FName Key)
 bool STrueScopeWidget::IsToggleOptionChecked(FName Key) const
 {
 	return GetToggleOptionValue(Key);
+}
+
+void STrueScopeWidget::PublishGainMultiplier() const
+{
+	if (!DisplayGains)
+	{
+		return; // no producer (commandlet / test); nothing reads the gains
+	}
+
+	// One place maps a scope to its gain slot, so the CPU and GPU paths cannot
+	// end up reading different slots for the same scope.
+	switch (ScopeType)
+	{
+	case ETrueScopeType::Parade:
+		DisplayGains->SetDensityGain(TrueScope::EDensityScope::Parade, GainMultiplier);
+		break;
+	case ETrueScopeType::Waveform:
+		DisplayGains->SetDensityGain(TrueScope::EDensityScope::Waveform, GainMultiplier);
+		break;
+	case ETrueScopeType::Vectorscope:
+		DisplayGains->SetDensityGain(TrueScope::EDensityScope::Vectorscope, GainMultiplier);
+		break;
+	case ETrueScopeType::Histogram:
+		DisplayGains->SetHistogramGain(GainMultiplier);
+		break;
+	}
+}
+
+void STrueScopeWidget::ApplyGainMultiplier(float Multiplier)
+{
+	const FTrueScopeGainOption* Gain = GetGainOption();
+	if (!Gain)
+	{
+		return; // scope has no gain control
+	}
+
+	GainMultiplier = FMath::Clamp(Multiplier,
+		TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier());
+	PublishGainMultiplier();
+	UTrueScopeSettings::Get().SetScopeGainMultiplier(ScopeType, Gain->Key, GainMultiplier);
+
+	// The histogram applies its gain at draw time, so a repaint is enough
+	// there; the density scopes' transfer is applied by the analysis producer,
+	// so their new gain shows on the next analysis cycle.
+	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
 void STrueScopeWidget::ApplyOptionGroup(FName Key, int32 ValueId)

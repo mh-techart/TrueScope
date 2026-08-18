@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Analysis/TrueScopeAnalysisResult.h"
+#include "Analysis/TrueScopeDisplayGains.h"
 #include "CoreMinimal.h"
 #include "RenderGraphFwd.h"
 
@@ -61,6 +62,16 @@ public:
 	 */
 	void PublishResult(TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result);
 
+	/**
+	 * The scopes' Trace Brightness gains, read by the background analysis task
+	 * when it maps counts to density brightness (M6.3). Set once at start-up;
+	 * the object itself is atomic inside, so the task may read it freely.
+	 */
+	void SetDisplayGains(const TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe>& InDisplayGains)
+	{
+		DisplayGains = InDisplayGains;
+	}
+
 private:
 	void PollReadback_RenderThread();
 	void RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size, double InCaptureStartSeconds, double InCopyMs);
@@ -80,6 +91,9 @@ private:
 	mutable FCriticalSection ResultLock;
 	TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> LatestResult;
 	std::atomic<uint64> ResultSerial{0};
+
+	/** Per-scope Trace Brightness gains; null in tests, which pass gains directly. */
+	TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe> DisplayGains;
 
 	// --- Cost measurement (background task only) ---
 	uint64 CompletedCycles = 0;

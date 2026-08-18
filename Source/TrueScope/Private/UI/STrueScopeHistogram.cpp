@@ -156,24 +156,19 @@ uint32 STrueScopeHistogram::GetSharedMaxCount(const FTrueScopeAnalysisResult& Re
 	return MaxCount;
 }
 
-uint32 STrueScopeHistogram::GetYrgbSharedMaxCount(const FTrueScopeAnalysisResult& Result,
-	TArrayView<const uint32> LumaBins)
+float STrueScopeHistogram::GetClipThresholdCount(const FTrueScopeAnalysisResult& Result, float HistogramGain)
 {
-	uint32 MaxCount = GetSharedMaxCount(Result);
-	for (uint32 Count : LumaBins)
-	{
-		MaxCount = FMath::Max(MaxCount, Count);
-	}
-	return MaxCount;
+	// The fraction is OF THE ANALYSED FRAME's pixel count, never the viewport
+	// or the scope texture — that is what keeps the histogram's appearance
+	// independent of resolution and of the panel's size.
+	const int64 TotalFramePixels =
+		static_cast<int64>(Result.SourceSize.X) * static_cast<int64>(Result.SourceSize.Y);
+	return TrueScope::HistogramClipThresholdCount(TotalFramePixels, HistogramGain);
 }
 
-float STrueScopeHistogram::GetCurveHeight(uint32 Count, uint32 MaxCount)
+float STrueScopeHistogram::GetCurveHeight(uint32 Count, float ClipThresholdCount)
 {
-	if (Count == 0 || MaxCount == 0)
-	{
-		return 0.0f;
-	}
-	return static_cast<float>(Count) / static_cast<float>(MaxCount);
+	return TrueScope::CountToCurveHeight(Count, ClipThresholdCount);
 }
 
 bool STrueScopeHistogram::HasDrawableData() const
@@ -186,6 +181,23 @@ bool STrueScopeHistogram::HasDrawableData() const
 	// CPU path: exactly the conditions the vector draw needs (bins present
 	// and a nonzero shared scale).
 	return Result->bHasGpuHistogram || GetSharedMaxCount(*Result) > 0;
+}
+
+
+const FTrueScopeGainOption* STrueScopeHistogram::GetGainOption() const
+{
+	// Function-local: LOCTEXT must not run before localization is initialized.
+	// The slider moves the fixed clip threshold, so it reads as a zoom on the
+	// vertical scale: centre is the calibrated 1.67 % of the frame's pixels
+	// filling the band, left shows more headroom (13.3 %), right magnifies
+	// sparse bins (0.21 %). See TrueScopeDisplayGains.h for the derivation.
+	static const FTrueScopeGainOption Option{
+		TrueScope::HistogramGainKey,
+		LOCTEXT("HistogramGain", "Gain"),
+		LOCTEXT("HistogramGainTooltip",
+			"Vertical scale of the curves. Centre is the calibrated default (a bin holding 1.67% of the frame's pixels fills the band); left compresses, right magnifies. Double-click to reset."),
+	};
+	return &Option;
 }
 
 TArrayView<const FTrueScopeDisplayMode> STrueScopeHistogram::GetDisplayModes() const
@@ -293,14 +305,13 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
 
-	// One shared vertical scale across the displayed curves, so their relative
-	// heights stay comparable (see GetCurveHeight for why the scale is linear).
-	// In YRGB the luma curve participates in the maximum (GetYrgbSharedMaxCount).
-	const bool bYrgb = Mode == ETrueScopeHistogramMode::SeparateChannelsYrgb;
-	const uint32 MaxCount = bYrgb
-		? GetYrgbSharedMaxCount(*Result, LumaHistogramBins)
-		: GetSharedMaxCount(*Result);
-	if (MaxCount == 0)
+	// One shared vertical scale across all displayed curves, so their relative
+	// heights stay comparable — and since M6.3 a FIXED one, so the same height
+	// always means the same pixel count across shots (see GetClipThresholdCount).
+	// It is shared by construction now: the threshold depends only on the frame
+	// size and the gain, so no display mode can end up on a scale of its own.
+	const float ClipThresholdCount = GetClipThresholdCount(*Result, GetGainMultiplier());
+	if (ClipThresholdCount <= 0.0f)
 	{
 		return DrawScopeHints(OutDrawElements, LayerId, AllottedGeometry, Content);
 	}
@@ -337,7 +348,7 @@ int32 STrueScopeHistogram::OnPaint(const FPaintArgs& Args, const FGeometry& Allo
 		{
 			// Bin -> fraction of the 0-1023 axis; bin 255 sits on full scale.
 			const float X = ChannelPlot.Left + ChannelPlot.GetSize().X * (static_cast<float>(Bin) / (NumBins - 1));
-			const float Height = GetCurveHeight(Bins[Bin], MaxCount);
+			const float Height = GetCurveHeight(Bins[Bin], ClipThresholdCount);
 			const float TopY = ChannelPlot.Bottom - ChannelPlot.GetSize().Y * Height;
 			TopLine.Add(FVector2f(X, TopY));
 

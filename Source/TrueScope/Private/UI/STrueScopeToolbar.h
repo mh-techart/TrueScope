@@ -8,6 +8,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 class STrueScopeWidget;
+struct FTrueScopeGainOption;
 
 /**
  * The TrueScope tab's toolbar (phase-6.1 Task 2): the visible home of every
@@ -58,6 +59,15 @@ private:
 	/** Independent on/off button for a scope's toggle option (phase-6.2). */
 	TSharedRef<SWidget> MakeToggleButton(const FText& Label, const FText& Tooltip,
 		TWeakPtr<STrueScopeWidget> Scope, FName Key);
+
+	/**
+	 * A scope's gain slider (M6.3): the continuous control the density scopes'
+	 * Trace Brightness and the histogram's Gain share. It lives in the visible
+	 * toolbar rather than only in the right-click menu because it is not a
+	 * rarely-touched preference — it is how an artist makes a dark trace
+	 * readable, so hiding it would hide the fix.
+	 */
+	TSharedRef<SWidget> MakeGainControl(TWeakPtr<STrueScopeWidget> Scope, const FTrueScopeGainOption& Option);
 
 	void HandleSetAnalysisPath(bool bUseGpu);
 	bool IsAnalysisPathSelected(bool bGpu) const;

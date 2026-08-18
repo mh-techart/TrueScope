@@ -94,14 +94,18 @@ uint MaxCount;       // max possible count per cell: the whole frame's pixel cou
 float IntensityGain;
 RWTexture2D<float4> VectorscopeOut;
 
-// Same log density mapping as TrueScope::CountToIntensity on the CPU path.
+// Same LINEAR density mapping as TrueScope::CountToIntensity on the CPU path
+// (M6.3), hard-clipped at white. MaxCount stays the vectorscope's own basis —
+// the whole frame's pixel count, since a flat neutral frame really does put
+// every pixel on one chroma coordinate — so only the curve family changed;
+// IntensityGain is the vectorscope's effective Trace Brightness.
 float CountToIntensity(uint Count)
 {
-	if (Count == 0u || MaxCount == 0u)
+	if (Count == 0u || MaxCount == 0u || IntensityGain <= 0.0)
 	{
 		return 0.0;
 	}
-	return log(1.0 + IntensityGain * float(Count)) / log(1.0 + IntensityGain * float(MaxCount));
+	return min(float(Count) * IntensityGain / float(MaxCount), 1.0);
 }
 
 float CellIntensity(int Column, int Row)

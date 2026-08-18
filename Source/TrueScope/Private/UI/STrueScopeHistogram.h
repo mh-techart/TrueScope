@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Analysis/TrueScopeAnalysisResult.h"
+#include "Analysis/TrueScopeDisplayGains.h"
 #include "Containers/ArrayView.h"
 #include "CoreMinimal.h"
 #include "Styling/SlateBrush.h"
@@ -109,36 +110,47 @@ public:
 	static FLinearColor GetChannelLineColor(int32 Channel);
 
 	/**
-	 * Largest bin count across all three colour channels — one shared vertical
-	 * scale, so the curves' relative heights stay comparable.
+	 * Largest bin count across all three colour channels. Since M6.3 this is
+	 * NO LONGER the vertical scale — it only answers "is there anything to
+	 * draw". The scale is the fixed clip threshold below.
 	 */
 	static uint32 GetSharedMaxCount(const FTrueScopeAnalysisResult& Result);
 
 	/**
-	 * The YRGB mode's shared scale: the maximum over all FOUR displayed curves
-	 * — luma participates (phase-6.2 decision). Rationale: the shared-scale
-	 * rule exists to preserve the true ratio between the displayed curves
-	 * (architecture.md, "Histogram vertical scaling"), and once the luma curve
-	 * is displayed that argument covers it too; scaling it independently would
-	 * inflate or crush it relative to its own channels. Matches Resolve, where
-	 * a neutral frame's four YRGB peaks read at equal height.
+	 * The count at which a bin fills the band, for the frame this result was
+	 * analysed from and the user's current Histogram Gain.
+	 *
+	 * FIXED, not derived from the frame's own peak (M6.3, measured against
+	 * Resolve 2026-08-17): the same curve height always means the same pixel
+	 * count, which is what makes two shots comparable — a colorist walking a
+	 * sequence reads one consistent yardstick. Expressed as a fraction of the
+	 * ANALYSED FRAME's pixel count (SourceSize), so an HD and a UHD project of
+	 * the same content look identical and resizing the panel changes nothing.
+	 *
+	 * All displayed curves share this one scale, in every display mode
+	 * including YRGB — a per-channel scale would inflate a nearly empty channel
+	 * to full height and mislead. Because the scale is fixed rather than
+	 * peak-derived, the shared-scale property now holds by construction: there
+	 * is no per-mode maximum left that could differ between the modes.
 	 */
-	static uint32 GetYrgbSharedMaxCount(const FTrueScopeAnalysisResult& Result,
-		TArrayView<const uint32> LumaBins);
+	static float GetClipThresholdCount(const FTrueScopeAnalysisResult& Result, float HistogramGain);
 
 	/**
-	 * Curve height in [0,1] for a bin count. **Linear**: the histogram plots how
-	 * many pixels hold a value, so the height must be proportional to that count.
+	 * Curve height in [0,1] for a bin count, against the fixed clip threshold —
+	 * **linear** throughout, hard-clipped at the band top. The histogram plots
+	 * how many pixels hold a value, so the height must be proportional to that
+	 * count.
 	 *
-	 * Deliberately NOT TrueScope::CountToIntensity — that log curve maps a count
-	 * to the *brightness* of a density texel (parade, waveform, vectorscope),
-	 * where lifting sparse cells into visibility is the point. Used as a curve
-	 * height it draws a bin holding 0.04 % of the frame at ~60 % height, which
-	 * flat-tops every curve and makes a channel appear to reach whatever its
-	 * rarest outlier pixel is. That inverted the apparent R/B order against
+	 * Deliberately NOT TrueScope::CountToIntensity, which maps a count to the
+	 * *brightness* of a density texel (parade, waveform, vectorscope) against a
+	 * different basis and a per-scope gain. The two mappings are kept
+	 * separately named because merging them is what flat-topped the M4
+	 * histogram: the old log brightness curve drew a bin holding 0.04 % of the
+	 * frame at ~60 % height, making a channel appear to reach whatever its
+	 * rarest outlier pixel was, which inverted the apparent R/B order against
 	 * DaVinci Resolve on a ColorCalibrator frame (M4 review).
 	 */
-	static float GetCurveHeight(uint32 Count, uint32 MaxCount);
+	static float GetCurveHeight(uint32 Count, float ClipThresholdCount);
 
 	virtual bool HasDrawableData() const override;
 
@@ -148,6 +160,8 @@ protected:
 	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const override;
 	virtual int32 GetDisplayModeId() const override;
 	virtual void SetDisplayModeId(int32 InModeId) override;
+
+	virtual const FTrueScopeGainOption* GetGainOption() const override;
 
 private:
 	ETrueScopeHistogramMode Mode = ETrueScopeHistogramMode::SeparateChannels;

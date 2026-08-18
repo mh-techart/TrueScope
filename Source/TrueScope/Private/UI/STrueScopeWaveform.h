@@ -64,9 +64,14 @@ public:
 	 * can assert that Luma mode really traces luma and not a colour channel
 	 * (the "which data lands in which curve" layer the M4 histogram bug lived
 	 * in). OutTexels must hold exactly GetTexelCount(Result) entries.
+	 *
+	 * WaveformGain is the ABSOLUTE gain of the RGB trace (M6.3) — the scope's
+	 * calibrated default times the user's multiplier. Luma mode ignores it:
+	 * its trace is built by the analysis producer, which applied the same gain
+	 * there, so passing it in twice would square it.
 	 */
 	static void BuildTexels(const FTrueScopeAnalysisResult& Result, ETrueScopeWaveformMode Mode,
-		TArrayView<FColor> OutTexels);
+		float WaveformGain, TArrayView<FColor> OutTexels);
 
 	virtual bool HasDrawableData() const override;
 
@@ -76,6 +81,8 @@ protected:
 	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const override;
 	virtual int32 GetDisplayModeId() const override;
 	virtual void SetDisplayModeId(int32 InModeId) override;
+
+	virtual const FTrueScopeGainOption* GetGainOption() const override;
 
 private:
 	/** Re-uploads the trace from the cached result; on a new result or a mode switch. */
