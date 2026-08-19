@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "0.1.0",
+	"VersionName": "0.1.5",
 	"FriendlyName": "TrueScope",
 	"Description": "Viewport Scopes for Unreal Engine Editor — Waveform, RGB Parade, Vectorscope and Histogram in a dockable editor window.",
 	"Category": "Editor",
@@ -19,5 +19,12 @@
 			"Name": "OpenColorIO",
 			"Enabled": true
 		}
-	]
+	],
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false
 }
