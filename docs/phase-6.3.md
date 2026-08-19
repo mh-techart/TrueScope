@@ -257,6 +257,17 @@ The 2026-08-19 Resolve count wedge (1920x1080, Video Level Scopes) gave a consta
 brightness/count ratio of 6.00-6.13 across seven bands, re-confirming that the
 transfer is linear, not log.
 
+**Breakage proof, re-run at the refined threshold (2026-08-19).** The original proof
+(2026-08-18) perturbed the *old* 1.67 % constant, so it did not prove the guard still
+has teeth at 1.58 %; re-run with `HistogramClipThresholdFraction` moved
+0.0158 -> 0.0200. Result: the same single-test split as before — exactly
+`TrueScope.UI.HistogramClipThreshold` fails, the other fifteen `TrueScope.UI` tests
+pass — and the failure message now names the current figures, not the old ones:
+`Expected 'The default threshold is the documented 1.58 % of the frame (guards
+architecture.md)' to be 8190.719727, but it was 10368.000000`, plus the three slider
+positions (12.6 % / 1.58 % / 0.20 % read as 16.0 % / 2.0 % / 0.25 %). Reverted, and
+the baseline re-run green before and after.
+
 **Test counts.** 40/40 on `-nullrhi` and 40/40 on `-RenderOffscreen`, build clean
 with no new warnings. 40 is the expected registered-test count and is the stale-code
 tripwire.
