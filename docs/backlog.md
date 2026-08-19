@@ -305,10 +305,10 @@ mechanism rather than leaving stale traces.
   `≈1.6 % of frame pixels` and an "Exact" detent that does not exist in Resolve):
   Resolve's histogram uses a **fixed** shared scale — not normalised to the frame's
   own peak — that is **linear** in count and **resolution-independent**, clipping a
-  bin once it holds more than ≈**1.67 % of all the frame's pixels**. Its gain slider
-  is linear in that threshold (3.34 % at the left end → ≈0 at the right end), which
+  bin once it holds more than ≈**1.58 % of all the frame's pixels**. Its gain slider
+  is linear in that threshold (3.16 % at the left end → ≈0 at the right end), which
   is why its right end is unusable. **Decided for M6.3:** same fixed-scale principle,
-  default threshold 1.67 % of all frame pixels, but a **logarithmic** gain slider
+  default threshold 1.58 % of all frame pixels, but a **logarithmic** gain slider
   (±3 doublings, centre = default) instead of Resolve's linear-in-threshold one. The
   "Exact" detent is dropped — see the new backlog item "Fit-the-peak histogram view".
   See `architecture.md`, "Histogram vertical scaling" and "Gain slider law".
@@ -321,13 +321,13 @@ mechanism rather than leaving stale traces.
   guarantees nothing is hidden by clipping — but it is **not** what the gain slider
   provides: the slider is a fixed multiplier, so a setting that fits one frame will
   not fit the next, whereas this view re-fits itself per frame. **Priority: low.**
-  M6.3's slider reaches a clip threshold of 13.3 % of frame pixels at the left end,
+  M6.3's slider reaches a clip threshold of 12.6 % of frame pixels at the left end,
   which already covers all but extreme content, so the practical need is small. If
   it is ever built, it must be a clearly separate mode, never a position on the gain
   slider — the two use different normalisation bases and merging them is the same
   class of confusion that caused the M4 histogram bug.
 - **Histogram bin count if capture moves to 10-bit** — TrueScope currently captures
-  8-bit (`RTF_RGBA8`) and uses 256 bins, one per code value, which is why the 1.67 %
+  8-bit (`RTF_RGBA8`) and uses 256 bins, one per code value, which is why the
   clip threshold measured against Resolve transfers unchanged (see `architecture.md`,
   "Histogram vertical scaling"). If capture ever becomes 10-bit — HDR viewport output
   (HDR10 / ST.2084 / HLG) or a 10-bit SDI/NDI path via the AJA or Blackmagic Media

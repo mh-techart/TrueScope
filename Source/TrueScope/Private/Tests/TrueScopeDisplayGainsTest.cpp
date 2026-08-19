@@ -21,7 +21,7 @@
  * These are pinned rather than left to the UI because all three are numbers a
  * later change could plausibly "improve" by eye: the law's centre is the one
  * position at which the scopes agree with the reference, the threshold is the
- * measured 1.67 % of the frame, and storing the multiplier is what lets a
+ * measured 1.58 % of the frame, and storing the multiplier is what lets a
  * default be recalibrated without moving an existing user's setting.
  */
 
@@ -115,17 +115,19 @@ bool FTrueScopeHistogramClipThresholdTest::RunTest(const FString&)
 		TrueScope::HistogramClipThresholdCount(FramePixels, TrueScope::DefaultGainMultiplier);
 
 	// THE ONE PLACE the documented literal is repeated. This assertion exists to
-	// guard architecture.md ("Histogram vertical scaling"): 1.67 % of the frame's
+	// guard architecture.md ("Histogram vertical scaling"): 1.58 % of the frame's
 	// pixels in one bin fills the band, measured against DaVinci Resolve on
-	// 2026-08-17. Changing HistogramClipThresholdFraction without changing the
-	// documentation must fail here, which is only possible if the number is
-	// spelled out rather than derived.
+	// 2026-08-19 with full-height strips of known pixel fractions (refining the
+	// 1.67 % first read on 2026-08-17 from narrow spikes, which read high).
+	// Changing HistogramClipThresholdFraction without changing the documentation
+	// must fail here, which is only possible if the number is spelled out rather
+	// than derived.
 	//
 	// Every OTHER test reads the threshold from the production constant instead
 	// (TrueScope.UI.HistogramCurveScale, .HistogramYrgb, the GPU equivalence
 	// tests) — a second hand-written copy of the same number would only drift.
-	TestEqual(TEXT("The default threshold is the documented 1.67 % of the frame (guards architecture.md)"),
-		Threshold, 0.0167f * static_cast<float>(FramePixels), 0.5f);
+	TestEqual(TEXT("The default threshold is the documented 1.58 % of the frame (guards architecture.md)"),
+		Threshold, 0.0158f * static_cast<float>(FramePixels), 0.5f);
 
 	const uint32 ThresholdCount = static_cast<uint32>(FMath::RoundToInt(Threshold));
 	TestEqual(TEXT("A bin at the threshold fills the band"),
@@ -157,15 +159,15 @@ bool FTrueScopeHistogramClipThresholdTest::RunTest(const FString&)
 		TrueScope::HistogramClipThresholdCount(FramePixels, 0.5f), 2.0f * Threshold, 0.5f);
 
 	// The slider's documented span, stated as the frame fractions the phase
-	// spec names: 13.3 % far left, 1.67 % centre, 0.21 % far right.
+	// spec names: 12.6 % far left, 1.58 % centre, 0.20 % far right.
 	auto FractionAtPosition = [FramePixels](float Position)
 	{
 		const float Gain = TrueScope::SliderPositionToGain(Position);
 		return TrueScope::HistogramClipThresholdCount(FramePixels, Gain) / static_cast<float>(FramePixels);
 	};
-	TestEqual(TEXT("Far left fills the band at 13.3 % of the frame"), FractionAtPosition(0.0f), 0.1336f, 1e-4f);
-	TestEqual(TEXT("The centre fills the band at 1.67 % of the frame"), FractionAtPosition(0.5f), 0.0167f, 1e-5f);
-	TestEqual(TEXT("Far right fills the band at 0.21 % of the frame"), FractionAtPosition(1.0f), 0.0020875f, 1e-6f);
+	TestEqual(TEXT("Far left fills the band at 12.6 % of the frame"), FractionAtPosition(0.0f), 0.1264f, 1e-4f);
+	TestEqual(TEXT("The centre fills the band at 1.58 % of the frame"), FractionAtPosition(0.5f), 0.0158f, 1e-5f);
+	TestEqual(TEXT("Far right fills the band at 0.20 % of the frame"), FractionAtPosition(1.0f), 0.001975f, 1e-6f);
 
 	// The widget derives the same number from a result's SourceSize — the
 	// analysed capture, never the panel size.

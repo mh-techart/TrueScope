@@ -96,8 +96,8 @@ requires it.
   figure, or coined term carries its definition at first mention in a doc: what it
   is a fraction *of*, one concrete worked value, how it was obtained, and why it is
   that value. "Band fills at 1.6 %" is not usable by a later reader; "a bin holding
-  1.67 % of all frame pixels fills the band — ≈8 650 pixels in a 960×540 capture —
-  measured against Resolve on 2026-08-17" is. If a number has no measured origin
+  1.58 % of all frame pixels fills the band — ≈8 191 pixels in a 960×540 capture —
+  measured against Resolve on 2026-08-19" is. If a number has no measured origin
   because it was simply chosen, say so explicitly and call it a chosen working
   value, so nobody later mistakes it for evidence. This rule exists because
   `≈1.6 % of frame pixels` sat in `architecture.md` for a month with no stated

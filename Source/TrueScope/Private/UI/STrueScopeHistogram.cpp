@@ -188,14 +188,14 @@ const FTrueScopeGainOption* STrueScopeHistogram::GetGainOption() const
 {
 	// Function-local: LOCTEXT must not run before localization is initialized.
 	// The slider moves the fixed clip threshold, so it reads as a zoom on the
-	// vertical scale: centre is the calibrated 1.67 % of the frame's pixels
-	// filling the band, left shows more headroom (13.3 %), right magnifies
-	// sparse bins (0.21 %). See TrueScopeDisplayGains.h for the derivation.
+	// vertical scale: centre is the calibrated 1.58 % of the frame's pixels
+	// filling the band, left shows more headroom (12.6 %), right magnifies
+	// sparse bins (0.20 %). See TrueScopeDisplayGains.h for the derivation.
 	static const FTrueScopeGainOption Option{
 		TrueScope::HistogramGainKey,
 		LOCTEXT("HistogramGain", "Gain"),
 		LOCTEXT("HistogramGainTooltip",
-			"Vertical scale of the curves. Centre is the calibrated default (a bin holding 1.67% of the frame's pixels fills the band); left compresses, right magnifies. Double-click to reset."),
+			"Vertical scale of the curves. Centre is the calibrated default (a bin holding 1.58% of the frame's pixels fills the band); left compresses, right magnifies. Double-click to reset."),
 	};
 	return &Option;
 }

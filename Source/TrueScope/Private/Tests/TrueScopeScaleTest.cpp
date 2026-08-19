@@ -242,7 +242,7 @@ bool FTrueScopeHistogramCurveScaleTest::RunTest(const FString&)
 	// makes every assertion below a statement about the shipping scale (the
 	// 116-pixel outlier further down is now measured against the real band).
 	//
-	// Exactly one test spells the documented 1.67 % out as a literal, as a
+	// Exactly one test spells the documented 1.58 % out as a literal, as a
 	// deliberate guard on architecture.md (TrueScope.UI.HistogramClipThreshold).
 	// Every other test derives, this one included: a second hand-written copy of
 	// the same number does not add a check, it only adds something that can drift.

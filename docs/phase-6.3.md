@@ -60,7 +60,7 @@ they do not hold:**
   independence this design exists to provide.
 
 **Task 0 finding — bin count (settled 2026-08-18).** TrueScope uses **256**
-histogram bins, not 1024, and the 1.67 % threshold is **not** rescaled. The premise
+histogram bins, not 1024, and the measured threshold is **not** rescaled. The premise
 behind the trap — that a coarser bin count multiplies the count per bin — does not
 apply here, and the rule is worth recording so nobody re-derives it:
 
@@ -70,8 +70,8 @@ value — i.e. as long as the binning is at least as fine as the source. TrueSco
 captures 8-bit (`RTF_RGBA8`) and uses 256 bins: one code value per bin, the finest
 binning the data supports. Resolve bins the same 8-bit image into 1024 containers, so
 three out of every four sit empty and each populated one holds exactly one code
-value's pixels. Both therefore count the same thing and 1.67 % applies to both
-unchanged. A rescale would only be needed if bins were *coarser* than the source, so
+value's pixels. Both therefore count the same thing, so the measured threshold applies to
+both unchanged. A rescale would only be needed if bins were *coarser* than the source, so
 that one bin merged several distinct values. Going to 1024 bins here would add no
 information — three quarters of them would be provably empty.
 
@@ -107,14 +107,14 @@ You may then implement directly.
 ## Task 3 — Histogram: fixed shared scale + Histogram Gain slider
 
 - Replace the frame-peak normalisation with a **fixed clip threshold**: a bin whose
-  count reaches **1.67 % of the analysed frame's total pixel count** draws at full
+  count reaches **1.58 % of the analysed frame's total pixel count** draws at full
   band height; more than that is **hard-clipped** at the band top. Linear count →
   height throughout.
 - **Shared single scale** across all channels (never per-channel) — unchanged from
   M4. Applies to both RGB and YRGB display modes.
 - Add a **Histogram Gain** slider using the same logarithmic law: ±3 doublings
-  around the default, so the effective threshold runs 13.3 % (far left) → 1.67 %
-  (centre) → 0.21 % (far right). Continuous, centre marked and snapping,
+  around the default, so the effective threshold runs 12.6 % (far left) → 1.58 %
+  (centre) → 0.20 % (far right). Continuous, centre marked and snapping,
   double-click resets, **no numeric readout**. Operable from the visible toolbar.
 - Both CPU and GPU paths, value-identical. Persist the gain multiplier (M6.1).
 - Keep count → height **separately named** from the density count → brightness
@@ -152,7 +152,7 @@ Per `dev-rules.md`, "Resolve cross-check — conditions & procedure".
   measured linear Resolve reference, so the visual pass is a confirmation rather
   than a search. This is the agreed division of labour: the human owns the Resolve
   comparison, so minimise the number of rounds it takes.
-- Confirm the histogram default (1.67 % threshold) looks right on a real frame, and
+- Confirm the histogram default (1.58 % threshold) looks right on a real frame, and
   confirm the ±3-doubling range feels usable at both ends — that range is a chosen
   working value, not a measured one, and this is the step where it gets confirmed or
   adjusted.
@@ -179,7 +179,7 @@ Per `dev-rules.md`, "Resolve cross-check — conditions & procedure".
       value-identical, all three density scopes — verified in code and test.
 - [ ] Per-scope **Trace Brightness** operable from the visible toolbar, plumbed to
       both paths per scope, persists across restart.
-- [ ] Histogram uses a **fixed shared scale**, default clip threshold **1.67 % of
+- [ ] Histogram uses a **fixed shared scale**, default clip threshold **1.58 % of
       all frame pixels**; frame-peak normalisation is gone; linear, shared single
       scale, hard clip at the band top; both paths; persists.
 - [ ] Both sliders follow the **logarithmic law**: ±3 doublings, 1.0× exactly at

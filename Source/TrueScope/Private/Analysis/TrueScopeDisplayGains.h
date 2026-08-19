@@ -21,7 +21,7 @@ namespace TrueScope
 	 * rather than by being forced there.
 	 *
 	 * Resolve's own histogram slider is linear in the clip THRESHOLD instead
-	 * (3.34 % of frame pixels at the left end, 1.67 % at centre, ~0 at the
+	 * (3.16 % of frame pixels at the left end, 1.58 % at centre, ~0 at the
 	 * right end), which is why its right half is unusable: that half spans a
 	 * factor of infinity while the left spans a factor of two. Deliberately
 	 * not copied — see the rationale in architecture.md.
@@ -57,9 +57,16 @@ namespace TrueScope
 	 * the ANALYSED FRAME's total pixel count fills the band, and anything above
 	 * it is hard-clipped at the band top.
 	 *
-	 * 1.67 % (~1/60; ~8 650 pixels of a 960x540 capture in one bin) measured
-	 * against DaVinci Resolve on 2026-08-17 — see architecture.md, "Histogram
-	 * vertical scaling", for the four-part evidence. Expressing it as a
+	 * 1.58 % (~8 191 pixels of a 960x540 capture in one bin), measured against
+	 * DaVinci Resolve on 2026-08-19 with full-height strips of known pixel
+	 * fractions: strips of 0.4167 % and 0.8333 % of the frame drew at 26.3 %
+	 * and 52.7 % of band height, giving 1.584 % and 1.581 % independently, and
+	 * a 1.6667 % strip clipped. This REFINES the 1.67 % first measured on
+	 * 2026-08-17 from narrow one-bin spikes, whose apexes are cut by line
+	 * anti-aliasing when read off a screenshot — a bias that reads high. The
+	 * underlying constant may well be 1/64 = 1.5625 %, which every reading
+	 * brackets, but that is unproven. See architecture.md, "Histogram vertical
+	 * scaling". Expressing it as a
 	 * FRACTION rather than an absolute count is what makes an HD and a UHD
 	 * project of the same content look identical.
 	 *
@@ -73,14 +80,14 @@ namespace TrueScope
 	 * apply only if the source carried more precision than the bin count does.
 	 * Confirmed in code, M6.3 Task 0 (human decision 2026-08-18).
 	 */
-	inline constexpr float HistogramClipThresholdFraction = 0.0167f;
+	inline constexpr float HistogramClipThresholdFraction = 0.0158f;
 
 	/**
 	 * Pixel count at which a histogram bin fills the band, for a frame of
 	 * TotalFramePixels analysed pixels at the given user gain multiplier.
 	 *
 	 * Gain raises SENSITIVITY, so it divides the threshold: 8x (far right)
-	 * clips at 0.21 % of frame pixels, 0.125x (far left) at 13.3 %.
+	 * clips at 0.20 % of frame pixels, 0.125x (far left) at 12.6 %.
 	 *
 	 * TotalFramePixels must be the analysed capture's pixel count
 	 * (FTrueScopeAnalysisResult::SourceSize), never the viewport size and never
@@ -150,14 +157,62 @@ namespace TrueScope
 	 * per-scope because the three scopes normalise against different bases (the
 	 * parade and waveform against a column's height, the vectorscope against
 	 * the whole frame's pixel count) and present their values differently.
+	 *
+	 * PARADE and WAVEFORM = 31.25, DERIVED, not chosen. The transfer is
+	 *
+	 *     Intensity = min(Count * Gain / ColumnHeight, 1)          [1]
+	 *
+	 * so the count is already a FRACTION OF COLUMN HEIGHT by the time the gain
+	 * multiplies it: writing Count = f * ColumnHeight in [1], the height
+	 * cancels and full white falls at f = 1 / Gain, independent of capture
+	 * resolution. Resolve was measured (2026-08-19) to reach full white when
+	 * f = 3.2 % of a column holds one value — 34 pixels of 1080, 17 of
+	 * TrueScope's 540 — read off a count wedge whose brightness/count ratio was
+	 * constant at 6.00-6.13 across seven bands, re-confirming the linear
+	 * transfer. Hence Gain = 1 / 0.032 = 31.25.
+	 *
+	 * ASSUMPTION, stated because it is unproven: Resolve was measured at 1080
+	 * rows only, so whether its basis is the fraction of column height or an
+	 * absolute pixel count cannot be told apart from that one measurement.
+	 * Fraction is far more likely — it is what the histogram was measured to
+	 * do, and an absolute count would make UHD material blow out relative to
+	 * HD — and it is what [1] implements. The two differ by exactly 2x at our
+	 * 540-row capture, so if the visual check ever comes out roughly a factor
+	 * of two off, THIS assumption is what failed; do not retune around it.
+	 * See backlog.md, "Waveform density basis".
+	 *
+	 * VECTORSCOPE = 30000, NOT measured against Resolve — derived by analogy
+	 * from the parade and then confirmed by eye (M6.3 Task 5). The measured
+	 * slope cannot transfer, because the vectorscope normalises against the
+	 * WHOLE FRAME's pixel count while the parade normalises against a single
+	 * column's height. Those bases differ by exactly the frame WIDTH, so the
+	 * identical absolute pixel count draws 960x dimmer in the vectorscope than
+	 * in the parade at the same gain. Undoing that gives
+	 *
+	 *     31.25 * 960 = 30000,
+	 *
+	 * i.e. one pixel in a chroma cell now reads as bright as one pixel in a
+	 * parade column cell, and full white lands at 17 pixels in a cell — the
+	 * same absolute count as the parade's 3.2 % of a 540-row column.
+	 *
+	 * Measured on a real captured frame (the 1920x1080 ColorCalibrator plate,
+	 * downscaled to the 960x540 capture and binned through this exact chroma
+	 * math): 3 676 of 65 536 chroma cells are populated, and the distribution
+	 * is extremely skewed — median cell 3 pixels, p90 54, densest 47 017
+	 * (9.1 % of the frame). At the OLD default of 1.0 the brightest cell in the
+	 * whole image reached 23/255 and nothing else was visible, which is exactly
+	 * the "too dim to read even at the slider's maximum" the human reported:
+	 * even at 8x the maximum reached 185/255 with two cells above half
+	 * brightness. At 30000 the dense neutral core clips, as it does in Resolve,
+	 * and about three quarters of the populated cells are visible.
 	 */
 	inline float GetDefaultDensityGain(EDensityScope Scope)
 	{
 		switch (Scope)
 		{
-		case EDensityScope::Parade:      return 1.0f;
-		case EDensityScope::Waveform:    return 1.0f;
-		case EDensityScope::Vectorscope: return 1.0f;
+		case EDensityScope::Parade:      return 31.25f;
+		case EDensityScope::Waveform:    return 31.25f;
+		case EDensityScope::Vectorscope: return 30000.0f;
 		default:                         return 1.0f;
 		}
 	}

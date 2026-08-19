@@ -113,23 +113,59 @@ bool FTrueScopeDensityTransferDiagnosticTest::RunTest(const FString&)
 
 	// The image really is linear in the count end-to-end, not merely equal to a
 	// helper that could itself have bent: a column holding twice the pixels of
-	// another draws twice as bright (both well under the clip point).
-	// Counts are chosen large enough that 8-bit quantisation (+/-1 code value,
+	// another draws twice as bright.
+	//
+	// Both counts must sit UNDER the clip point, which the calibrated default
+	// gain puts at 3.2 % of the column — 17.28 of 540 rows. This pair was 96
+	// and 192 while the default was still 1.0f; at the shipping gain both of
+	// those saturate, and the test correctly failed when the default landed.
+	// 4 and 8 are large enough that 8-bit quantisation (+/-1 code value,
 	// asserted as the tolerance) cannot hide a bent curve: the retired log
 	// transfer, log(1+16C)/log(1+16*MaxCount), would have drawn these two
-	// columns at 206 and 226 rather than 45 and 91 — nowhere near a doubling.
+	// columns at 117 and 137 rather than 59 and 118 — nowhere near a doubling.
 	// static_assert, not check(): a failed check() aborts the whole automation
 	// run rather than failing this one test, which is how a mistyped index here
 	// took the suite down with it.
-	constexpr int32 ColumnOf96 = 12;
-	constexpr int32 ColumnOf192 = 14;
-	static_assert(SweepCounts[ColumnOf96] == 96, "ColumnOf96 must index the count 96");
-	static_assert(SweepCounts[ColumnOf192] == 192, "ColumnOf192 must index the count 192");
-	const int32 Bright96 = RedImage[Bin128Row * Width + ColumnOf96];
-	const int32 Bright192 = RedImage[Bin128Row * Width + ColumnOf192];
+	constexpr int32 ColumnOf4 = 3;
+	constexpr int32 ColumnOf8 = 5;
+	static_assert(SweepCounts[ColumnOf4] == 4, "ColumnOf4 must index the count 4");
+	static_assert(SweepCounts[ColumnOf8] == 8, "ColumnOf8 must index the count 8");
+	const int32 Bright4 = RedImage[Bin128Row * Width + ColumnOf4];
+	const int32 Bright8 = RedImage[Bin128Row * Width + ColumnOf8];
 	TestTrue(*FString::Printf(
-			TEXT("Twice the pixels draw twice as bright, end to end (%d vs %d)"), Bright192, Bright96),
-		FMath::Abs(Bright192 - 2 * Bright96) <= 1);
+			TEXT("Twice the pixels draw twice as bright, end to end (%d vs %d)"), Bright8, Bright4),
+		FMath::Abs(Bright8 - 2 * Bright4) <= 1);
+
+	// --- The calibrated default gain, guarded where it is derived ----------
+	// THE ONE PLACE the measured density figure is spelled out, the same rule
+	// the histogram threshold follows: Resolve reaches full white when 3.2 % of
+	// a column holds one value (measured 2026-08-19; see GetDefaultDensityGain
+	// and architecture.md, "Density transfer & Trace Brightness"). Because the
+	// transfer normalises by column height, that fixes the gain at 1 / 0.032
+	// exactly, with no dependence on the capture resolution.
+	// Stated as the RECIPROCAL rather than as == 31.25f: 0.032 is not exactly
+	// representable in binary, so 1.0f / 0.032f is 31.2499981 and a bit-exact
+	// comparison against 31.25f fails on arithmetic, not on calibration.
+	constexpr float MeasuredWhiteFraction = 0.032f;
+	TestEqual(TEXT("The parade default gain is 1 / 3.2 % of a column (guards architecture.md)"),
+		1.0f / TrueScope::GetDefaultDensityGain(TrueScope::EDensityScope::Parade),
+		MeasuredWhiteFraction, 1e-6f);
+	TestTrue(TEXT("The waveform shares that default — one measurement, both scopes"),
+		TrueScope::GetDefaultDensityGain(TrueScope::EDensityScope::Waveform)
+			== TrueScope::GetDefaultDensityGain(TrueScope::EDensityScope::Parade));
+
+	// Stated as behaviour rather than as the constant: the clip lands on the
+	// measured fraction of the column at BOTH capture heights, which is the
+	// resolution independence the fraction basis buys.
+	const float CalibratedGain = TrueScope::GetDefaultDensityGain(TrueScope::EDensityScope::Parade);
+	for (uint32 ColumnHeight : {270u, 540u, 1080u})
+	{
+		const uint32 JustUnder = static_cast<uint32>(FMath::FloorToInt(MeasuredWhiteFraction * ColumnHeight));
+		TestTrue(*FString::Printf(TEXT("At %u rows, %u pixels is not yet white"), ColumnHeight, JustUnder),
+			TrueScope::CountToIntensity(JustUnder, ColumnHeight, CalibratedGain) < 1.0f);
+		TestTrue(*FString::Printf(TEXT("At %u rows, %u pixels reaches white"), ColumnHeight, JustUnder + 1),
+			TrueScope::CountToIntensity(JustUnder + 1, ColumnHeight, CalibratedGain) == 1.0f);
+	}
 
 	// --- Layer 3: resolution independence ----------------------------------
 	// The same FRACTION of a column must draw the same brightness at any
