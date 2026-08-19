@@ -356,6 +356,22 @@ mechanism rather than leaving stale traces.
   behaviour. Settle it by generating the same count wedge at two frame heights, each
   read in a timeline of its own size. Low priority: the default is user-adjustable and
   a 2× error is visible.
+- **CPU vs GPU: small per-cell count differences on a real capture** — the
+  integer-exact bin-equivalence tests (`TrueScope.GPU.*`) feed synthetic pixel arrays
+  and stay exact, but a real frame compared through the shipping path is not
+  bit-identical. Measured 2026-08-19 on the frozen ColorCalibrator still (Realtime
+  off, so both paths analysed the *same* capture — the only condition under which
+  this comparison is valid): 17.29 % of the panel's pixels differ, mean |Δ| 0.9 of
+  255, 64 % of the differing pixels off by 1–3 code values, 0.067 % off by ≥32 with
+  a maximum of 46 (≈3 counts at the new gain). Direction is not symmetric: 393
+  differing waveform cells were CPU-brighter against 167 GPU-brighter. Sub-pixel
+  misalignment was tested and **ruled out** — diffing at all nine dx,dy ∈ {−1,0,1}
+  offsets gave 17.29 % / mean 0.901 at (0,0) versus ≥31 % / mean ≥9 at every shift,
+  so the images are aligned and the difference is real. The differences pre-date
+  M6.3; the new density gain (one count = 14.76 code values, up from 0.47) is what
+  made them visible. Root cause unknown — candidates: downscale/sampling differences
+  feeding the two paths, or float-vs-integer accumulation order. Find a synthetic
+  case that reproduces it and pin it, rather than measuring the panel again.
 - **Scale behavior across bit depth / HDR / color spaces** — V1 uses a
   normalized 0–1023 scale for the SDR display-referred case (settled in
   architecture.md). Open for later: what the scale should show for HDR

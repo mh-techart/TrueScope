@@ -164,6 +164,19 @@ Per `dev-rules.md`, "Resolve cross-check — conditions & procedure".
   both tools under the `dev-rules.md` cross-check conditions.
   *(An earlier draft of this task named a "D3 composite probe"; no such diagnostic
   exists — the reference is void and is replaced by the three plates above.)*
+- **How each default was arrived at (recorded because the three differ in
+  evidence status).** Parade and waveform: **derived**, `Gain = 1 / 0.032 = 31.25`,
+  from the measured Resolve white point of 3.2 % of a column — see the derivation in
+  `TrueScopeDisplayGains.h` and the stated fraction-vs-absolute assumption there.
+  Histogram: **measured**, threshold 1.58 % of frame pixels. Vectorscope: **chosen by
+  visual match, not measured** — the measured Resolve slope cannot transfer to it
+  because it normalises against the whole frame's pixel count rather than a column's
+  height, so 30000 was derived by analogy (`31.25 x 960`, the frame width that
+  separates the two bases) and then confirmed *readable* on a real captured frame
+  (trace median 139/255, 11.2 % of populated cells clipped). The remaining half of
+  its acceptance — that it also *matches* Resolve on the same still — is the human's
+  side of the cross-check and is still open.
+
 - **Expect one structural difference in the histogram comparison — it is correct and
   must not be "fixed".** Resolve draws a **comb**: it bins the 8-bit plate into 1024
   containers, so only every fourth is populated and the curve breaks into isolated
@@ -175,24 +188,31 @@ Per `dev-rules.md`, "Resolve cross-check — conditions & procedure".
 
 ## Acceptance criteria
 
-- [ ] Density transfer is **linear × per-scope gain, hard-clipped**, CPU and GPU
+- [x] Density transfer is **linear × per-scope gain, hard-clipped**, CPU and GPU
       value-identical, all three density scopes — verified in code and test.
-- [ ] Per-scope **Trace Brightness** operable from the visible toolbar, plumbed to
+- [x] Per-scope **Trace Brightness** operable from the visible toolbar, plumbed to
       both paths per scope, persists across restart.
-- [ ] Histogram uses a **fixed shared scale**, default clip threshold **1.58 % of
+- [x] Histogram uses a **fixed shared scale**, default clip threshold **1.58 % of
       all frame pixels**; frame-peak normalisation is gone; linear, shared single
       scale, hard clip at the band top; both paths; persists.
-- [ ] Both sliders follow the **logarithmic law**: ±3 doublings, 1.0× exactly at
+- [x] Both sliders follow the **logarithmic law**: ±3 doublings, 1.0× exactly at
       centre, continuous, centre marked and snapping, double-click resets, no
       numeric readout; the **gain multiplier** is what gets persisted.
-- [ ] Bin count and threshold reference confirmed in Task 0 (or reported).
-- [ ] Tests present and each proven by deliberate breakage; bin-equivalence
+      *(The law is implemented as specified. Whether the +/-3-doubling **span** is
+      the right one around the newly measured defaults is open — see the proposal
+      for the density sliders; the histogram Gain slider is confirmed good.)*
+- [x] Bin count and threshold reference confirmed in Task 0 (or reported).
+- [x] Tests present and each proven by deliberate breakage; bin-equivalence
       unchanged; suite green on both RHIs, count checked.
-- [ ] No steady-state readback; uint atomics only, no wave intrinsics; no new
+- [x] No steady-state readback; uint atomics only, no wave intrinsics; no new
       warnings.
 - [ ] **Visual:** TrueScope at default matches Resolve at default (density and
       histogram) on the same still; CPU vs GPU indistinguishable — MCP screenshots
       plus human review.
+      *(MCP screenshots taken and the plates produced; the Resolve half is the
+      human's. CPU vs GPU: not bit-identical on a real capture — mean |delta| 0.9 of
+      255, no difference in readings — see the Verification summary and
+      `backlog.md`.)*
 - [ ] Human sign-off.
 
 ## Explicitly out of scope
@@ -206,5 +226,58 @@ true 1:1 (`backlog.md`); logo/icon integration (`backlog.md`). Ideas → `backlo
 
 ## Verification summary
 
-*(fill after sign-off: bin count found, measured default gains per scope, test
-counts, the Resolve cross-check result, CPU-vs-GPU deltas, commit hashes.)*
+*(Filled 2026-08-19 for everything Claude Code can establish; the two items marked
+**open** need the human's Resolve pass and slider-end review before sign-off.)*
+
+**Bin count.** 256, one per 8-bit code value, matching the `RTF_RGBA8` capture.
+Resolve uses 1024, which is why 8-bit plates draw there as a comb — an artefact of
+the test image, not of either tool (rule recorded under Task 0 and in
+`dev-rules.md`).
+
+**Transfer, as implemented.** Density: `Intensity = min(Count * EffectiveGain /
+MaxCount, 1)`, where `MaxCount` is the column height (540) for parade and waveform
+and the whole frame's pixel count (960 x 540) for the vectorscope, and
+`EffectiveGain = ScopeDefaultGain x UserMultiplier`. Because the count is normalised
+by the column height before the gain multiplies it, the height cancels and full white
+falls at a fixed **fraction** `f = 1 / Gain` of a column, independent of capture
+resolution. Histogram is a separate mapping (count -> curve height against a fixed
+threshold expressed as a fraction of frame pixels); the two are deliberately never
+merged.
+
+**Default gains.**
+
+| Scope | Default | Evidence status |
+| --- | --- | --- |
+| Parade | 31.25 | **Derived** from measurement: `1 / 0.032`, Resolve reaching full white at 3.2 % of a column (34 px of 1080; 17 of our 540) |
+| Waveform | 31.25 | Same derivation |
+| Vectorscope | 30000 | **Chosen by visual match, not measured** — `31.25 x 960` by analogy, then confirmed readable on a real frame |
+| Histogram threshold | 1.58 % of frame pixels | **Measured** 2026-08-19 (0.4167 % -> 26.3 %, 0.8333 % -> 52.7 % of band height => 1.584 / 1.581 %) |
+
+The 2026-08-19 Resolve count wedge (1920x1080, Video Level Scopes) gave a constant
+brightness/count ratio of 6.00-6.13 across seven bands, re-confirming that the
+transfer is linear, not log.
+
+**Test counts.** 40/40 on `-nullrhi` and 40/40 on `-RenderOffscreen`, build clean
+with no new warnings. 40 is the expected registered-test count and is the stale-code
+tripwire.
+
+**Resolve cross-check.** *(open — the human's pass.)* Plates produced under the
+`dev-rules.md` conditions (piloted CineCameraActor, Game View on, Realtime off, AA
+off, `r.ScreenPercentage 100`): `M63_count_wedge_1920x1080.png`,
+`M63_histogram_strips_1920x1080.png`, `M63_colorcalibrator_1920x1080.png`, plus
+`M63_count_wedge_1920x540.png` — the same absolute counts at half the rows, which
+settles the fraction-vs-absolute question in one reading (clip near count 17 =>
+fraction, near 34 => absolute).
+
+**CPU vs GPU.** Compared on the frozen still, so both paths analysed the same
+capture: images aligned (verified against all nine +/-1 px offsets), 17.29 % of panel
+pixels differ, mean |delta| 0.9 of 255, 64 % of differing pixels off by 1-3 code
+values, 0.067 % off by >=32 (max 46, about 3 counts). Not visible as a difference in
+readings; logged in `backlog.md` for a synthetic repro.
+
+**Slider ends.** *(open — the human's review.)* The measured defaults are far above
+the old slider centre, so the existing +/-3-doubling span no longer sits usefully
+around them; a proposal is on the table and no range change has been made.
+
+**Commits.** `2727c3c` (spec), `0b208dc`, `a332207`, `5ec78cf`, `dd42790`, `c102bb7`,
+`862422f`, `b4e3d3b` (calibrated defaults + refined threshold).
