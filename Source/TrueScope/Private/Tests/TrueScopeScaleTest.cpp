@@ -251,7 +251,7 @@ bool FTrueScopeHistogramCurveScaleTest::RunTest(const FString&)
 		TrueScope::HistogramClipThresholdCount(FramePixels, TrueScope::DefaultGainMultiplier);
 
 	// The threshold is a fraction of a pixel count and so is not a whole number
-	// (8 657.28 px for 960x540); the smallest bin count that reaches it is the
+	// (8 190.72 px for 960x540); the smallest bin count that reaches it is the
 	// ceiling, which is what "a bin at the threshold" means for integer counts.
 	const uint32 ThresholdCount = static_cast<uint32>(FMath::CeilToInt(Threshold));
 
