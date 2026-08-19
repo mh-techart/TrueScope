@@ -59,6 +59,22 @@ they do not hold:**
   appearance when the user resizes the panel, which is precisely the resolution
   independence this design exists to provide.
 
+**Task 0 finding — bin count (settled 2026-08-18).** TrueScope uses **256**
+histogram bins, not 1024, and the 1.67 % threshold is **not** rescaled. The premise
+behind the trap — that a coarser bin count multiplies the count per bin — does not
+apply here, and the rule is worth recording so nobody re-derives it:
+
+**The clip threshold is defined per distinguishable source value, not per bin index.**
+It transfers between tools unchanged as long as each bin holds exactly one source
+value — i.e. as long as the binning is at least as fine as the source. TrueScope
+captures 8-bit (`RTF_RGBA8`) and uses 256 bins: one code value per bin, the finest
+binning the data supports. Resolve bins the same 8-bit image into 1024 containers, so
+three out of every four sit empty and each populated one holds exactly one code
+value's pixels. Both therefore count the same thing and 1.67 % applies to both
+unchanged. A rescale would only be needed if bins were *coarser* than the source, so
+that one bin merged several distinct values. Going to 1024 bins here would add no
+information — three quarters of them would be provably empty.
+
 You may then implement directly.
 
 ## Task 1 — Density transfer: log → linear × per-scope gain, hard clip
@@ -143,7 +159,19 @@ Per `dev-rules.md`, "Resolve cross-check — conditions & procedure".
 - Produce the comparison PNGs yourself via the console `HighResShot` route in
   `dev-rules.md` (Game View on, Realtime off, anti-aliasing off, height ≥ 1080).
   Hand the human finished PNGs only for the final sign-off pass.
-- Final side-by-side on the D3 composite probe plus a real frame.
+- Final side-by-side on (a) `M63_count_wedge_1920x1080.png`, (b)
+  `M63_histogram_strips_1920x1080.png`, and (c) a real ColorCalibrator frame, in
+  both tools under the `dev-rules.md` cross-check conditions.
+  *(An earlier draft of this task named a "D3 composite probe"; no such diagnostic
+  exists — the reference is void and is replaced by the three plates above.)*
+- **Expect one structural difference in the histogram comparison — it is correct and
+  must not be "fixed".** Resolve draws a **comb**: it bins the 8-bit plate into 1024
+  containers, so only every fourth is populated and the curve breaks into isolated
+  one-bin spikes. TrueScope bins the same image into 256 containers, one per code
+  value, and therefore draws a smooth continuous curve. **The peak heights must
+  match; the fine structure must not.** Comparing the comb's fine structure against
+  the smooth curve compares an artefact of the test image with a property of the
+  tool. See the bin-count rule under Task 0.
 
 ## Acceptance criteria
 

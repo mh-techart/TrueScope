@@ -114,9 +114,17 @@ bool FTrueScopeHistogramClipThresholdTest::RunTest(const FString&)
 	const float Threshold =
 		TrueScope::HistogramClipThresholdCount(FramePixels, TrueScope::DefaultGainMultiplier);
 
-	// The measured figure, stated where it can be checked: a bin holding
-	// 1.67 % of the frame's pixels fills the band exactly.
-	TestEqual(TEXT("The default threshold is 1.67 % of the frame"),
+	// THE ONE PLACE the documented literal is repeated. This assertion exists to
+	// guard architecture.md ("Histogram vertical scaling"): 1.67 % of the frame's
+	// pixels in one bin fills the band, measured against DaVinci Resolve on
+	// 2026-08-17. Changing HistogramClipThresholdFraction without changing the
+	// documentation must fail here, which is only possible if the number is
+	// spelled out rather than derived.
+	//
+	// Every OTHER test reads the threshold from the production constant instead
+	// (TrueScope.UI.HistogramCurveScale, .HistogramYrgb, the GPU equivalence
+	// tests) — a second hand-written copy of the same number would only drift.
+	TestEqual(TEXT("The default threshold is the documented 1.67 % of the frame (guards architecture.md)"),
 		Threshold, 0.0167f * static_cast<float>(FramePixels), 0.5f);
 
 	const uint32 ThresholdCount = static_cast<uint32>(FMath::RoundToInt(Threshold));

@@ -3,6 +3,7 @@
 
 #include "Analysis/TrueScopeAnalysis.h"
 #include "Analysis/TrueScopeAnalysisResult.h"
+#include "Analysis/TrueScopeDisplayGains.h"
 #include "Misc/AutomationTest.h"
 #include "UI/STrueScopeHistogram.h"
 #include "UI/TrueScopeDraw.h"
@@ -233,20 +234,39 @@ bool FTrueScopeHistogramCurveScaleTest::RunTest(const FString&)
 	// Since M6.3 the scale is a FIXED clip threshold rather than the frame's
 	// peak: a count equal to the threshold fills the band, more clips there, and
 	// the scale is the same for every curve and every frame of the same size.
-	constexpr float Threshold = 14556.0f;   // the frame the M4 bug was found on
+	//
+	// DERIVED, never a free literal. This used to be 14556.0f — a count off the
+	// frame the M4 bug was found on — which asserted the mapping against a number
+	// unrelated to the scale that ships, and left a reader two candidate "the
+	// threshold" values to reconcile. Reading the production constant instead
+	// makes every assertion below a statement about the shipping scale (the
+	// 116-pixel outlier further down is now measured against the real band).
+	//
+	// Exactly one test spells the documented 1.67 % out as a literal, as a
+	// deliberate guard on architecture.md (TrueScope.UI.HistogramClipThreshold).
+	// Every other test derives, this one included: a second hand-written copy of
+	// the same number does not add a check, it only adds something that can drift.
+	constexpr int64 FramePixels = 960 * 540;   // the shipping capture size
+	const float Threshold =
+		TrueScope::HistogramClipThresholdCount(FramePixels, TrueScope::DefaultGainMultiplier);
+
+	// The threshold is a fraction of a pixel count and so is not a whole number
+	// (8 657.28 px for 960x540); the smallest bin count that reaches it is the
+	// ceiling, which is what "a bin at the threshold" means for integer counts.
+	const uint32 ThresholdCount = static_cast<uint32>(FMath::CeilToInt(Threshold));
 
 	TestEqual(TEXT("Empty bin has no height"), STrueScopeHistogram::GetCurveHeight(0, Threshold), 0.0f);
 	TestEqual(TEXT("No threshold draws nothing"), STrueScopeHistogram::GetCurveHeight(10, 0.0f), 0.0f);
 	TestEqual(TEXT("A bin at the threshold fills the band"),
-		STrueScopeHistogram::GetCurveHeight(static_cast<uint32>(Threshold), Threshold), 1.0f);
+		STrueScopeHistogram::GetCurveHeight(ThresholdCount, Threshold), 1.0f);
 	TestEqual(TEXT("One pixel past the threshold clips at the band top"),
-		STrueScopeHistogram::GetCurveHeight(static_cast<uint32>(Threshold) + 1, Threshold), 1.0f);
+		STrueScopeHistogram::GetCurveHeight(ThresholdCount + 1, Threshold), 1.0f);
 	TestEqual(TEXT("Ten times the threshold still just clips"),
-		STrueScopeHistogram::GetCurveHeight(10 * static_cast<uint32>(Threshold), Threshold), 1.0f);
+		STrueScopeHistogram::GetCurveHeight(10 * ThresholdCount, Threshold), 1.0f);
 	TestEqual(TEXT("Half the threshold is half the height"),
-		STrueScopeHistogram::GetCurveHeight(static_cast<uint32>(Threshold) / 2, Threshold), 0.5f, 0.001f);
+		STrueScopeHistogram::GetCurveHeight(ThresholdCount / 2, Threshold), 0.5f, 0.001f);
 	TestEqual(TEXT("One percent of the threshold is one percent of the height"),
-		STrueScopeHistogram::GetCurveHeight(static_cast<uint32>(Threshold) / 100, Threshold), 0.01f, 0.001f);
+		STrueScopeHistogram::GetCurveHeight(ThresholdCount / 100, Threshold), 0.01f, 0.001f);
 
 	// The exact bin that inverted the apparent R/B order against Resolve.
 	constexpr uint32 OutlierCount = 116;

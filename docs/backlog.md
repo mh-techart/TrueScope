@@ -326,6 +326,19 @@ mechanism rather than leaving stale traces.
   it is ever built, it must be a clearly separate mode, never a position on the gain
   slider — the two use different normalisation bases and merging them is the same
   class of confusion that caused the M4 histogram bug.
+- **Histogram bin count if capture moves to 10-bit** — TrueScope currently captures
+  8-bit (`RTF_RGBA8`) and uses 256 bins, one per code value, which is why the 1.67 %
+  clip threshold measured against Resolve transfers unchanged (see `architecture.md`,
+  "Histogram vertical scaling"). If capture ever becomes 10-bit — HDR viewport output
+  (HDR10 / ST.2084 / HLG) or a 10-bit SDI/NDI path via the AJA or Blackmagic Media
+  I/O plugins, both common in virtual production — the same image spreads across four
+  times as many distinct values, each holding roughly a quarter of the pixels. At 1024
+  bins the same shot would then draw about four times lower than today. **Open and
+  unmeasured:** whether Resolve compensates for this — every measurement so far used
+  8-bit material only. Re-measure with genuine 10-bit material before switching, and
+  treat bin count, capture format, working colour space and scale reference (code
+  values vs nits/PQ/HLG) as one connected decision rather than four separate ones.
+  Related: "Scale behavior across bit depth / HDR / color spaces".
 - **Scale behavior across bit depth / HDR / color spaces** — V1 uses a
   normalized 0–1023 scale for the SDR display-referred case (settled in
   architecture.md). Open for later: what the scale should show for HDR
