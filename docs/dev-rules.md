@@ -226,6 +226,14 @@ strict:
   confirm the test fails, then revert. A test that never failed proves
   nothing. And design cases that *can* fail — a solid-red frame cannot reveal
   channel bleed, because there is no other channel to bleed.
+- **UBT reports `'0xFF' is an invalid start of a value`** — the `.uplugin` was saved as
+  UTF-16. Re-encode it as UTF-8; the content itself is fine. A UTF-8 byte-order mark
+  was verified harmless for UBT and for editor plugin-load (build succeeded, suite
+  40/40), but was **not** tested against `RunUAT BuildPlugin` or Fab submission —
+  treat those as unknown until M7. An automation test for this was considered and
+  deliberately rejected: in the real failure mode the build aborts before any test can
+  run, and in the byte-order-mark case the test would fail a state that demonstrably
+  works.
 
 ## Benchmark tests — mandatory handshake
 
@@ -336,6 +344,21 @@ and procedure* are here.
   converged; auto-exposure settled; no self-animating actors in the reference
   scene (the VolumetricCloud that used to drift has been removed — keep the
   reference motionless).
+
+- **Record the scope level setting, and prefer Data Level Scopes for value positions.**
+  Resolve's scope option menu carries a Waveform Scale Style submenu (10-bit, 12-bit,
+  Percentage, mV) and a **Video Level Scopes / Data Level Scopes** switch. The latter
+  shifts where values land: under Video Level Scopes an 8-bit 128 plots at ≈504 rather
+  than 512, and black plots at 64 rather than 0. It does **not** change bin counts or
+  curve heights, so histogram threshold measurements are unaffected — but a
+  side-by-side against TrueScope, which plots full range, will look uniformly shifted
+  if the two settings disagree. State the setting in any cross-check record.
+- **Keep test-wedge values off the graticule lines.** Resolve draws graticule lines at
+  multiples of 128 in 10-bit — multiples of 32 in 8-bit — at ≈61/255 brightness. A
+  trace landing on one is masked wherever it is dimmer than the line, which silently
+  destroys the low end of a brightness measurement. Choose a value midway between two
+  lines (8-bit 112 → 10-bit 448 is the safest) and turn the Graticule slider down when
+  measuring.
 
 **Resolve side:** import the PNG on a timeline of **the same pixel dimensions**,
 8-bit, **sRGB**, clip **Data Levels = Full** (the 64–940 vs 0–1023 mismatch is the

@@ -339,6 +339,23 @@ mechanism rather than leaving stale traces.
   treat bin count, capture format, working colour space and scale reference (code
   values vs nits/PQ/HLG) as one connected decision rather than four separate ones.
   Related: "Scale behavior across bit depth / HDR / color spaces".
+- **Fill the empty `.uplugin` metadata before release** — `CreatedBy`,
+  `CreatedByURL`, `DocsURL`, `MarketplaceURL` and `SupportURL` are empty strings left
+  by the plugin wizard, so the Plugin Browser shows a blank author and the links go
+  nowhere. For an open-source plugin `CreatedBy` is how a user finds the project.
+  Also confirm whether `IsBetaVersion: true` is still wanted at release. Blocking for
+  publication, harmless until then.
+- **`VersionName` has no stated rule** — it moved 0.1.0 → 0.1.5 deliberately, but
+  nothing records what the number tracks (milestone? release?). Decide and document it
+  before the first public release, or it will drift.
+- **Waveform density basis: fraction of column height vs absolute pixel count** —
+  Resolve's density transfer was measured at 1080 rows only (2026-08-19: full white at
+  ≈34 pixels per column ≈ 3.2 % of column height). Which of the two it keys on is
+  unproven, and they differ by exactly 2× at TrueScope's 540-row capture. TrueScope
+  assumes *fraction of column height*, consistent with the measured histogram
+  behaviour. Settle it by generating the same count wedge at two frame heights, each
+  read in a timeline of its own size. Low priority: the default is user-adjustable and
+  a 2× error is visible.
 - **Scale behavior across bit depth / HDR / color spaces** — V1 uses a
   normalized 0–1023 scale for the SDR display-referred case (settled in
   architecture.md). Open for later: what the scale should show for HDR
