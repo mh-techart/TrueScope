@@ -123,6 +123,11 @@ requires it.
 - **Prove a regression test has teeth.** Don't just assert a test passes — perturb
   the thing it guards (off-by-one, swapped channel, reverted constant), confirm it
   fails, then revert. A test never seen to fail proves nothing.
+  A proof is only valid against the value as it currently stands. If the guarded
+  constant is later changed, the recorded proof no longer demonstrates anything and
+  must be re-run against the new value. In M6.3 the proof on record had perturbed the
+  pre-refinement 1.67 % clip threshold; after the refinement to 1.58 % it proved
+  nothing about the guard actually shipping, and had to be re-run.
 - **Separate what is measured from the host state it samples.** Some costs are the
   plugin's own; others are properties of the editor state the plugin merely samples
   (e.g. on Metal the readback Lock cost is ~1–2× the host frame-time, not a plugin
@@ -178,6 +183,13 @@ it as follows:
 - **Visual verification is part of done:** after UI-affecting changes, launch
   the editor, take a screenshot of the TrueScope tab via MCP, and inspect it
   before declaring a task complete.
+- **Some Slate controls accept a click and change nothing.** `Click` on the viewport
+  camera-dropdown rows and on the show-flag checkboxes returns **true** while having no
+  effect, so a verification built on them passes without testing anything. Where this
+  happens, drive the editor by keyboard instead: to unpilot a camera, focus the
+  viewport by clicking its dock tab, then `PressKey "Alt+G"`. Treat a `true` return
+  from `Click` as "the click was delivered", never as "the state changed" — confirm the
+  state itself before recording a result.
 - Requires the editor running with the MCP server started (default port 8000).
   If the `unreal-mcp` skill harness is unavailable but the **editor is
   running**, an alternative access path to the same running MCP server (e.g.
@@ -241,7 +253,9 @@ strict:
   became heights. Pin data-to-element assignment per scope.
 - **Prove a regression test has teeth**: reintroduce the bug deliberately,
   confirm the test fails, then revert. A test that never failed proves
-  nothing. And design cases that *can* fail — a solid-red frame cannot reveal
+  nothing, and a proof against a constant that has since changed proves nothing
+  either — see the full rule under "Verification methodology". And design cases
+  that *can* fail — a solid-red frame cannot reveal
   channel bleed, because there is no other channel to bleed.
 - **UBT reports `'0xFF' is an invalid start of a value`** — the `.uplugin` was saved as
   UTF-16. Re-encode it as UTF-8; the content itself is fine. A UTF-8 byte-order mark

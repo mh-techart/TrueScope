@@ -361,8 +361,16 @@ mechanism rather than leaving stale traces.
   **Reclassified as a kind 2 value** (internal default; see `dev-rules.md`): rather
   than another Resolve round, expose the density gain in the Tweakables menu and let
   the human settle it by eye in one sitting. The Resolve reading remains possible if
-  ever wanted — generate the same count wedge at two frame heights and read each in a
-  timeline of its own size.
+  ever wanted, and is cheap: **`Tools/make_calibration_plates.py`** (stdlib only,
+  `python3 make_calibration_plates.py <out-dir>`) regenerates every plate, and
+  **`M63_count_wedge_1920x540.png` is the single reading that settles this** — the same
+  absolute per-column counts as the 1080 wedge, so only the column height differs.
+  Clip near count 17 => fraction of column height (what the 31.25 default assumes);
+  clip near count 34 => absolute pixel count (the default would have to be 15.625).
+  Read it in a 1920x540 timeline — one timeline per image size, or the upscale
+  destroys the known counts. The already-built plates currently sit in the host
+  project at `Saved/TrueScope_M63_Task5/`, which is **unversioned and may vanish**;
+  the generator in the plugin is the durable copy.
 - **Density slider range: symmetric ±3 doublings vs asymmetric** — M6.3 ships the
   uniform logarithmic law with ±3 doublings and 1.0× at centre for all gain sliders
   (`architecture.md`, "Gain slider law"). Open question raised during M6.3: with a
