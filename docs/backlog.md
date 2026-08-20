@@ -307,7 +307,10 @@ mechanism rather than leaving stale traces.
   own peak — that is **linear** in count and **resolution-independent**, clipping a
   bin once it holds more than ≈**1.58 % of all the frame's pixels**. Its gain slider
   is linear in that threshold (3.16 % at the left end → ≈0 at the right end), which
-  is why its right end is unusable. **Decided for M6.3:** same fixed-scale principle,
+  is why its right end is unusable. The left-end figure is *derived*, not measured:
+  what was measured is that Resolve's left end sits at exactly twice its default, so
+  the percentage moves whenever the default does (hence 3.34 % before the 2026-08-19
+  refinement of the default, 3.16 % after). **Decided for M6.3:** same fixed-scale principle,
   default threshold 1.58 % of all frame pixels, but a **logarithmic** gain slider
   (±3 doublings, centre = default) instead of Resolve's linear-in-threshold one. The
   "Exact" detent is dropped — see the new backlog item "Fit-the-peak histogram view".
@@ -348,14 +351,47 @@ mechanism rather than leaving stale traces.
 - **`VersionName` has no stated rule** — it moved 0.1.0 → 0.1.5 deliberately, but
   nothing records what the number tracks (milestone? release?). Decide and document it
   before the first public release, or it will drift.
-- **Waveform density basis: fraction of column height vs absolute pixel count** —
-  Resolve's density transfer was measured at 1080 rows only (2026-08-19: full white at
-  ≈34 pixels per column ≈ 3.2 % of column height). Which of the two it keys on is
-  unproven, and they differ by exactly 2× at TrueScope's 540-row capture. TrueScope
-  assumes *fraction of column height*, consistent with the measured histogram
-  behaviour. Settle it by generating the same count wedge at two frame heights, each
-  read in a timeline of its own size. Low priority: the default is user-adjustable and
-  a 2× error is visible.
+- **Waveform density basis: fraction of column height vs absolute pixel count**
+  — Resolve's density transfer was measured at 1080 rows only (2026-08-19: full white
+  at ≈34 pixels per column ≈ 3.2 % of column height). Whether Resolve keys on the
+  *fraction of column height* or on an *absolute pixel count* is unproven; the two
+  differ by exactly 2× at TrueScope's 540-row capture, i.e. gain 31.25 vs 15.625.
+  TrueScope assumes the fraction, consistent with the measured histogram behaviour and
+  with the fact that an absolute count would make UHD material blow out relative to HD.
+  **Reclassified as a kind 2 value** (internal default; see `dev-rules.md`): rather
+  than another Resolve round, expose the density gain in the Tweakables menu and let
+  the human settle it by eye in one sitting. The Resolve reading remains possible if
+  ever wanted — generate the same count wedge at two frame heights and read each in a
+  timeline of its own size.
+- **Density slider range: symmetric ±3 doublings vs asymmetric** — M6.3 ships the
+  uniform logarithmic law with ±3 doublings and 1.0× at centre for all gain sliders
+  (`architecture.md`, "Gain slider law"). Open question raised during M6.3: with a
+  correctly calibrated default, is the bottom of the range (white only at ~25 % of a
+  column) useful or wasted travel? It is plausibly useful — it isolates large uniform
+  areas — but this was never checked on screen, because the observation that prompted
+  it ("too dim to read below ~55 % of travel") was made while the defaults were still
+  at 1.0, i.e. about 31× too dim, so it says nothing about the range. **Do not decide
+  from that observation.** An asymmetric span (e.g. one doubling down, three up) would
+  collide with "1.0× sits exactly at centre", which is a settled decision and is pinned
+  by a test; the options are to bend the law, to move the tick/snap/reset off the
+  geometric centre, or to leave it alone. Settle it from the Tweakables menu once that
+  exists. **Priority: low** — nothing is broken; the default is correct and the range
+  is usable.
+- **UI consolidation + "Tweakables" and "Settings" menus (next phase after M6.3)** —
+  the tab toolbar has accumulated controls across M6.1–M6.3 (display modes, analysis
+  path, measurement rate, two families of gain slider) without anyone reviewing the
+  whole. Human assessment: cluttered and redundant. The same phase introduces two menu
+  entries that change how appearance values get decided:
+  - **Tweakables** — developer-only, not present in shipped builds. Live controls for
+    internal values, applying immediately without a restart, so the human can find a
+    value in one sitting instead of over chat rounds. First candidates: histogram clip
+    threshold, per-scope density gain defaults, gain-slider range endpoints, snapping
+    on/off. Include an action that copies the current values as text, so a found value
+    is handed over without transcription.
+  - **Settings** — end-user facing. First candidates: per-scope Trace Brightness,
+    graticule brightness. The human establishes minimum, maximum and default from the
+    Tweakables menu, and those become the shipped bounds.
+  See `dev-rules.md`, "Classify a value before spending effort on it".
 - **CPU vs GPU: small per-cell count differences on a real capture** — the
   integer-exact bin-equivalence tests (`TrueScope.GPU.*`) feed synthetic pixel arrays
   and stay exact, but a real frame compared through the shipping path is not

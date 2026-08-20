@@ -83,6 +83,23 @@ requires it.
   including assumptions carried over from a previous chat or agent — must be
   labelled **Hypothesis / Unverified assumption** until tested or proven from a
   safe source, and must not be built upon as if settled.
+- **Classify a value before spending effort on it.** Before measuring, comparing, or
+  tuning any number, state which of three kinds it is and get the human's agreement:
+  1. **Correctness value** — the scope would report something *wrong* if it were off
+     (bin mapping, colour-space maths, the shape of a transfer, whether a scale is
+     fixed or content-derived). A Resolve cross-check is justified here.
+  2. **Internal default, found once** — the scope would merely *look* different. It
+     belongs in the developer-only Tweakables menu, where the human finds it live in
+     one sitting. It must not become a chat round-trip or a Resolve session.
+  3. **User-facing setting** — the end user should be able to change it. It goes in
+     TrueScope's Settings; the human determines a usable minimum, maximum and default
+     from the Tweakables menu, and those three become the shipped bounds.
+  This rule exists because M6.3's histogram clip threshold was refined from 1.67 % to
+  1.58 % across several measurement rounds and human Resolve sessions. The structural
+  findings behind it were genuine correctness work — the scale is fixed rather than
+  peak-derived, it is a fraction of frame pixels rather than an absolute count, and the
+  transfer is linear rather than logarithmic. The final decimal was not: it changes
+  curve height by about 6 % and is a kind 2 value that a slider settles in seconds.
 - **Verify "is it live?" with a moving source.** A static subject makes "not
   updating" indistinguishable from "unchanged". To confirm a scope actually
   measures live, use a visibly moving source (e.g. a never-still particle effect)

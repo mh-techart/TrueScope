@@ -168,12 +168,16 @@ Per `dev-rules.md`, "Resolve cross-check — conditions & procedure".
   evidence status).** Parade and waveform: **derived**, `Gain = 1 / 0.032 = 31.25`,
   from the measured Resolve white point of 3.2 % of a column — see the derivation in
   `TrueScopeDisplayGains.h` and the stated fraction-vs-absolute assumption there.
-  Histogram: **measured**, threshold 1.58 % of frame pixels. Vectorscope: **chosen by
-  visual match, not measured** — the measured Resolve slope cannot transfer to it
-  because it normalises against the whole frame's pixel count rather than a column's
-  height, so 30000 was derived by analogy (`31.25 x 960`, the frame width that
-  separates the two bases) and then confirmed *readable* on a real captured frame
-  (trace median 139/255, 11.2 % of populated cells clipped). The remaining half of
+  Histogram: **measured**, threshold 1.58 % of frame pixels. Vectorscope:
+  **derived from the parade/waveform gain, then visually confirmed** — not estimated
+  by eye. Resolve's measured slope cannot be applied to it directly, because the
+  vectorscope normalises against the whole frame's pixel count while the parade
+  normalises against one column's height; those two bases differ by exactly the frame
+  width, so `31.25 x 960 = 30000` is what makes a chroma cell reach full white at the
+  same per-cell pixel count (17 of the capture) that the parade reaches at 3.2 % of a
+  column. That derived value was then checked on a real captured frame and found
+  readable (trace median 139/255, 11.2 % of populated cells clipped). Only the
+  *confirmation* step was visual; the number itself was derived. The remaining half of
   its acceptance — that it also *matches* Resolve on the same still — is the human's
   side of the cross-check and is still open.
 
@@ -198,22 +202,35 @@ Per `dev-rules.md`, "Resolve cross-check — conditions & procedure".
 - [x] Both sliders follow the **logarithmic law**: ±3 doublings, 1.0× exactly at
       centre, continuous, centre marked and snapping, double-click resets, no
       numeric readout; the **gain multiplier** is what gets persisted.
-      *(The law is implemented as specified. Whether the +/-3-doubling **span** is
-      the right one around the newly measured defaults is open — see the proposal
-      for the density sliders; the histogram Gain slider is confirmed good.)*
+      *(The law is implemented as specified and ships unchanged: uniform, +/-3
+      doublings, 1.0x at centre. Whether that span is the ideal one around the newly
+      measured defaults was raised during the phase but is **not** decided from what
+      was observed — the "too dim below ~55 % of travel" observation was made while
+      the defaults were still 1.0, i.e. ~31x too dim, so it says nothing about the
+      range. Tracked in `backlog.md`, "Density slider range"; the histogram Gain
+      slider is confirmed good.)*
 - [x] Bin count and threshold reference confirmed in Task 0 (or reported).
 - [x] Tests present and each proven by deliberate breakage; bin-equivalence
       unchanged; suite green on both RHIs, count checked.
 - [x] No steady-state readback; uint atomics only, no wave intrinsics; no new
       warnings.
-- [ ] **Visual:** TrueScope at default matches Resolve at default (density and
+- [~] **Visual:** TrueScope at default matches Resolve at default (density and
       histogram) on the same still; CPU vs GPU indistinguishable — MCP screenshots
-      plus human review.
-      *(MCP screenshots taken and the plates produced; the Resolve half is the
-      human's. CPU vs GPU: not bit-identical on a real capture — mean |delta| 0.9 of
-      255, no difference in readings — see the Verification summary and
-      `backlog.md`.)*
-- [ ] Human sign-off.
+      plus human review. **Deliberately not ticked as fully met.** What was done
+      instead: the defaults were **derived from measured Resolve readings** (the
+      2026-08-19 count wedge and histogram strips) rather than estimated by eye, and
+      the result was checked on screen by Claude Code via MCP screenshots and by the
+      human. What was *not* done is a final side-by-side Resolve session at the new
+      defaults. The one question that session would answer — whether Resolve's density
+      basis is a fraction of column height or an absolute pixel count, a 2x difference
+      at our 540-row capture — is **deferred as a tracked backlog item**
+      (`backlog.md`, "Waveform density basis"), where it is reclassified as a kind 2
+      value to be settled from the Tweakables menu rather than by another Resolve
+      round. This is a deliberate deferral with a named owner-item, not an unnoticed
+      gap. CPU vs GPU: not bit-identical on a real capture — mean |delta| 0.9 of 255,
+      no difference in readings — see the Verification summary and `backlog.md`.
+- [x] Human sign-off — given on TrueScope's own appearance, without a Resolve
+      session, on the closing pass (2026-08-20).
 
 ## Explicitly out of scope
 
@@ -226,8 +243,10 @@ true 1:1 (`backlog.md`); logo/icon integration (`backlog.md`). Ideas → `backlo
 
 ## Verification summary
 
-*(Filled 2026-08-19 for everything Claude Code can establish; the two items marked
-**open** need the human's Resolve pass and slider-end review before sign-off.)*
+*(Filled 2026-08-19; closed 2026-08-20. Nothing here is left open: the two items that
+were open — the Resolve side-by-side and the slider ends — were converted into tracked
+`backlog.md` entries rather than carried as loose questions, and are marked below as
+deliberate deferrals with their reasons.)*
 
 **Bin count.** 256, one per 8-bit code value, matching the `RTF_RGBA8` capture.
 Resolve uses 1024, which is why 8-bit plates draw there as a comb — an artefact of
@@ -250,7 +269,7 @@ merged.
 | --- | --- | --- |
 | Parade | 31.25 | **Derived** from measurement: `1 / 0.032`, Resolve reaching full white at 3.2 % of a column (34 px of 1080; 17 of our 540) |
 | Waveform | 31.25 | Same derivation |
-| Vectorscope | 30000 | **Chosen by visual match, not measured** — `31.25 x 960` by analogy, then confirmed readable on a real frame |
+| Vectorscope | 30000 | **Derived** from the parade gain to keep the same per-cell fraction — `31.25 x 960`, the frame width separating the two normalisation bases — then visually confirmed on a real frame. Not measured against Resolve directly, and not estimated by eye |
 | Histogram threshold | 1.58 % of frame pixels | **Measured** 2026-08-19 (0.4167 % -> 26.3 %, 0.8333 % -> 52.7 % of band height => 1.584 / 1.581 %) |
 
 The 2026-08-19 Resolve count wedge (1920x1080, Video Level Scopes) gave a constant
@@ -272,7 +291,12 @@ the baseline re-run green before and after.
 with no new warnings. 40 is the expected registered-test count and is the stale-code
 tripwire.
 
-**Resolve cross-check.** *(open — the human's pass.)* Plates produced under the
+**Resolve cross-check.** *(Closed as a deliberate deferral, not completed.)* The
+defaults were derived from measured Resolve readings rather than estimated, and the
+result was confirmed on screen; no final side-by-side session at the new defaults was
+run, and none is planned — the residual question is tracked in `backlog.md`,
+"Waveform density basis" and reclassified as an internal default (kind 2) to be found
+in the Tweakables menu. Plates produced under the
 `dev-rules.md` conditions (piloted CineCameraActor, Game View on, Realtime off, AA
 off, `r.ScreenPercentage 100`): `M63_count_wedge_1920x1080.png`,
 `M63_histogram_strips_1920x1080.png`, `M63_colorcalibrator_1920x1080.png`, plus
@@ -286,9 +310,25 @@ pixels differ, mean |delta| 0.9 of 255, 64 % of differing pixels off by 1-3 code
 values, 0.067 % off by >=32 (max 46, about 3 counts). Not visible as a difference in
 readings; logged in `backlog.md` for a synthetic repro.
 
-**Slider ends.** *(open — the human's review.)* The measured defaults are far above
-the old slider centre, so the existing +/-3-doubling span no longer sits usefully
-around them; a proposal is on the table and no range change has been made.
+**Slider ends.** *(Closed as a tracked question; no change made.)* The uniform
++/-3-doubling law ships unchanged. The observation that prompted the question — the
+scopes reading as too dim below roughly 55 % of travel — was made while the defaults
+were still 1.0, about 31x too dim, so it does not bear on the range and must not be
+decided from. Whether the bottom of the range is useful travel or wasted travel has
+never been checked on screen at a correct default. Tracked in `backlog.md`, "Density
+slider range", to be settled from the Tweakables menu.
 
-**Commits.** `2727c3c` (spec), `0b208dc`, `a332207`, `5ec78cf`, `dd42790`, `c102bb7`,
-`862422f`, `b4e3d3b` (calibrated defaults + refined threshold).
+**Commits.** `2727c3c` (spec), `0b208dc`, `a332207`, `5ec78cf` (planning items),
+`dd42790` (`.uplugin` UTF-8 re-encode), `c102bb7` (`Config/` + `Resources/`),
+`862422f` (dev-rules + backlog housekeeping), `b4e3d3b` (calibrated defaults +
+refined threshold), `87b256f` (Task 5 results + CPU-vs-GPU delta), `7f92baf` (two
+leftover 1.67 %-era figures), `b73232e` (breakage proof re-run at 1.58 %), plus the
+closing commit that carries this summary.
+
+## Status
+
+**M6.3 is closed (2026-08-20).** Everything not implemented is a named `backlog.md`
+entry: "Waveform density basis" (the 2x fraction-vs-absolute question, reclassified as
+an internal default), "Density slider range", "UI consolidation + Tweakables and
+Settings menus" (the next phase), "CPU vs GPU: small per-cell count differences", and
+the two `.uplugin` metadata items. No question from this phase is left loose.
