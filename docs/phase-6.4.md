@@ -1,0 +1,322 @@
+# Phase 6.4 — UI reorganisation: panel headers, settings popup, per-panel state
+
+Read `architecture.md` ("The end user is an artist"; "Per-scope display modes";
+"Analysis path selection"; "UI terminology"; "Settings ownership is per panel"),
+`phase-6.1.md` (tab toolbar, settings/persistence, status line, minimum-panel-size
+hint), `phase-6.2.md` (Amendments — the permanent hue ring, the separate skin tone
+toggle, the marker selector), and `phase-6.3.md` (Trace Brightness, Histogram
+Gain, the logarithmic slider law).
+
+*(Work order 16 named this file `phase-6_4.md`; the repository's existing files are
+`phase-6.1.md` … `phase-6.3.md`, so it is written under the repository's own
+convention. Same for the `phase-6_1.md`-style references above.)*
+
+M6 is split. M6.1 delivered the foundation, M6.2 the scope features, M6.3 the
+appearance calibration. **This is M6.4 — UI reorganisation.** Nothing about what
+is measured changes; this phase changes only *where the user reaches it*.
+
+The starting point is a diagnosis by the human: the main bar had grown into a flat
+row mixing global options with per-scope options, with several Trace Brightness
+sliders whose ownership was not visible ("which slider belongs to which scope?"),
+and the analysis path appeared twice — in the main bar and again in every scope's
+right-click menu. The fix is a two-level structure: TrueScope-wide options behind
+one gear in the main bar, per-panel options in a header on the panel itself.
+
+**Discoverability is why the header exists and not just a right-click menu.**
+M6.1 Task 2 deliberately pulled options *out* of right-click menus for the
+"end user is an artist" constraint. Moving them back into right-click alone would
+have made the plugin harder to operate than before this phase. The panel header is
+what keeps that constraint satisfied while emptying the main bar.
+
+## Terminology (adopted project-wide)
+
+| Term | Meaning |
+|---|---|
+| main bar | always-visible row at the top of the TrueScope tab, above all panels |
+| settings popup | menu opened by the gear at the right of the main bar; TrueScope-wide options |
+| panel | one scope area in the tab (four, fixed 2×2 in this phase) |
+| panel header | always-visible row at the top of each panel |
+| panel menu | menu opened from the panel header; options for that one panel |
+| scope canvas | the drawing surface itself |
+
+## Icons
+
+All three engine icons are referenced **by their `FAppStyle` style name**, never by
+file path, and are never copied into this repository — a style name is stable
+across engine layout changes and raises no licensing question.
+
+| Use | Engine SVG | Resolved style name |
+|---|---|---|
+| main bar gear | `Starship/Common/settings.svg` | `Icons.Settings` (16×16) |
+| panel header menu button | `Starship/Common/menu.svg` | *no standalone style name in UE 5.8* — reached as `FAppStyle::Get().GetWidgetStyle<FToolBarStyle>("SlimToolBar").WrapButtonStyle.ExpandBrush` |
+| Reset to default | `Starship/Common/ResetToDefault.svg` | `PropertyWindow.DiffersFromDefault` (16×16) |
+
+The plugin's own window/tab icon **is** in the repository:
+`Resources/Icons/TrueScope_Icon_mono.svg`, 16×16 viewBox, a filled 2 px ring plus
+a "T", drawn for legibility at 16–20 px. Its hole is formed by opposite path
+winding, so it renders correctly under either fill rule.
+
+## Task 0 — Engine source research
+
+**0.1 Style names** — as in the icon table above.
+`Icons.Settings` is registered in `StarshipCoreStyle.cpp:337` (a 20×20 alternate
+`Icons.Toolbar.Settings` sits at :432); `PropertyWindow.DiffersFromDefault` in
+`StarshipStyle.cpp:3655`. `menu.svg` has **no** standalone `FAppStyle` name in
+UE 5.8: outside toolbar styles it is only registered in other plugins' private
+style sets (ControlRigEditor, TraceInsights), which `FAppStyle` cannot reach, so
+the `SlimToolBar` wrap-button brush (`StarshipCoreStyle.cpp:2395/2460`) is the
+only route that keeps the "style name, no file copy" rule. Treated as an
+implementation detail under Rule 3, not a decision-level surprise.
+
+**0.2 SVG rasterizer and `width="100%"`** — measured with a compiled probe against
+the engine's own vendored nanosvg:
+
+```
+numeric 16x16        image 16.000 × 16.000   bounds (2.00 2.00 14.00 14.00)
+percent + viewBox    image 16.000 × 16.000   bounds (2.00 2.00 14.00 14.00)
+percent, NO viewBox  image 12.000 × 12.000   bounds (0.00 0.00 12.00 12.00)
+```
+
+A percentage resolves against a zero length → 0, and `nsvg__scaleToViewbox` then
+substitutes the viewBox. So `width="100%" height="100%"` **with** a viewBox is
+equivalent to numeric values; **without** one it collapses to the path bounding
+box. The 14 layout icons therefore need no editing as long as they keep their
+16×16 viewBox (recorded in `backlog.md`).
+
+**0.3 Header pattern** — `SDetailsView`'s filter-row "View Options" button
+(`Editor/PropertyEditor/Private/SDetailsView.cpp` ~370–395): an `SComboButton`
+with `.HasDownArrow(false) .ContentPadding(0.0f)
+.ForegroundColor(FSlateColor::UseForeground()) .ButtonStyle(FAppStyle::Get(),
+"SimpleButton")`, carrying just an `SImage`. Both the panel-header menu button and
+the main-bar gear follow it.
+
+**0.4 Settings-array shape** — `UPROPERTY(config) TArray<FTrueScopePanelState>
+PanelStates;` in the M6.1 settings class (`config = EditorPerProjectUserSettings`),
+with a `USTRUCT()` whose members are individually `UPROPERTY(config)`. Confirmed
+against engine precedent, closest `FAssetEditorOptions`/`FViewportConfigOptions`
+in `PersonaOptions.h:43,82` — also per-user config, also per-viewport-index state.
+
+**Side findings.** Task 5's rate set matches the human's UI notes exactly —
+`MeasurementRatesHz[] = {1.0f, 2.5f, 5.0f}` (`Capture/TrueScopeViewExtension.h:42`),
+no discrepancy to report. And no Slate style set existed yet, so Task 1 created
+`FTrueScopeStyle` from scratch.
+
+## Task 1 — Style set and the TrueScope window icon
+
+`FTrueScopeStyle` with its content root resolved through `IPluginManager` (no
+hardcoded path), registering `Resources/Icons/TrueScope_Icon_mono.svg` as a 16×16
+vector brush named `TrueScope.TabIcon`, set on the tab spawner so it appears in
+the Window menu entry and in the tab itself. `Resources/Icon128.png` unchanged.
+
+- [x] Style set torn down cleanly on module shutdown; no missing-Slate-resource
+      log lines from TrueScope, no new warnings.
+- [ ] Icon visible in the Window menu entry and in the tab — **human eye check
+      outstanding** (see "Visual acceptance" below).
+
+## Task 2 — Settings ownership: per scope type → per panel
+
+`FTrueScopePanelState` holds the panel's scope type (stored although fixed today),
+display mode, Trace Brightness, Histogram Gain, vectorscope zoom, marker selection
+and skin tone toggle; four of them live in `PanelStates`, keyed by panel index,
+defaulting to today's 2×2 arrangement read from the code. Analysis path and
+capture rate stay global. **No migration code:** previously persisted per-type
+values are dropped, and because the compiled defaults are the M6.3 calibrated
+values, the one-time reset lands on correct values.
+
+- [x] Four independent panel states persist across an editor restart.
+- [x] Analysis path and capture rate remain single global values.
+- [x] `TrueScope.UI.PanelStateIndependence` pins that two panel states are
+      independent — teeth-proven (perturbed, seen to fail, reverted).
+- [x] Bin-equivalence tests green, values unchanged.
+
+## Task 3 — Panel header
+
+`STrueScopePanel`: an `SBorder` (`Brushes.Header`) above the scope canvas in a
+`SVerticalBox`, so the canvas keeps its full remaining area rather than being
+drawn under an overlay. Left, the scope type as static `SmallText`; right, the
+menu button in the Task 0.3 pattern.
+
+- [x] All four panels build a header carrying the correct type name and a menu
+      button (`TrueScope.UI.PanelMenuContents` reads the real widget tree).
+- [x] The vectorscope's aspect-locked policy is unchanged; it now squares against
+      the canvas rather than the panel.
+- [ ] Clicking the button opens the panel menu — **human click outstanding**
+      (MCP cannot open Slate popup menus).
+
+## Task 4 — Panel menu, and emptying the main bar
+
+Menu contents exactly as work order 16's table, `Both` renamed to **`75% + 100%`**,
+`Show Skin Tone Line` last in the `Markers` section, the parade menu deliberately
+thin. Sliders keep the M6.3 law unchanged. The scope-canvas right-click menu
+survives as a temporary second entry point and calls the *same* builder
+(`STrueScopeWidget::BuildPanelMenu`), so the two cannot drift apart.
+
+- [x] Each panel menu contains exactly the specified rows and nothing else
+      (`TrueScope.UI.PanelMenuContents`, walking the built menu widget).
+- [x] Right-click menu and panel menu are the same content — one builder, pinned
+      by test.
+- [x] The main bar contains no per-scope control any more.
+- [ ] Every moved control still works and still persists — **human clicks
+      outstanding**.
+
+## Task 5 — Main bar settings popup
+
+A right-aligned gear (`Icons.Settings`) opens the settings popup with exactly two
+sections: `Analysis Path (All Scopes)` — `GPU (performance)` / `CPU
+(compatibility)` — and `Capture Rate` — 1 Hz / 2.5 Hz / 5 Hz from
+`MeasurementRatesHz`. The analysis-path control is gone from the main bar and the
+`Analysis Path (All Scopes)` section from every scope's right-click menu, so the
+path is reachable from exactly one place in the UI; the diagnostic CVar still
+exists and still stays in sync.
+
+- [x] Popup shows the two sections and nothing else
+      (`TrueScope.UI.SettingsPopupContents`). The rate labels are pinned as the
+      rate *set* plus the "Hz" suffix, not the decimal separator — `FText::AsNumber`
+      is culture-aware and prints `2,5 Hz` on this machine's German locale.
+- [x] The popup's radio state follows the **effective** path in both directions
+      (`TrueScope.UI.SettingsPopupEffectivePath`, driving the CVar) — teeth-proven.
+- [x] No analysis-path or capture-rate control remains anywhere else in the UI.
+- [ ] Gear right-aligned, both settings survive a restart — **human eye/click
+      outstanding**.
+
+## Task 6 — Reset to default
+
+Last entry of every panel menu, with `PropertyWindow.DiffersFromDefault`. It resets
+only that panel's own display options, reading them from the single central source
+(`TrueScope::MakeDefaultPanelState` via `UTrueScopeSettings::ResetPanelToDefaults`)
+rather than from constants at the call site, so the next phase's Tweakables menu
+can move those defaults without the reset fighting it. No confirmation dialog, and
+always enabled. The M6.3 double-click reset on an individual slider stays: one
+resets a slider, the other the panel.
+
+- [x] Entry present and last in all four panel menus, with the icon.
+- [x] `TrueScope.UI.PanelResetToDefault` pins that it resets exactly that panel
+      and leaves the neighbour panel and the global settings untouched —
+      teeth-proven (dropped the re-read and renamed the entry; both tests failed).
+- [x] Default values come from one source (`MakeDefaultPanelState`).
+
+## Task 7 — Three display fixes
+
+All four scopes now share a **black** background. The near-black grey (0.008) they
+shared before was invisible behind the waveform's and parade's *opaque* trace
+rasters and visible behind the vectorscope's and histogram's *transparent* ones —
+so two scopes read as black and two as dark grey although the code drawing the
+background was already shared. Measured on a retina screenshot before the change:
+background (28, 28, 28) everywhere, waveform/parade plot interior (0, 0, 0).
+
+The histogram now labels the same nine levels as waveform and parade —
+0, 128, 256, 384, 512, 640, 768, 896, 1023 — instead of only the quarters, using
+the same font, colour and placement helper (`DrawValueAxisX`, unchanged apart from
+the level list).
+
+- [x] `TrueScope.UI.ValueScale` asserts the histogram's levels equal the waveform's
+      element by element.
+- [ ] All four backgrounds black, numbers aligned to the ticks — **human eye
+      outstanding**.
+
+## Task 8 — Minimum-panel-size hint
+
+The M6.1 thresholds were `MinReadableScopeWidth = 180`, `MinReadableScopeHeight =
+120`, with **no recorded origin anywhere** — neither in code nor in `phase-6.1.md`.
+The mechanism was already right: the scope widget is a sibling of the header in a
+`SVerticalBox`, not an overlay, so it is handed the canvas and the check was
+already canvas-level. What was missing was the derivation, which is what this task
+supplies.
+
+**The two measured inputs.**
+
+- **Label line height = 13.0 px** — `GetMaxCharacterHeight` of the value-axis label
+  font (`FCoreStyle::GetDefaultFontStyle("Regular", 8)`), measured through
+  `FSlateFontMeasure` at DPI scale 1. The widest label the axis ever draws,
+  `"1023"`, measures **24.0 × 13.0 px**.
+- **Panel header height = 20.0 px** — measured by laying out a real
+  `STrueScopePanel` and reading the header row's desired height: a 16 px icon
+  inside the `SimpleButton` style's 1 px vertical padding
+  (`StarshipCoreStyle.cpp`, `SimpleButtonIconOnly`) inside the header's own 1 px
+  padding. A retina screenshot of the tab agrees to within one device row. A 2×2
+  grid therefore spends **40 px of panel height on headers**, matching the work
+  order's "roughly 40 px".
+
+**The rule.** The threshold is the size at which the nine value-axis labels stop
+colliding, taken as the worst case over the scopes — the labels are the first
+thing to become unreadable, and they are what the fixed chrome exists for.
+
+- **Width — 204 px, driven by the histogram**, the only scope whose value axis runs
+  along X. Nine labels centred on their levels need at least one label width per
+  gap: 8 × 24 = 192 px of plot, plus the histogram's horizontal chrome
+  (2 × `PlotPadding` = 12) → **204**.
+- **Height — 116 px, driven by waveform and parade**, whose labels stack along Y:
+  8 × 13 = 104 px of plot, plus their vertical chrome (2 × `PlotPadding` = 12) →
+  **116**. (Their left label strip is a width cost, not a height one, and the
+  histogram's count axis carries no labels.)
+
+Against the old numbers: the width threshold **rises** from 180 to 204 — a
+consequence of Task 7, since the histogram had four labels along X before and now
+has nine — and the height threshold **falls** from 120 to 116.
+
+**Canvas vs. panel.** Those are canvas thresholds. The panel that contains the
+canvas must additionally afford its header, so `MinReadablePanelWidth = 204` and
+`MinReadablePanelHeight = 116 + 20 = 136`. Nothing enforces the panel figure today
+(the 2×2 grid has no per-panel minimum); it is recorded because a docking or
+layout minimum is what the layout system will need, and it is the number that
+answers "how small may the *panel* get", which is what the user actually drags.
+
+The vectorscope still reaches the threshold first: it is aspect-locked, so its
+content rect is the largest centred square and a wide flat panel shrinks it on
+both axes — and its square has to clear the *width* threshold (204) even though it
+draws no value-axis labels of its own.
+
+- [x] The old thresholds are gone from the code; `IsTooSmallToRead` takes a canvas
+      size and compares against the derived constants.
+- [x] `TrueScope.UI.PanelSizeHint` re-measures both font metrics and lays out a
+      real panel to re-measure the header, then asserts the constants still equal
+      what the derivation produces — so a derived number cannot silently rot into
+      a chosen one. Teeth-proven: width put back to 180 and header to 20.5, both
+      assertions failed, reverted.
+- [ ] Hint triggers at the corrected size on both RHIs — the rule is
+      RHI-independent (pure geometry, no render path involved) and is covered
+      headless; **the on-screen check by dragging a panel small is outstanding**.
+
+## Verification summary
+
+**Test counts.** 40 at the close of M6.3 → **46** after Task 8, all green
+(`-nullrhi`, editor closed for every run). Per task: +1 Task 2, +2 Task 4,
++2 Task 5, +1 Task 6; Task 7 and Task 8 extended existing tests instead of adding
+new ones. 46 is the stale-code tripwire from here on.
+
+**What is automated vs. human.** Everything that is a fact about the widget tree,
+the menu contents, the settings store or the derivation is automated — the panel
+menus and the settings popup are read out of the *built* menu widgets, not
+described in a comment. What remains human is everything requiring a click on a
+Slate popup or a judgement by eye: the icons, the gear's alignment, the black
+backgrounds, the histogram numbers, and that each moved control still does what it
+says. MCP cannot open Slate popup menus (now recorded in `dev-rules.md`).
+
+**MCP access path.** Direct HTTP to the running editor's MCP server (the permitted
+fallback in `dev-rules.md`), because the `unreal-mcp` skill harness was
+unavailable in this session.
+
+**Commits.** `a87cd70` (Task 1), `d063498` (Task 2), `2aadcee` (Task 3),
+`2abeede` (Task 4), `acc08b6` (Task 5), `303594d` (Task 6), `23cc238` (Task 7),
+`846ac1d` (Task 8), plus the closing documentation commit.
+
+## Deliberately out of scope
+
+- **Scope-type switcher in the panel header.** The header shows a static type
+  name. Free per-panel type selection arrives with the layout system (backlog),
+  which is where the design question actually lives.
+- **Layout selection menu.** 14 layout icons exist and have been checked, but the
+  feature they front — variable panel count and arrangement — is a separate
+  feature, and a first release does not need it. Backlog.
+- **Migration of previously persisted per-type settings.** Dropped on purpose;
+  the compiled defaults are the M6.3 calibrated values, so the one-time reset
+  lands on correct values.
+- **Greying out "Reset to default" when nothing deviates.** Considered, rejected
+  by the human as unnecessary visual noise.
+
+## Status
+
+Code complete and green at 46/46. **Open: the visual acceptance session** — the
+boxes left unticked above are the ones needing a human click on a Slate popup or a
+human eye, and they are collected rather than scattered so they can be walked
+through in one sitting.

@@ -25,7 +25,8 @@ Unreal Editor.
      (proper display name + tooltip via `LOCTEXT`, menu group: the standard
      editor Tools/Window category so it appears under **Window → TrueScope**),
    - unregister cleanly in `ShutdownModule`.
-3. Tab content widget `STrueScopePanel`:
+3. Tab content widget `STrueScopePanel` *(renamed `STrueScopeTab` in M6.4, which
+   reused the old name for the per-panel widget)*:
    - 2×2 layout built from nested `SSplitter`s,
    - four placeholder panels labeled **Waveform**, **Parade**, **Vectorscope**,
      **Histogram** (centered `STextBlock` on a dark background is enough).

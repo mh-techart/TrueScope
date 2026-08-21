@@ -34,7 +34,9 @@ without the plugin).
 
 **Resolved 2026-07-12 (M5 Task 5):** capture is now gated on the TrueScope
 panel actually painting (`FTrueScopeCaptureGate`, reported from
-`STrueScopePanel::OnPaint`, checked in `IsActiveThisFrame_Internal`). Paint is
+`STrueScopeTab::OnPaint` — named `STrueScopePanel` until M6.4 renamed the tab
+root and gave the name to the per-panel widget — checked in
+`IsActiveThisFrame_Internal`). Paint is
 the truthful "visible and drawn" signal: a closed tab, a tab hidden behind
 another docked tab and a minimized floating window all stop painting, so
 capture (and with it readback/analysis on either path) stops entirely;
@@ -157,11 +159,18 @@ mechanism rather than leaving stale traces.
   transforms such as P3 or PQ). V1 is deliberately display-referred
   sRGB/Rec.709 only (see architecture.md).
 - **Toolbar button** to open the TrueScope tab (V1: Window menu only).
-- **Plugin icon + tab icon (assets now available, 2026-07-20)** — the human has
-  provided a **logo (PNG)** and an **icon (SVG)** for the project. Integrate: the
-  Plugin Browser icon (`Resources/Icon128.png`, clears the missing-Slate-resource
-  log line), the Window-menu tab icon (reuse), and optionally the toolbar button
-  (item below). Not phase-critical; good pre-release polish.
+- **"Reset to default" for the settings popup** — M6.4 gave every panel menu a
+  reset. The global options (analysis path, capture rate) have none. Low value
+  while there are only two of them; revisit if the popup grows.
+- **Plugin icon + tab icon (assets available 2026-07-20; tab/window part resolved
+  in M6.4, 2026-08-21)** — the human provided a **logo (PNG)** and an **icon
+  (SVG)**. `Resources/Icon128.png` (Plugin Browser icon, which cleared the
+  missing-Slate-resource log line) was already in place; M6.4 Task 1 added the
+  plugin's Slate style set and registered
+  `Resources/Icons/TrueScope_Icon_mono.svg` as the 16×16 brush
+  `TrueScope.TabIcon`, shown in the Window-menu entry and on the tab itself.
+  **Still open:** the main-toolbar button (separate item above), which would reuse
+  the same brush.
 - **Higher refresh rates / per-frame mode** — trivial once the GPU path (M5)
   exists; expose as a setting with a resource-use warning.
 - **Smooth scope drawing via interpolation (decoupled draw rate)** — the
@@ -654,7 +663,53 @@ self-check:
 All candidates for the M4 per-scope display-mode mechanism plus a "Show Guides"
 toggle.
 
+## [planned] Panel layout system and per-panel scope-type switcher
+
+The two belong together and were deliberately split out of M6.4, which built the
+container (the panel header) but not the feature.
+
+- **Per-panel scope-type switcher.** The panel header's static type name becomes a
+  dropdown; each panel picks its scope type independently. Showing the same type
+  in two panels is **explicitly allowed** — a user may want two waveforms at
+  different Trace Brightness settings. The prerequisite is already done: settings
+  ownership is per panel (M6.4, see architecture.md).
+- **Layout selection.** A layout button in the main bar opens a 4×4 icon grid of
+  14 layouts: single; 1+1 and 1-left/1-right; 2×2; 2+1 and 1+2 in both
+  orientations; 3+1 and 1+3 in both orientations; 1×3; 1×4. Two of the sixteen
+  cells stay empty, and the last row's two icons are left-aligned, not centred.
+- **Assets are ready and checked (2026-08-21).** Fourteen SVGs exist outside the
+  repository (`Layout_one`, `Layout_1_top-1_bottom`, `Layout_1_left-1_right`,
+  `Layout_2x2`, `Layout_2_top-1_bottom`, `Layout_1_top-2_bottom`,
+  `Layout_2_left-1_right`, `Layout_1_left-2_right`, `Layout_3_top-1_bottom`,
+  `Layout_1_top-3_bottom`, `Layout_3_left-1_right`, `Layout_1_left-3_right`,
+  `Layout_1x3`, `Layout_1x4`). Reviewed in the planning layer: paths only — no
+  text, filters, masks, gradients, CSS classes or embedded images; 16×16 viewBox;
+  white fill (so a Slate tint multiplies correctly); every cut-out uses opposite
+  path winding, so the holes render correctly under either fill rule and
+  `fill-rule` needs no editing; each filename matches the geometry its transform
+  actually produces (verified by recomputing the rotation matrices). The one open
+  point was that they declare `width="100%" height="100%"` rather than numeric
+  values — **answered in M6.4 Task 0 and no longer open: they need no editing.**
+  Measured against the engine's own vendored nanosvg: a percentage length resolves
+  against a zero reference length → 0, and `nsvg__scaleToViewbox` then substitutes
+  the viewBox, so `width="100%" height="100%"` *with* a viewBox rasterises
+  identically to numeric `width="16" height="16"` (16.000 × 16.000, same path
+  bounds). Without a viewBox it collapses to the path bounding box instead — so
+  the only requirement is that each file keeps its 16×16 viewBox. Copy them to
+  `Resources/Icons/Layouts/` when this phase starts, not before, so unused assets
+  are not shipped.
+- **Deliberately after the first release.** The MVP does not need it, and the real
+  work is not the icons but panel count, arrangement, persistence and the
+  scope-type assignment. The per-scope space-usage policy that makes free
+  arrangement safe (responsive scopes fill their panel, the vectorscope stays
+  circular) is already settled in architecture.md.
+- **Removes the temporary duplicate:** when the switcher lands, the scope-canvas
+  right-click menu goes away; the panel menu becomes the single entry point.
+
 ## Window layout options (post-M6 feature)
+
+*Scope now lives in the section above (added M6.4, 2026-08-21); this older item is
+kept for its Final Cut Pro / Resolve reference detail.*
 
 Let the user choose how many scopes are shown and how they are arranged in the
 TrueScope tab — modeled on Final Cut Pro's scopes viewer (the richer, cleaner

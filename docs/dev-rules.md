@@ -183,6 +183,13 @@ it as follows:
 - **Visual verification is part of done:** after UI-affecting changes, launch
   the editor, take a screenshot of the TrueScope tab via MCP, and inspect it
   before declaring a task complete.
+- **MCP cannot open Slate popup menus** — neither right-click context menus nor
+  menus opened from a combo/menu button. MCP can verify that the button exists
+  and screenshot the result of a change, but not perform the click that opens the
+  menu. Where a control lives only behind such a menu, **pause and ask the human
+  to click** (approved) and state in the report which checks were human-verified.
+  Related: some Slate controls report success and do nothing (camera dropdown,
+  show-flag checkboxes) — drive those by keyboard instead.
 - **Some Slate controls accept a click and change nothing.** `Click` on the viewport
   camera-dropdown rows and on the show-flag checkboxes returns **true** while having no
   effect, so a verification built on them passes without testing anything. Where this
