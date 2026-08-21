@@ -66,7 +66,7 @@ public:
 
 	/**
 	 * The path actually running, i.e. after the diagnostic CVar override — what
-	 * the toolbar and the status line must show, since that is what produced the
+	 * the settings popup and the status line must show, since that is what produced the
 	 * numbers on screen.
 	 */
 	bool GetEffectiveUseGpuAnalysis() const;

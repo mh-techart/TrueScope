@@ -7,7 +7,7 @@
 #include "Widgets/Input/SSlider.h"
 
 /**
- * The gain slider used by the toolbar (M6.3): a plain SSlider in slider-POSITION
+ * The gain slider used by the panel menu (M6.3): a plain SSlider in slider-POSITION
  * space [0,1], plus the three behaviours the phase spec asks for and SSlider
  * does not provide.
  *
@@ -24,7 +24,7 @@
  *    The scale marks stay the only numbers on a scope.
  *
  * The position -> gain mapping itself is NOT here: it lives in
- * TrueScope::SliderPositionToGain so both the toolbar and the tests use one
+ * TrueScope::SliderPositionToGain so both the menu and the tests use one
  * definition of the law.
  */
 class STrueScopeGainSlider : public SSlider
@@ -41,7 +41,7 @@ public:
 		/** Called with the (already centre-snapped) position while dragging. */
 		SLATE_EVENT(FOnFloatValueChanged, OnValueChanged)
 
-		/** Called on double-click; the toolbar restores the default gain. */
+		/** Called on double-click; the panel menu restores the default gain. */
 		SLATE_EVENT(FSimpleDelegate, OnResetRequested)
 
 	SLATE_END_ARGS()

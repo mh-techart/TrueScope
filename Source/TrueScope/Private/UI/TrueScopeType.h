@@ -25,7 +25,7 @@ enum class ETrueScopeType : uint8
 
 namespace TrueScope
 {
-	/** Display name for a scope type (toolbar labels, later the layout dropdown). */
+	/** Display name for a scope type (panel header labels, later the layout dropdown). */
 	FText GetScopeTypeDisplayName(ETrueScopeType Type);
 
 	/**
@@ -44,7 +44,7 @@ namespace TrueScope
 	 * that is what its persisted options are keyed by.
 	 *
 	 * OutScopeWidget, if given, receives the scope widget itself — the tab's
-	 * toolbar (phase-6.1 Task 2) drives the scopes' display modes through it,
+	 * panel menu (M6.4) drives the scopes' display modes through it,
 	 * and a placeholder type simply leaves it null.
 	 */
 	TSharedRef<SWidget> MakeScopeWidget(ETrueScopeType Type,

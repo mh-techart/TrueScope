@@ -1,8 +1,11 @@
 // Copyright 2026 TrueScope contributors
 // SPDX-License-Identifier: Apache-2.0
 
+#include "Capture/TrueScopeViewExtension.h"
 #include "Misc/AutomationTest.h"
+#include "TrueScopeModule.h"
 #include "UI/STrueScopeHistogram.h"
+#include "UI/STrueScopeMainBar.h"
 #include "UI/STrueScopePanel.h"
 #include "UI/STrueScopeParade.h"
 #include "UI/STrueScopeVectorscope.h"
@@ -13,13 +16,13 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * M6.4 Task 4: what each panel menu offers.
+ * M6.4 Tasks 4-5: what each panel menu offers, and what the settings popup does.
  *
  * The menu is the only place a panel's options live now, so "the vectorscope's
  * markers ended up in the histogram's menu" is a shipping bug rather than a
  * cosmetic one — and it is invisible to every other test, which drives the
  * scopes through their programmatic API rather than through the menu. This
- * builds the real menu widget and reads the rows off the built Slate tree.
+ * builds the real menu widgets and reads the rows off the built Slate tree.
  */
 
 namespace
@@ -162,6 +165,84 @@ bool FTrueScopePanelMenuEntryPointsTest::RunTest(const FString&)
 		Describe(FromHeader), Describe(FromCanvas));
 	TestTrue(TEXT("...and that list is not empty"), FromHeader.Num() > 0);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeSettingsPopupContentsTest,
+	"TrueScope.UI.SettingsPopupContents",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeSettingsPopupContentsTest::RunTest(const FString&)
+{
+	// M6.4 Task 5: the settings popup holds the two options that belong to no
+	// single panel, and nothing else. "Nothing else" is the half that rots — a
+	// per-scope control added here would be invisible to every other test, and
+	// would reintroduce exactly the crowded main bar this phase removed.
+	TSharedRef<STrueScopeMainBar> MainBar = SNew(STrueScopeMainBar);
+	const TArray<FString> Ignored = {TEXT("TrueScopeAnalysisPath"), TEXT("TrueScopeCaptureRate")};
+	const TArray<FString> Rows = CollectMenuRows(MainBar->BuildSettingsMenu(), Ignored);
+
+	TArray<FString> Expected = {
+		TEXT("ANALYSIS PATH (ALL SCOPES)"), TEXT("GPU (performance)"), TEXT("CPU (compatibility)"),
+		TEXT("CAPTURE RATE")};
+	// The rates are read from the capture side's shortlist rather than re-listed,
+	// so this pins "the popup offers exactly the implemented rates", not a copy
+	// of them that can drift.
+	for (float RateHz : TrueScope::MeasurementRatesHz)
+	{
+		// Culture-aware, like the popup itself: on a German locale the row reads
+		// "2,5 Hz", and a "%g"-formatted expectation failed here for that reason
+		// alone. What is pinned is the rate SET and the "Hz" suffix, not the
+		// decimal separator.
+		Expected.Add(FText::Format(NSLOCTEXT("TrueScopeMenuTest", "RateFormat", "{0} Hz"),
+			FText::AsNumber(RateHz, &FNumberFormattingOptions()
+				.SetMinimumFractionalDigits(0)
+				.SetMaximumFractionalDigits(1))).ToString());
+	}
+
+	TestEqual(TEXT("Settings popup rows"), Describe(Rows), Describe(Expected));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeSettingsPopupEffectivePathTest,
+	"TrueScope.UI.SettingsPopupEffectivePath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeSettingsPopupEffectivePathTest::RunTest(const FString&)
+{
+	// The popup must show the path that actually produced the numbers on screen,
+	// so a diagnostic TrueScope.AnalysisPath override moves the radio dot. The
+	// old main-bar buttons read the same function; this pins that the popup that
+	// replaced them did not quietly switch to the remembered UI choice.
+	IConsoleVariable* PathOverride =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("TrueScope.AnalysisPath"));
+	if (!TestNotNull(TEXT("The diagnostic CVar exists"), PathOverride))
+	{
+		return false;
+	}
+
+	TSharedRef<STrueScopeMainBar> MainBar = SNew(STrueScopeMainBar);
+	const int32 SavedOverride = PathOverride->GetInt();
+
+	PathOverride->Set(1, ECVF_SetByCode);
+	if (!FTrueScopeModule::Get().GetEffectiveUseGpuAnalysis())
+	{
+		// No live view extension (commandlet/-nullrhi without the capture side):
+		// the effective path cannot be moved, so there is nothing to compare.
+		AddInfo(TEXT("Skipped: no live view extension, so the effective path cannot be driven here."));
+		PathOverride->Set(SavedOverride, ECVF_SetByCode);
+		return true;
+	}
+
+	TestTrue(TEXT("Override to GPU selects the GPU entry"), MainBar->IsAnalysisPathSelected(true));
+	TestFalse(TEXT("Override to GPU deselects the CPU entry"), MainBar->IsAnalysisPathSelected(false));
+
+	PathOverride->Set(0, ECVF_SetByCode);
+	TestTrue(TEXT("Override to CPU selects the CPU entry"), MainBar->IsAnalysisPathSelected(false));
+	TestFalse(TEXT("Override to CPU deselects the GPU entry"), MainBar->IsAnalysisPathSelected(true));
+
+	PathOverride->Set(SavedOverride, ECVF_SetByCode);
 	return true;
 }
 

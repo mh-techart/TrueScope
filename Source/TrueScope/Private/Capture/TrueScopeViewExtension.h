@@ -34,7 +34,7 @@ namespace TrueScope
 	constexpr double DefaultCaptureIntervalSeconds = 0.4;
 
 	/**
-	 * Measurement rates the tab's toolbar offers (phase-6.1 Task 2). Deliberately
+	 * Measurement rates the settings popup offers (phase-6.1 Task 2). Deliberately
 	 * a short list of useful cadences, not a free slider: the artist picks
 	 * "slower / normal / faster", and the adaptive rate that would make the choice
 	 * automatic is backlog. 2.5 Hz is the shipped default.

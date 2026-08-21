@@ -8,7 +8,7 @@
 #include "TrueScopeSettings.h"
 #include "UI/STrueScopePanel.h"
 #include "UI/STrueScopeStatusLine.h"
-#include "UI/STrueScopeToolbar.h"
+#include "UI/STrueScopeMainBar.h"
 #include "UI/TrueScopeType.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SBoxPanel.h"
@@ -42,7 +42,7 @@ void STrueScopeTab::Construct(const FArguments& InArgs)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
-			SNew(STrueScopeToolbar)
+			SNew(STrueScopeMainBar)
 		]
 
 		+ SVerticalBox::Slot()

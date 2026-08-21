@@ -65,7 +65,7 @@ bool FTrueScopeGainSliderLawTest::RunTest(const FString&)
 			Ratio, 2.0f, 1e-4f);
 	}
 
-	// The inverse round-trips, so the toolbar can place the handle from a
+	// The inverse round-trips, so the menu can place the handle from a
 	// stored gain without a second copy of the law.
 	for (float Position = 0.0f; Position <= 1.0f + 1e-4f; Position += 0.125f)
 	{

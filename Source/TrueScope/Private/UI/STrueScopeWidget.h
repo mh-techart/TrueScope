@@ -30,8 +30,8 @@ struct FTrueScopeDisplayMode
 /**
  * One on/off display option of a scope (phase-6.2) — independent of the
  * radio-style display modes, e.g. the vectorscope's "Show Skin Tone Line".
- * Like the modes, toggles surface in both the right-click menu and the
- * toolbar and are persisted per scope.
+ * Like the modes, toggles surface in both the panel menu and the
+ * right-click menu, and are persisted per panel.
  */
 struct FTrueScopeToggleOption
 {
@@ -55,8 +55,8 @@ struct FTrueScopeToggleOption
  * A secondary radio group of a scope (work order 15) — a mutually exclusive
  * choice that is NOT the scope's display mode, e.g. the vectorscope's marker
  * selection (75 % / 100 % / Both) or, later, the histogram gain. Surfaces in
- * the toolbar and the right-click menu like the display modes; persisted per
- * scope under the group's stable key.
+ * the panel menu and the right-click menu like the display modes; persisted per
+ * panel under the group's stable key.
  */
 struct FTrueScopeOptionGroup
 {
@@ -165,10 +165,10 @@ public:
 
 	/**
 	 * Display variants this scope offers; empty (default) means none. Public
-	 * since phase-6.1: the tab's toolbar builds a visible control per scope from
-	 * these, so the modes are reachable without the right-click menu ("the end
-	 * user is an artist"). Menu and toolbar drive the same state, so a scope
-	 * that adds a mode gains it in both places at once.
+	 * since phase-6.1: the panel menu builds a visible control per scope from
+	 * these, so the modes are reachable one click from the scope they change
+	 * ("the end user is an artist"). Panel menu and right-click menu are the
+	 * same built menu, so a scope that adds a mode gains it in both at once.
 	 */
 	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const
 	{
@@ -192,13 +192,13 @@ public:
 
 	/**
 	 * Switch display mode, repaint, and remember the choice across restarts —
-	 * the one entry point the right-click menu and the toolbar share.
+	 * the one entry point the panel menu and the right-click menu share.
 	 */
 	void ApplyDisplayMode(int32 ModeId);
 
 	/**
 	 * On/off display options this scope offers (phase-6.2); empty (default)
-	 * means none. Surfaced in the toolbar and the right-click menu exactly like
+	 * means none. Surfaced in the panel menu and the right-click menu exactly like
 	 * the display modes, so a scope that adds a toggle gains it in both places.
 	 */
 	virtual TArrayView<const FTrueScopeToggleOption> GetToggleOptions() const
@@ -214,7 +214,7 @@ public:
 
 	/**
 	 * Flip a toggle option, repaint, and remember the choice across restarts —
-	 * the shared entry point of menu and toolbar (mirror of ApplyDisplayMode).
+	 * the shared entry point of both menus (mirror of ApplyDisplayMode).
 	 */
 	void ApplyToggleOption(FName Key, bool bValue);
 
@@ -230,7 +230,7 @@ public:
 		return 0;
 	}
 
-	/** Select a group option, repaint, persist — shared by menu and toolbar. */
+	/** Select a group option, repaint, persist — shared by both menus. */
 	void ApplyOptionGroup(FName Key, int32 ValueId);
 
 	/**
