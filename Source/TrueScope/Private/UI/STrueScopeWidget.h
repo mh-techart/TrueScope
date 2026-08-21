@@ -258,6 +258,15 @@ public:
 		return PanelIndex;
 	}
 
+	/**
+	 * The panel menu of the panel this scope sits in (M6.4 Task 4) — the ONE
+	 * builder behind both entry points: the panel header's menu button and the
+	 * scope canvas's right-click menu. They cannot offer different options
+	 * because there is nothing else to build them from. The right-click menu is
+	 * a temporary second entry point and goes away with the type switcher.
+	 */
+	TSharedRef<SWidget> BuildPanelMenu();
+
 	/** Test seam: inject a result as if the analyzer had published it. */
 	void SetCachedResultForTesting(const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& InResult)
 	{
@@ -349,7 +358,6 @@ private:
 		return true;
 	}
 
-	TSharedRef<SWidget> BuildContextMenu();
 	bool IsDisplayModeActive(int32 ModeId) const;
 	void HandleFlipToggleOption(FName Key);
 	bool IsToggleOptionChecked(FName Key) const;

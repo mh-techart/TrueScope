@@ -278,13 +278,13 @@ FReply STrueScopeWidget::OnMouseButtonUp(const FGeometry& MyGeometry, const FPoi
 	}
 
 	const FWidgetPath OwnerPath = MouseEvent.GetEventPath() != nullptr ? *MouseEvent.GetEventPath() : FWidgetPath();
-	FSlateApplication::Get().PushMenu(AsShared(), OwnerPath, BuildContextMenu(),
+	FSlateApplication::Get().PushMenu(AsShared(), OwnerPath, BuildPanelMenu(),
 		MouseEvent.GetScreenSpacePosition(), FPopupTransitionEffect::ContextMenu);
 
 	return FReply::Handled().ReleaseMouseCapture();
 }
 
-TSharedRef<SWidget> STrueScopeWidget::BuildContextMenu()
+TSharedRef<SWidget> STrueScopeWidget::BuildPanelMenu()
 {
 	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr);
 	if (!GetDisplayModes().IsEmpty() || !GetToggleOptions().IsEmpty() || !GetOptionGroups().IsEmpty())

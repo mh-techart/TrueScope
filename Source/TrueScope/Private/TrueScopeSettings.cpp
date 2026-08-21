@@ -32,7 +32,7 @@ FTrueScopePanelState MakeDefaultPanelState(ETrueScopeType Type)
 
 TArray<FTrueScopePanelState> MakeDefaultPanelStates()
 {
-	// Read off STrueScopePanel's grid, not assumed: top row Waveform | Parade,
+	// Read off STrueScopeTab's grid, not assumed: top row Waveform | Parade,
 	// bottom row Vectorscope | Histogram.
 	TArray<FTrueScopePanelState> States;
 	States.Reserve(NumPanels);

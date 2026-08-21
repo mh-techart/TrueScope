@@ -31,7 +31,7 @@ public:
 	 */
 	static constexpr double VisibilityWindowSeconds = 1.0;
 
-	/** Called by every STrueScopePanel::OnPaint. */
+	/** Called by every STrueScopeTab::OnPaint. */
 	void NotifyPanelPainted(double NowSeconds)
 	{
 		LastPaintSeconds.store(NowSeconds, std::memory_order_relaxed);

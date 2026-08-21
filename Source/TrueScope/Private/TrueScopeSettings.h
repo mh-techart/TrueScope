@@ -167,7 +167,7 @@ namespace TrueScope
 {
 	/**
 	 * The default 2x2 arrangement, in panel-index order: Waveform, Parade (top
-	 * row), Vectorscope, Histogram (bottom row) — the order STrueScopePanel has
+	 * row), Vectorscope, Histogram (bottom row) — the order STrueScopeTab has
 	 * built since M4. Everything else in the returned states is the struct's own
 	 * default.
 	 */

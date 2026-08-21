@@ -19,7 +19,7 @@
 #include "ShaderCore.h"
 #include "Textures/SlateIcon.h"
 #include "TrueScopeSettings.h"
-#include "UI/STrueScopePanel.h"
+#include "UI/STrueScopeTab.h"
 #include "UI/TrueScopeStyle.h"
 #include "UI/TrueScopeType.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -231,7 +231,7 @@ TSharedRef<SDockTab> FTrueScopeModule::SpawnTrueScopeTab(const FSpawnTabArgs& Sp
 	return SNew(SDockTab)
 		.TabRole(ETabRole::NomadTab)
 		[
-			SNew(STrueScopePanel)
+			SNew(STrueScopeTab)
 		];
 }
 

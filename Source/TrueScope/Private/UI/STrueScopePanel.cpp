@@ -3,124 +3,119 @@
 
 #include "UI/STrueScopePanel.h"
 
-#include "Capture/TrueScopeCaptureGate.h"
-#include "TrueScopeModule.h"
+#include "Styling/AppStyle.h"
+#include "Styling/ToolBarStyle.h"
 #include "TrueScopeSettings.h"
-#include "UI/STrueScopeStatusLine.h"
-#include "UI/STrueScopeToolbar.h"
 #include "UI/STrueScopeWidget.h"
-#include "UI/TrueScopeType.h"
-#include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopePanel"
 
-void STrueScopePanel::Construct(const FArguments& InArgs)
+namespace
 {
-	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer = FTrueScopeModule::Get().GetAnalyzer();
-	CaptureGate = FTrueScopeModule::Get().GetCaptureGate();
+	/**
+	 * The panel header's own padding. Deliberately tight: the header is chrome
+	 * that every panel pays for, and in a 2x2 grid the cost is paid four times
+	 * (see phase-6.4 Task 8, where the minimum-canvas thresholds are re-derived
+	 * against the height this produces).
+	 */
+	const FMargin HeaderPadding(6.0f, 1.0f, 2.0f, 1.0f);
 
-	// The scopes are built through the type factory, and the toolbar is handed
-	// the widgets themselves: it generates each scope's display-mode control from
-	// the scope's own GetDisplayModes(), so scope types and their options stay
-	// in one place (architecture guardrail: extensible scope-type enumeration).
-	// Which scope a panel shows comes from the panel's own stored state (M6.4):
-	// settings are owned by the panel, and the type is one of them. Today all
-	// four are the compiled defaults, so this reproduces the M4 grid exactly.
-	TArray<TPair<ETrueScopeType, TSharedPtr<STrueScopeWidget>>> Scopes;
-	auto MakeScope = [&Analyzer, &Scopes](int32 PanelIndex)
+	/**
+	 * The engine's "hamburger" (Starship/Common/menu.svg). It is registered only
+	 * as part of a toolbar style, not under a style name of its own, so this is
+	 * how it is reached without copying the file into the plugin — see the
+	 * phase-6.4 icon table.
+	 */
+	const FSlateBrush* GetPanelMenuBrush()
 	{
-		const ETrueScopeType Type = UTrueScopeSettings::Get().GetPanelScopeType(PanelIndex);
-		TSharedPtr<STrueScopeWidget> Scope;
-		TSharedRef<SWidget> Widget = TrueScope::MakeScopeWidget(Type, Analyzer, PanelIndex, &Scope);
-		Scopes.Emplace(Type, Scope);
-		return Widget;
-	};
+		return &FAppStyle::Get().GetWidgetStyle<FToolBarStyle>("SlimToolBar").WrapButtonStyle.ExpandBrush;
+	}
+}
 
-	const TSharedRef<SWidget> TopLeft = MakeScope(0);
-	const TSharedRef<SWidget> TopRight = MakeScope(1);
-	const TSharedRef<SWidget> BottomLeft = MakeScope(2);
-	const TSharedRef<SWidget> BottomRight = MakeScope(3);
+void STrueScopePanel::Construct(const FArguments& InArgs,
+	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
+{
+	PanelIndex = FMath::Clamp(InArgs._PanelIndex, 0, TrueScope::NumPanels - 1);
+	ScopeType = UTrueScopeSettings::Get().GetPanelScopeType(PanelIndex);
+
+	const TSharedRef<SWidget> Canvas = TrueScope::MakeScopeWidget(ScopeType, InAnalyzer, PanelIndex, &ScopeWidget);
 
 	ChildSlot
 	[
 		SNew(SVerticalBox)
 
-		// Visible home of the user-facing options (phase-6.1 Task 2).
+		// The panel header is a row of its own, so the canvas below keeps all
+		// of its remaining area rather than being drawn under an overlay.
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
-			SNew(STrueScopeToolbar, Scopes)
+			SNew(SBorder)
+			.BorderImage(FAppStyle::Get().GetBrush("Brushes.Header"))
+			.Padding(HeaderPadding)
+			[
+				SNew(SHorizontalBox)
+
+				// Left: which scope this panel shows. Static text for now; the
+				// control that switches the type comes with the layout system.
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(TrueScope::GetScopeTypeDisplayName(ScopeType))
+					.TextStyle(FAppStyle::Get(), "SmallText")
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				]
+
+				// Right: the panel menu. Engine pattern copied from the details
+				// panel's "View Options" button (SDetailsView.cpp): a borderless
+				// SComboButton with no down arrow, carrying just the icon.
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.HAlign(HAlign_Right)
+				.VAlign(VAlign_Center)
+				[
+					SNew(SComboButton)
+					.HasDownArrow(false)
+					.ContentPadding(0.0f)
+					.ForegroundColor(FSlateColor::UseForeground())
+					.ButtonStyle(FAppStyle::Get(), "SimpleButton")
+					.ToolTipText(LOCTEXT("PanelMenuTooltip", "Panel options"))
+					.OnGetMenuContent(FOnGetContent::CreateSP(this, &STrueScopePanel::BuildPanelMenu))
+					.ButtonContent()
+					[
+						SNew(SImage)
+						.Image(GetPanelMenuBrush())
+						.ColorAndOpacity(FSlateColor::UseForeground())
+					]
+				]
+			]
 		]
 
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		[
-			SNew(SSplitter)
-			.Orientation(Orient_Vertical)
-
-			+ SSplitter::Slot()
-			.Value(0.5f)
-			[
-				SNew(SSplitter)
-				.Orientation(Orient_Horizontal)
-
-				+ SSplitter::Slot()
-				.Value(0.5f)
-				[
-					TopLeft
-				]
-
-				+ SSplitter::Slot()
-				.Value(0.5f)
-				[
-					TopRight
-				]
-			]
-
-			+ SSplitter::Slot()
-			.Value(0.5f)
-			[
-				SNew(SSplitter)
-				.Orientation(Orient_Horizontal)
-
-				+ SSplitter::Slot()
-				.Value(0.5f)
-				[
-					BottomLeft
-				]
-
-				+ SSplitter::Slot()
-				.Value(0.5f)
-				[
-					BottomRight
-				]
-			]
-		]
-
-		// What is being measured, in which encoding, on which path — and why
-		// nothing is being measured when that is the case (phase-6.1 Task 4).
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			SNew(STrueScopeStatusLine, Analyzer)
+			Canvas
 		]
 	];
 }
 
-int32 STrueScopePanel::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
-	const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
-	const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+TSharedRef<SWidget> STrueScopePanel::BuildPanelMenu()
 {
-	// Paint == visible and drawn: a closed tab, a tab behind another docked
-	// tab and a minimized window all stop painting, which gates capture off.
-	if (CaptureGate)
+	// Built by the scope itself, which is also what its right-click menu calls:
+	// the two entry points cannot drift apart because there is one builder
+	// (M6.4 Task 4). A type with no widget yet has no options to offer.
+	if (ScopeWidget.IsValid())
 	{
-		CaptureGate->NotifyPanelPainted(FPlatformTime::Seconds());
+		return ScopeWidget->BuildPanelMenu();
 	}
 
-	return SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId,
-		InWidgetStyle, bParentEnabled);
+	return SNullWidget::NullWidget;
 }
 
 #undef LOCTEXT_NAMESPACE
