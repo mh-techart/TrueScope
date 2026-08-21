@@ -19,8 +19,13 @@ namespace
 	/** Every 128 code values; the last line sits on full scale, not on 1024. */
 	constexpr int32 WaveformLevels[] = {0, 128, 256, 384, 512, 640, 768, 896, ScaleMax};
 
-	/** Quarters of the same axis — enough for the histogram's value labels. */
-	constexpr int32 HistogramLevels[] = {0, 256, 512, 768, ScaleMax};
+	/**
+	 * The histogram labels the SAME levels as the waveform and parade (M6.4
+	 * Task 7). It used to label only the quarters, which left the user reading
+	 * one scale on three scopes and a coarser one on the fourth — the values
+	 * are the same 0-1023 code values, so the graticule is too.
+	 */
+	constexpr int32 HistogramLevels[] = {0, 128, 256, 384, 512, 640, 768, 896, ScaleMax};
 
 	/** Fraction of the value axis a 10-bit level sits at. */
 	float LevelFraction(int32 Level)

@@ -37,9 +37,17 @@ bool FTrueScopeValueScaleTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("Waveform axis ends on full scale"), WaveformLevels.Last(), ScaleMax);
 
-	// Histogram: same axis, quartered.
+	// Histogram: the SAME axis since M6.4 Task 7, not a coarser one — three
+	// scopes labelling every 128 and the fourth every 256 made the user read
+	// two different scales for one set of code values.
 	const TArrayView<const int32> HistogramLevels = GetHistogramGraticuleLevels();
-	TestEqual(TEXT("Histogram axis has 4 divisions"), HistogramLevels.Num(), 5);
+	TestEqual(TEXT("Histogram axis has the same number of divisions as the waveform"),
+		HistogramLevels.Num(), WaveformLevels.Num());
+	for (int32 Index = 0; Index < HistogramLevels.Num(); ++Index)
+	{
+		TestEqual(*FString::Printf(TEXT("Histogram level %d matches the waveform's"), Index),
+			HistogramLevels[Index], WaveformLevels[Index]);
+	}
 	TestEqual(TEXT("Histogram axis starts at zero"), HistogramLevels[0], 0);
 	TestEqual(TEXT("Histogram axis ends on full scale"), HistogramLevels.Last(), ScaleMax);
 

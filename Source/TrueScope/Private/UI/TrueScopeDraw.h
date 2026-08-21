@@ -24,7 +24,15 @@ struct FSlateBrush;
  */
 namespace TrueScope::Draw
 {
-	inline const FLinearColor BackgroundColor(0.008f, 0.008f, 0.008f);
+	/**
+	 * Black (M6.4 Task 7). The near-black it replaced (0.008) was invisible
+	 * behind the waveform's and parade's opaque trace rasters but not behind the
+	 * vectorscope's and histogram's transparent ones, so two scopes read as
+	 * black and two as dark grey. Black is also the reference tools' background,
+	 * and it is the value a viewer's eye adapts to when judging a trace's
+	 * lowest visible density.
+	 */
+	inline const FLinearColor BackgroundColor(0.0f, 0.0f, 0.0f);
 	inline const FLinearColor GraticuleColor(0.5f, 0.5f, 0.5f, 0.22f);
 	inline const FLinearColor LabelColor(0.6f, 0.6f, 0.6f, 0.9f);
 
