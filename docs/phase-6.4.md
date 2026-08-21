@@ -110,8 +110,10 @@ the Window menu entry and in the tab itself. `Resources/Icon128.png` unchanged.
 
 - [x] Style set torn down cleanly on module shutdown; no missing-Slate-resource
       log lines from TrueScope, no new warnings.
-- [ ] Icon visible in the Window menu entry and in the tab — **human eye check
-      outstanding** (see "Visual acceptance" below).
+- [x] Icon visible on the tab next to the title — MCP screenshot, the ring-and-T
+      mark renders correctly at 16 px.
+- [ ] Icon in the Window menu entry — **human eye check outstanding** (opening
+      that menu is a Slate popup, which MCP cannot drive).
 
 ## Task 2 — Settings ownership: per scope type → per panel
 
@@ -140,6 +142,9 @@ menu button in the Task 0.3 pattern.
       button (`TrueScope.UI.PanelMenuContents` reads the real widget tree).
 - [x] The vectorscope's aspect-locked policy is unchanged; it now squares against
       the canvas rather than the panel.
+- [x] All four headers render with the right type name on the left and the
+      hamburger on the right, and the vectorscope is still circular in its
+      reduced canvas — MCP screenshot.
 - [ ] Clicking the button opens the panel menu — **human click outstanding**
       (MCP cannot open Slate popup menus).
 
@@ -176,8 +181,10 @@ exists and still stays in sync.
 - [x] The popup's radio state follows the **effective** path in both directions
       (`TrueScope.UI.SettingsPopupEffectivePath`, driving the CVar) — teeth-proven.
 - [x] No analysis-path or capture-rate control remains anywhere else in the UI.
-- [ ] Gear right-aligned, both settings survive a restart — **human eye/click
-      outstanding**.
+- [x] Gear present and right-aligned in an otherwise empty main bar — MCP
+      screenshot.
+- [ ] Both settings survive a restart with the popup as the only entry point —
+      **human click outstanding**.
 
 ## Task 6 — Reset to default
 
@@ -211,8 +218,11 @@ the level list).
 
 - [x] `TrueScope.UI.ValueScale` asserts the histogram's levels equal the waveform's
       element by element.
-- [ ] All four backgrounds black, numbers aligned to the ticks — **human eye
-      outstanding**.
+- [x] All four backgrounds are black — **measured**, not judged: an empty plot
+      area in each of the four panels reads exactly (0, 0, 0) in the MCP
+      screenshot, against (28, 28, 28) before the change.
+- [x] The histogram's nine numbers sit under their gridlines and match the
+      waveform's and parade's styling — MCP screenshot.
 
 ## Task 8 — Minimum-panel-size hint
 
@@ -284,6 +294,12 @@ draws no value-axis labels of its own.
 +2 Task 5, +1 Task 6; Task 7 and Task 8 extended existing tests instead of adding
 new ones. 46 is the stale-code tripwire from here on.
 
+**Visual verification (MCP, 2026-08-21).** Screenshots of the tab and of the 2×2
+grid, taken through the running editor's MCP server: tab icon, the empty main bar
+with its right-aligned gear, four panel headers, four black backgrounds (measured
+per pixel) and the histogram's full scale. What no screenshot can show is anything
+behind a popup — see the remaining unticked boxes.
+
 **What is automated vs. human.** Everything that is a fact about the widget tree,
 the menu contents, the settings store or the derivation is automated — the panel
 menus and the settings popup are read out of the *built* menu widgets, not
@@ -316,7 +332,17 @@ unavailable in this session.
 
 ## Status
 
-Code complete and green at 46/46. **Open: the visual acceptance session** — the
-boxes left unticked above are the ones needing a human click on a Slate popup or a
-human eye, and they are collected rather than scattered so they can be walked
-through in one sitting.
+Code complete and green at 46/46, and everything MCP can see has been seen. **Open:
+the click-through session** — the boxes left unticked above all need a human to open
+a Slate popup (the panel menus, the settings popup, the Window menu) or to drag a
+panel down to the hint threshold. They are collected here rather than scattered so
+they can be walked through in one sitting:
+
+1. Window → TrueScope: does the menu entry carry the icon?
+2. Each panel's hamburger: does the menu open, does it list exactly the rows for
+   that panel's type, and does every control still do what it says?
+3. The same, from the scope canvas's right-click menu.
+4. "Reset to default" in one panel, with a neighbour deliberately off-default.
+5. The gear: both sections present, path switch flips all four scopes, and both
+   settings survive a restart.
+6. Drag a panel below 204 × 116 px of canvas and confirm the hint appears.
