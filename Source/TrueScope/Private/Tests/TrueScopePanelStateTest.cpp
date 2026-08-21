@@ -3,7 +3,9 @@
 
 #include "Misc/AutomationTest.h"
 #include "TrueScopeSettings.h"
+#include "UI/STrueScopeVectorscope.h"
 #include "UI/TrueScopeType.h"
+#include "Widgets/DeclarativeSyntaxSupport.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -121,6 +123,71 @@ bool FTrueScopePanelStateIndependenceTest::RunTest(const FString&)
 	Settings.SetPanelToggleOption(PanelD, TrueScope::SkinToneLineOptionKey, bSavedSkinD);
 	Settings.SetPanelOptionGroupValue(PanelC, TrueScope::VectorscopeMarkersOptionKey, SavedMarkersC);
 	Settings.SetPanelOptionGroupValue(PanelD, TrueScope::VectorscopeMarkersOptionKey, SavedMarkersD);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopePanelResetTest,
+	"TrueScope.UI.PanelResetToDefault",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopePanelResetTest::RunTest(const FString&)
+{
+	// M6.4 Task 6: the menu's "Reset to default" must reach the LIVE widget, not
+	// only the stored state. The vectorscope is the richest panel — display mode,
+	// an option group and a toggle, plus a gain — so one reset exercises every
+	// kind of option the generic widget API carries.
+	UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
+	constexpr int32 PanelIndex = 2;
+	constexpr int32 NeighbourIndex = 3;
+
+	const FTrueScopePanelState Saved = Settings.GetPanelState(PanelIndex);
+	const FTrueScopePanelState SavedNeighbour = Settings.GetPanelState(NeighbourIndex);
+	const FTrueScopePanelState Defaults = TrueScope::MakeDefaultPanelState(Saved.ScopeType == NAME_None
+		? ETrueScopeType::Vectorscope : Settings.GetPanelScopeType(PanelIndex));
+
+	// The neighbour is moved off its default first, so "untouched" is a real
+	// statement rather than "still happens to be the default".
+	constexpr float NeighbourGain = 3.0f;
+	Settings.SetPanelGainMultiplier(NeighbourIndex, TrueScope::HistogramGainKey, NeighbourGain);
+
+	// Held by the base type: the generic option API is public on STrueScopeWidget
+	// and the overrides are protected, which is exactly how the menu builder
+	// reaches them too.
+	TSharedRef<STrueScopeWidget> Scope = SNew(STrueScopeVectorscope, nullptr).PanelIndex(PanelIndex);
+	Scope->ApplyDisplayMode(1);                                          // 2x Zoom
+	Scope->ApplyOptionGroup(TrueScope::VectorscopeMarkersOptionKey, 1);  // 100 %
+	Scope->ApplyToggleOption(TrueScope::SkinToneLineOptionKey, !Defaults.bShowSkinToneLine);
+	Scope->ApplyGainMultiplier(2.0f);
+
+	Scope->ResetPanelToDefaults();
+
+	TestEqual(TEXT("The widget's display mode is back to the default"),
+		Scope->GetDisplayModeId(), Defaults.DisplayMode);
+	TestEqual(TEXT("The widget's option group is back to the default"),
+		Scope->GetOptionGroupValue(TrueScope::VectorscopeMarkersOptionKey), Defaults.VectorscopeMarkers);
+	TestEqual(TEXT("The widget's toggle is back to the default"),
+		Scope->GetToggleOptionValue(TrueScope::SkinToneLineOptionKey), Defaults.bShowSkinToneLine);
+	TestEqual(TEXT("The widget's gain is back to the default"),
+		Scope->GetGainMultiplier(), TrueScope::DefaultGainMultiplier, 1e-6f);
+
+	// ...and the panel's stored state agrees, so the reset survives a restart.
+	TestEqual(TEXT("The stored display mode is back to the default"),
+		Settings.GetPanelDisplayMode(PanelIndex), Defaults.DisplayMode);
+	TestEqual(TEXT("The stored gain is back to the default"),
+		Settings.GetPanelGainMultiplier(PanelIndex, TrueScope::TraceBrightnessGainKey),
+		TrueScope::DefaultGainMultiplier, 1e-6f);
+
+	// Only that panel: a reset that also reset the neighbour would look correct
+	// in every screenshot of the panel being reset.
+	TestEqual(TEXT("The neighbouring panel keeps its own gain"),
+		Settings.GetPanelGainMultiplier(NeighbourIndex, TrueScope::HistogramGainKey), NeighbourGain, 1e-6f);
+
+	Settings.SetPanelDisplayMode(PanelIndex, Saved.DisplayMode);
+	Settings.SetPanelOptionGroupValue(PanelIndex, TrueScope::VectorscopeMarkersOptionKey, Saved.VectorscopeMarkers);
+	Settings.SetPanelToggleOption(PanelIndex, TrueScope::SkinToneLineOptionKey, Saved.bShowSkinToneLine);
+	Settings.SetPanelGainMultiplier(PanelIndex, TrueScope::TraceBrightnessGainKey, Saved.TraceBrightness);
+	Settings.SetPanelGainMultiplier(NeighbourIndex, TrueScope::HistogramGainKey, SavedNeighbour.HistogramGain);
 
 	return true;
 }

@@ -11,6 +11,7 @@
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Layout/WidgetPath.h"
+#include "Styling/AppStyle.h"
 #include "Textures/SlateIcon.h"
 #include "TrueScopeModule.h"
 #include "TrueScopeSettings.h"
@@ -84,6 +85,17 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 	PanelIndex = FMath::Clamp(InPanelIndex, 0, TrueScope::NumPanels - 1);
 	bMaintainSquareAspect = bInMaintainSquareAspect;
 
+	RestoreOptionsFromPanelState();
+
+	if (Analyzer)
+	{
+		RegisterActiveTimer(ResultPollPeriodSeconds,
+			FWidgetActiveTimerDelegate::CreateSP(this, &STrueScopeWidget::PollAnalyzer));
+	}
+}
+
+void STrueScopeWidget::RestoreOptionsFromPanelState()
+{
 	// Reopen in the display mode the user left this scope in (phase-6.1 Task 3).
 	// Validated against the scope's own modes, so a stale or hand-edited ini
 	// cannot put a scope into a mode it does not have.
@@ -132,12 +144,6 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 		GainMultiplier = FMath::Clamp(SavedGain,
 			TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier());
 		PublishGainMultiplier();
-	}
-
-	if (Analyzer)
-	{
-		RegisterActiveTimer(ResultPollPeriodSeconds,
-			FWidgetActiveTimerDelegate::CreateSP(this, &STrueScopeWidget::PollAnalyzer));
 	}
 }
 
@@ -353,6 +359,15 @@ TSharedRef<SWidget> STrueScopeWidget::BuildPanelMenu()
 			/*bSearchable*/ true, Gain->Tooltip);
 	}
 
+	// Last entry of every panel menu (M6.4 Task 6), below a separator: it acts
+	// on the whole panel rather than on any one option above it.
+	MenuBuilder.AddSeparator();
+	MenuBuilder.AddMenuEntry(LOCTEXT("ResetPanel", "Reset to default"),
+		LOCTEXT("ResetPanelTooltip",
+			"Return this panel's display options to their defaults. Affects only this panel."),
+		FSlateIcon(FAppStyle::GetAppStyleSetName(), "PropertyWindow.DiffersFromDefault"),
+		FUIAction(FExecuteAction::CreateSP(this, &STrueScopeWidget::ResetPanelToDefaults)));
+
 	return MenuBuilder.MakeWidget();
 }
 
@@ -411,6 +426,17 @@ TSharedRef<SWidget> STrueScopeWidget::BuildGainSlider(const FTrueScopeGainOption
 				}
 			})
 		];
+}
+
+void STrueScopeWidget::ResetPanelToDefaults()
+{
+	// The settings object holds the only copy of the defaults; the widget just
+	// re-reads what it wrote. Always available and never confirmed: every value
+	// it touches is one menu click to set again, so a dialog would cost more
+	// than the mistake it guards against.
+	UTrueScopeSettings::Get().ResetPanelToDefaults(PanelIndex);
+	RestoreOptionsFromPanelState();
+	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
 void STrueScopeWidget::ApplyDisplayMode(int32 ModeId)

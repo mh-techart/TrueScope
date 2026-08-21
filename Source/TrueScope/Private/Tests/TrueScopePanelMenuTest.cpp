@@ -104,21 +104,21 @@ bool FTrueScopePanelMenuContentsTest::RunTest(const FString&)
 	};
 
 	CheckMenu(SNew(STrueScopeWaveform, nullptr).PanelIndex(0), TEXT("Waveform"),
-		{TEXT("DISPLAY"), TEXT("RGB"), TEXT("Luma"), TEXT("Trace Brightness")});
+		{TEXT("DISPLAY"), TEXT("RGB"), TEXT("Luma"), TEXT("Trace Brightness"), TEXT("Reset to default")});
 
 	// Deliberately thin: parade display modes are planned in architecture.md,
 	// not shipped, so the menu invents none.
 	CheckMenu(SNew(STrueScopeParade, nullptr).PanelIndex(1), TEXT("Parade"),
-		{TEXT("Trace Brightness")});
+		{TEXT("Trace Brightness"), TEXT("Reset to default")});
 
 	CheckMenu(SNew(STrueScopeVectorscope, nullptr).PanelIndex(2), TEXT("Vectorscope"),
 		{TEXT("ZOOM"), TEXT("Normal"), TEXT("2× Zoom"),
 		 TEXT("MARKERS"), TEXT("75%"), TEXT("100%"), TEXT("75% + 100%"), TEXT("Show Skin Tone Line"),
-		 TEXT("Trace Brightness")});
+		 TEXT("Trace Brightness"), TEXT("Reset to default")});
 
 	CheckMenu(SNew(STrueScopeHistogram, nullptr).PanelIndex(3), TEXT("Histogram"),
 		{TEXT("DISPLAY"), TEXT("Separate Channels RGB"), TEXT("Separate Channels YRGB"), TEXT("RGB Overlay"),
-		 TEXT("Histogram Gain")});
+		 TEXT("Histogram Gain"), TEXT("Reset to default")});
 
 	// No panel menu carries a global option any more (M6.4 Task 5): the
 	// analysis path and the capture rate live in the main bar's settings popup,

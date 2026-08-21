@@ -289,6 +289,22 @@ public:
 	 */
 	TSharedRef<SWidget> BuildPanelMenu();
 
+	/**
+	 * Back to the compiled defaults for this panel's own display options (M6.4
+	 * Task 6): mode, toggles, option groups and the gain, and nothing else — not
+	 * another panel, not the analysis path, not the capture rate.
+	 *
+	 * The defaults are not written here: UTrueScopeSettings::ResetPanelToDefaults
+	 * puts FTrueScopePanelState's own member initializers into the panel state,
+	 * and this then restores the widget from that state through the SAME code
+	 * that runs when the tab opens. A reset panel and a freshly installed one are
+	 * therefore identical by construction rather than by two lists agreeing.
+	 *
+	 * This is a different scale of undo from the M6.3 double-click on a gain
+	 * slider (which resets that one slider) and does not replace it.
+	 */
+	void ResetPanelToDefaults();
+
 	/** Test seam: inject a result as if the analyzer had published it. */
 	void SetCachedResultForTesting(const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& InResult)
 	{
@@ -304,6 +320,15 @@ protected:
 	 */
 	void InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
 		ETrueScopeType InScopeType, bool bInMaintainSquareAspect, int32 InPanelIndex);
+
+	/**
+	 * Apply the panel's persisted options to this widget: display mode, toggles,
+	 * option groups, gain. Shared by the initial restore and by "Reset to
+	 * default", which is what keeps the two from drifting apart. Every value is
+	 * validated against what the scope actually offers, so a stale or
+	 * hand-edited ini cannot select a mode or option the scope does not have.
+	 */
+	void RestoreOptionsFromPanelState();
 
 	/** Latest cached result; null until the first analysis completes. Game thread. */
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& GetCachedResult() const
