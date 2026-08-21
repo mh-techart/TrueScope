@@ -31,7 +31,8 @@ void STrueScopeHistogram::Construct(const FArguments& InArgs,
 	}
 	OverlayBrush.DrawAs = ESlateBrushDrawType::Image;
 	OverlayBrush.Tiling = ESlateBrushTileType::NoTile;
-	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Histogram, /*bMaintainSquareAspect*/ false);
+	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Histogram, /*bMaintainSquareAspect*/ false,
+		InArgs._PanelIndex);
 }
 
 void STrueScopeHistogram::OnAnalysisResultChanged()

@@ -40,11 +40,15 @@ namespace TrueScope
 	 * for types not yet implemented. Analysis-agnostic beyond passing the
 	 * analyzer the widget reads its results from.
 	 *
+	 * PanelIndex is the slot of the 2x2 grid the scope is built for; since M6.4
+	 * that is what its persisted options are keyed by.
+	 *
 	 * OutScopeWidget, if given, receives the scope widget itself — the tab's
 	 * toolbar (phase-6.1 Task 2) drives the scopes' display modes through it,
 	 * and a placeholder type simply leaves it null.
 	 */
 	TSharedRef<SWidget> MakeScopeWidget(ETrueScopeType Type,
 		const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& Analyzer,
+		int32 PanelIndex,
 		TSharedPtr<STrueScopeWidget>* OutScopeWidget = nullptr);
 }

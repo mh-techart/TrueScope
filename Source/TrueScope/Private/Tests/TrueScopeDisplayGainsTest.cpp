@@ -220,17 +220,18 @@ bool FTrueScopeGainPersistenceTest::RunTest(const FString&)
 	// number must be the slider's multiplier, not its position (0.5 would then
 	// come back as a gain) and not the absolute gain (which would freeze the
 	// calibration of the build it was saved on).
+	//
+	// Keyed by PANEL since M6.4: panel 1 is the parade slot, panel 0 the
+	// waveform slot in the default arrangement.
 	UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
-	float Saved = 0.0f;
-	const bool bHadValue =
-		Settings.GetScopeGainMultiplier(ETrueScopeType::Parade, TrueScope::TraceBrightnessGainKey, Saved);
+	constexpr int32 WaveformPanel = 0;
+	constexpr int32 ParadePanel = 1;
+	const float Saved = Settings.GetPanelGainMultiplier(ParadePanel, TrueScope::TraceBrightnessGainKey);
 
 	constexpr float StoredMultiplier = 2.0f;
-	Settings.SetScopeGainMultiplier(ETrueScopeType::Parade, TrueScope::TraceBrightnessGainKey, StoredMultiplier);
+	Settings.SetPanelGainMultiplier(ParadePanel, TrueScope::TraceBrightnessGainKey, StoredMultiplier);
 
-	float Restored = 0.0f;
-	TestTrue(TEXT("The stored gain is found again"),
-		Settings.GetScopeGainMultiplier(ETrueScopeType::Parade, TrueScope::TraceBrightnessGainKey, Restored));
+	const float Restored = Settings.GetPanelGainMultiplier(ParadePanel, TrueScope::TraceBrightnessGainKey);
 	TestTrue(TEXT("What comes back is the multiplier"), Restored == StoredMultiplier);
 	TestTrue(TEXT("...and not the slider position that produced it"),
 		!FMath::IsNearlyEqual(Restored, TrueScope::GainToSliderPosition(StoredMultiplier), 1e-4f));
@@ -242,16 +243,12 @@ bool FTrueScopeGainPersistenceTest::RunTest(const FString&)
 	// settings object perfectly well. Only the widget layer can tell them
 	// apart, and only the multiplier survives a Task 5 recalibration of the
 	// scope's default.
-	float SavedWaveform = 0.0f;
-	const bool bWaveformStored =
-		Settings.GetScopeGainMultiplier(ETrueScopeType::Waveform, TrueScope::TraceBrightnessGainKey, SavedWaveform);
+	const float SavedWaveform = Settings.GetPanelGainMultiplier(WaveformPanel, TrueScope::TraceBrightnessGainKey);
 	{
-		TSharedRef<STrueScopeWaveform> Scope = SNew(STrueScopeWaveform, nullptr);
+		TSharedRef<STrueScopeWaveform> Scope = SNew(STrueScopeWaveform, nullptr).PanelIndex(WaveformPanel);
 		Scope->ApplyGainMultiplier(StoredMultiplier);
 
-		float WidgetStored = 0.0f;
-		TestTrue(TEXT("The widget persists its gain"),
-			Settings.GetScopeGainMultiplier(ETrueScopeType::Waveform, TrueScope::TraceBrightnessGainKey, WidgetStored));
+		const float WidgetStored = Settings.GetPanelGainMultiplier(WaveformPanel, TrueScope::TraceBrightnessGainKey);
 		TestEqual(TEXT("The widget stores the multiplier, not the slider position"),
 			WidgetStored, StoredMultiplier, 1e-6f);
 		// The other wrong thing to persist — the EFFECTIVE gain, default x
@@ -263,35 +260,13 @@ bool FTrueScopeGainPersistenceTest::RunTest(const FString&)
 		// above.
 		TestEqual(TEXT("The widget reports back the multiplier it stored"),
 			Scope->GetGainMultiplier(), StoredMultiplier, 1e-6f);
+		TestTrue(TEXT("The widget persists under its panel index, not its scope type"),
+			Scope->GetPanelIndex() == WaveformPanel);
 	}
-	if (bWaveformStored)
-	{
-		Settings.SetScopeGainMultiplier(ETrueScopeType::Waveform, TrueScope::TraceBrightnessGainKey, SavedWaveform);
-	}
-	else
-	{
-		Settings.SetScopeGainMultiplier(ETrueScopeType::Waveform, TrueScope::TraceBrightnessGainKey,
-			TrueScope::DefaultGainMultiplier);
-	}
-
-	// Per-scope keys are distinct: setting the parade must not move the
-	// waveform's slider (the per-scope independence Task 2 requires).
-	float WaveformValue = 0.0f;
-	const bool bWaveformHadValue =
-		Settings.GetScopeGainMultiplier(ETrueScopeType::Waveform, TrueScope::TraceBrightnessGainKey, WaveformValue);
-	TestTrue(TEXT("The waveform's stored gain is independent of the parade's"),
-		!bWaveformHadValue || !FMath::IsNearlyEqual(WaveformValue, StoredMultiplier));
 
 	// Leave the user's configuration as it was found.
-	if (bHadValue)
-	{
-		Settings.SetScopeGainMultiplier(ETrueScopeType::Parade, TrueScope::TraceBrightnessGainKey, Saved);
-	}
-	else
-	{
-		Settings.SetScopeGainMultiplier(ETrueScopeType::Parade, TrueScope::TraceBrightnessGainKey,
-			TrueScope::DefaultGainMultiplier);
-	}
+	Settings.SetPanelGainMultiplier(WaveformPanel, TrueScope::TraceBrightnessGainKey, SavedWaveform);
+	Settings.SetPanelGainMultiplier(ParadePanel, TrueScope::TraceBrightnessGainKey, Saved);
 
 	return true;
 }

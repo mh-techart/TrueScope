@@ -5,6 +5,7 @@
 
 #include "Capture/TrueScopeCaptureGate.h"
 #include "TrueScopeModule.h"
+#include "TrueScopeSettings.h"
 #include "UI/STrueScopeStatusLine.h"
 #include "UI/STrueScopeToolbar.h"
 #include "UI/STrueScopeWidget.h"
@@ -23,19 +24,23 @@ void STrueScopePanel::Construct(const FArguments& InArgs)
 	// the widgets themselves: it generates each scope's display-mode control from
 	// the scope's own GetDisplayModes(), so scope types and their options stay
 	// in one place (architecture guardrail: extensible scope-type enumeration).
+	// Which scope a panel shows comes from the panel's own stored state (M6.4):
+	// settings are owned by the panel, and the type is one of them. Today all
+	// four are the compiled defaults, so this reproduces the M4 grid exactly.
 	TArray<TPair<ETrueScopeType, TSharedPtr<STrueScopeWidget>>> Scopes;
-	auto MakeScope = [&Analyzer, &Scopes](ETrueScopeType Type)
+	auto MakeScope = [&Analyzer, &Scopes](int32 PanelIndex)
 	{
+		const ETrueScopeType Type = UTrueScopeSettings::Get().GetPanelScopeType(PanelIndex);
 		TSharedPtr<STrueScopeWidget> Scope;
-		TSharedRef<SWidget> Widget = TrueScope::MakeScopeWidget(Type, Analyzer, &Scope);
+		TSharedRef<SWidget> Widget = TrueScope::MakeScopeWidget(Type, Analyzer, PanelIndex, &Scope);
 		Scopes.Emplace(Type, Scope);
 		return Widget;
 	};
 
-	const TSharedRef<SWidget> Waveform = MakeScope(ETrueScopeType::Waveform);
-	const TSharedRef<SWidget> Parade = MakeScope(ETrueScopeType::Parade);
-	const TSharedRef<SWidget> Vectorscope = MakeScope(ETrueScopeType::Vectorscope);
-	const TSharedRef<SWidget> Histogram = MakeScope(ETrueScopeType::Histogram);
+	const TSharedRef<SWidget> TopLeft = MakeScope(0);
+	const TSharedRef<SWidget> TopRight = MakeScope(1);
+	const TSharedRef<SWidget> BottomLeft = MakeScope(2);
+	const TSharedRef<SWidget> BottomRight = MakeScope(3);
 
 	ChildSlot
 	[
@@ -63,13 +68,13 @@ void STrueScopePanel::Construct(const FArguments& InArgs)
 				+ SSplitter::Slot()
 				.Value(0.5f)
 				[
-					Waveform
+					TopLeft
 				]
 
 				+ SSplitter::Slot()
 				.Value(0.5f)
 				[
-					Parade
+					TopRight
 				]
 			]
 
@@ -82,13 +87,13 @@ void STrueScopePanel::Construct(const FArguments& InArgs)
 				+ SSplitter::Slot()
 				.Value(0.5f)
 				[
-					Vectorscope
+					BottomLeft
 				]
 
 				+ SSplitter::Slot()
 				.Value(0.5f)
 				[
-					Histogram
+					BottomRight
 				]
 			]
 		]

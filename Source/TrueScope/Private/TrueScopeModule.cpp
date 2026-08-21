@@ -88,29 +88,35 @@ void FTrueScopeModule::SeedDisplayGainsFromSettings()
 		return;
 	}
 
-	const UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
-	auto SeedDensity = [&Settings, this](ETrueScopeType Type, TrueScope::EDensityScope Scope)
+	// Walk the panels, not the scope types (M6.4): the gain belongs to the panel,
+	// and the panel's type says which analysis slot it feeds.
+	UTrueScopeSettings& Settings = UTrueScopeSettings::Get();
+	for (int32 PanelIndex = 0; PanelIndex < TrueScope::NumPanels; ++PanelIndex)
 	{
-		float Multiplier = TrueScope::DefaultGainMultiplier;
-		if (Settings.GetScopeGainMultiplier(Type, TrueScope::TraceBrightnessGainKey, Multiplier))
+		const ETrueScopeType Type = Settings.GetPanelScopeType(PanelIndex);
+		const FName GainKey = Type == ETrueScopeType::Histogram
+			? TrueScope::HistogramGainKey : TrueScope::TraceBrightnessGainKey;
+
+		// Clamped like the widget does, so a hand-edited ini cannot seed a gain
+		// the slider is unable to express or undo.
+		const float Multiplier = FMath::Clamp(Settings.GetPanelGainMultiplier(PanelIndex, GainKey),
+			TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier());
+
+		switch (Type)
 		{
-			// Clamped like the widget does, so a hand-edited ini cannot seed a
-			// gain the slider is unable to express or undo.
-			DisplayGains->SetDensityGain(Scope, FMath::Clamp(Multiplier,
-				TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier()));
+		case ETrueScopeType::Waveform:
+			DisplayGains->SetDensityGain(TrueScope::EDensityScope::Waveform, Multiplier);
+			break;
+		case ETrueScopeType::Parade:
+			DisplayGains->SetDensityGain(TrueScope::EDensityScope::Parade, Multiplier);
+			break;
+		case ETrueScopeType::Vectorscope:
+			DisplayGains->SetDensityGain(TrueScope::EDensityScope::Vectorscope, Multiplier);
+			break;
+		case ETrueScopeType::Histogram:
+			DisplayGains->SetHistogramGain(Multiplier);
+			break;
 		}
-	};
-
-	SeedDensity(ETrueScopeType::Parade, TrueScope::EDensityScope::Parade);
-	SeedDensity(ETrueScopeType::Waveform, TrueScope::EDensityScope::Waveform);
-	SeedDensity(ETrueScopeType::Vectorscope, TrueScope::EDensityScope::Vectorscope);
-
-	float HistogramMultiplier = TrueScope::DefaultGainMultiplier;
-	if (Settings.GetScopeGainMultiplier(ETrueScopeType::Histogram, TrueScope::HistogramGainKey,
-		HistogramMultiplier))
-	{
-		DisplayGains->SetHistogramGain(FMath::Clamp(HistogramMultiplier,
-			TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier()));
 	}
 }
 

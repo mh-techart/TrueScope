@@ -65,18 +65,19 @@ namespace
 }
 
 void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-	ETrueScopeType InScopeType, bool bInMaintainSquareAspect)
+	ETrueScopeType InScopeType, bool bInMaintainSquareAspect, int32 InPanelIndex)
 {
 	Analyzer = InAnalyzer;
 	RasterSizes = FTrueScopeModule::Get().GetRasterSizes();
 	DisplayGains = FTrueScopeModule::Get().GetDisplayGains();
 	ScopeType = InScopeType;
+	PanelIndex = FMath::Clamp(InPanelIndex, 0, TrueScope::NumPanels - 1);
 	bMaintainSquareAspect = bInMaintainSquareAspect;
 
 	// Reopen in the display mode the user left this scope in (phase-6.1 Task 3).
 	// Validated against the scope's own modes, so a stale or hand-edited ini
 	// cannot put a scope into a mode it does not have.
-	const int32 SavedMode = UTrueScopeSettings::Get().GetScopeDisplayMode(ScopeType);
+	const int32 SavedMode = UTrueScopeSettings::Get().GetPanelDisplayMode(PanelIndex);
 	for (const FTrueScopeDisplayMode& Mode : GetDisplayModes())
 	{
 		if (Mode.Id == SavedMode)
@@ -87,25 +88,19 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 	}
 
 	// Toggle options likewise (phase-6.2): only keys the scope actually offers
-	// are restored, and a key the ini does not know keeps the scope's default.
+	// are restored. The panel state always has a value (its compiled default),
+	// so unlike the pre-M6.4 map there is no "absent" case to fall back from.
 	for (const FTrueScopeToggleOption& Toggle : GetToggleOptions())
 	{
-		bool bSavedValue = false;
-		if (UTrueScopeSettings::Get().GetScopeToggleOption(ScopeType, Toggle.Key, bSavedValue))
-		{
-			SetToggleOptionValue(Toggle.Key, bSavedValue);
-		}
+		SetToggleOptionValue(Toggle.Key,
+			UTrueScopeSettings::Get().GetPanelToggleOption(PanelIndex, Toggle.Key));
 	}
 
 	// Option groups likewise (work order 15), validated against the group's own
 	// options so a stale ini cannot select a choice the group does not have.
 	for (const FTrueScopeOptionGroup& Group : GetOptionGroups())
 	{
-		int32 SavedValue = 0;
-		if (!UTrueScopeSettings::Get().GetScopeOptionGroupValue(ScopeType, Group.Key, SavedValue))
-		{
-			continue;
-		}
+		const int32 SavedValue = UTrueScopeSettings::Get().GetPanelOptionGroupValue(PanelIndex, Group.Key);
 		for (const FTrueScopeDisplayMode& Option : Group.Options)
 		{
 			if (Option.Id == SavedValue)
@@ -123,12 +118,9 @@ void STrueScopeWidget::InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer
 	// a scope at a gain the slider cannot express or undo.
 	if (const FTrueScopeGainOption* Gain = GetGainOption())
 	{
-		float SavedGain = TrueScope::DefaultGainMultiplier;
-		if (UTrueScopeSettings::Get().GetScopeGainMultiplier(ScopeType, Gain->Key, SavedGain))
-		{
-			GainMultiplier = FMath::Clamp(SavedGain,
-				TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier());
-		}
+		const float SavedGain = UTrueScopeSettings::Get().GetPanelGainMultiplier(PanelIndex, Gain->Key);
+		GainMultiplier = FMath::Clamp(SavedGain,
+			TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier());
 		PublishGainMultiplier();
 	}
 
@@ -370,7 +362,7 @@ bool STrueScopeWidget::IsAnalysisPathActive(bool bGpu) const
 void STrueScopeWidget::ApplyDisplayMode(int32 ModeId)
 {
 	SetDisplayModeId(ModeId);
-	UTrueScopeSettings::Get().SetScopeDisplayMode(ScopeType, ModeId);
+	UTrueScopeSettings::Get().SetPanelDisplayMode(PanelIndex, ModeId);
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
@@ -382,7 +374,7 @@ bool STrueScopeWidget::IsDisplayModeActive(int32 ModeId) const
 void STrueScopeWidget::ApplyToggleOption(FName Key, bool bValue)
 {
 	SetToggleOptionValue(Key, bValue);
-	UTrueScopeSettings::Get().SetScopeToggleOption(ScopeType, Key, bValue);
+	UTrueScopeSettings::Get().SetPanelToggleOption(PanelIndex, Key, bValue);
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
@@ -433,7 +425,7 @@ void STrueScopeWidget::ApplyGainMultiplier(float Multiplier)
 	GainMultiplier = FMath::Clamp(Multiplier,
 		TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier());
 	PublishGainMultiplier();
-	UTrueScopeSettings::Get().SetScopeGainMultiplier(ScopeType, Gain->Key, GainMultiplier);
+	UTrueScopeSettings::Get().SetPanelGainMultiplier(PanelIndex, Gain->Key, GainMultiplier);
 
 	// The histogram applies its gain at draw time, so a repaint is enough
 	// there; the density scopes' transfer is applied by the analysis producer,
@@ -444,7 +436,7 @@ void STrueScopeWidget::ApplyGainMultiplier(float Multiplier)
 void STrueScopeWidget::ApplyOptionGroup(FName Key, int32 ValueId)
 {
 	SetOptionGroupValue(Key, ValueId);
-	UTrueScopeSettings::Get().SetScopeOptionGroupValue(ScopeType, Key, ValueId);
+	UTrueScopeSettings::Get().SetPanelOptionGroupValue(PanelIndex, Key, ValueId);
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 

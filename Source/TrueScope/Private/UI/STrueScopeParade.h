@@ -27,8 +27,12 @@ class STrueScopeParade : public STrueScopeWidget
 {
 public:
 	SLATE_BEGIN_ARGS(STrueScopeParade)
+			: _PanelIndex(0)
 		{
 		}
+		/** Panel slot this scope occupies; what its settings are keyed by (M6.4). */
+		SLATE_ARGUMENT(int32, PanelIndex)
+
 
 	SLATE_END_ARGS()
 

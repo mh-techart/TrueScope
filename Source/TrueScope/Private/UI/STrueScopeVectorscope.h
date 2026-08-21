@@ -59,8 +59,12 @@ class STrueScopeVectorscope : public STrueScopeWidget
 {
 public:
 	SLATE_BEGIN_ARGS(STrueScopeVectorscope)
+			: _PanelIndex(0)
 		{
 		}
+		/** Panel slot this scope occupies; what its settings are keyed by (M6.4). */
+		SLATE_ARGUMENT(int32, PanelIndex)
+
 
 	SLATE_END_ARGS()
 
@@ -72,11 +76,7 @@ public:
 
 	virtual bool HasDrawableData() const override;
 
-	/** Settings key of the Show Skin Tone Line toggle (work order 15). */
-	static const FName SkinToneLineKey;
 
-	/** Settings key of the marker-selection option group (work order 15). */
-	static const FName MarkersKey;
 
 protected:
 	virtual void OnAnalysisResultChanged() override;

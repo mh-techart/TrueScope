@@ -55,22 +55,23 @@ static TSharedRef<SWidget> MakePlaceholder(ETrueScopeType Type)
 
 TSharedRef<SWidget> MakeScopeWidget(ETrueScopeType Type,
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& Analyzer,
+	int32 PanelIndex,
 	TSharedPtr<STrueScopeWidget>* OutScopeWidget)
 {
 	TSharedPtr<STrueScopeWidget> Scope;
 	switch (Type)
 	{
 	case ETrueScopeType::Waveform:
-		Scope = SNew(STrueScopeWaveform, Analyzer);
+		Scope = SNew(STrueScopeWaveform, Analyzer).PanelIndex(PanelIndex);
 		break;
 	case ETrueScopeType::Parade:
-		Scope = SNew(STrueScopeParade, Analyzer);
+		Scope = SNew(STrueScopeParade, Analyzer).PanelIndex(PanelIndex);
 		break;
 	case ETrueScopeType::Vectorscope:
-		Scope = SNew(STrueScopeVectorscope, Analyzer);
+		Scope = SNew(STrueScopeVectorscope, Analyzer).PanelIndex(PanelIndex);
 		break;
 	case ETrueScopeType::Histogram:
-		Scope = SNew(STrueScopeHistogram, Analyzer);
+		Scope = SNew(STrueScopeHistogram, Analyzer).PanelIndex(PanelIndex);
 		break;
 	default:
 		// A scope type added to the enumeration but not yet built (CIE, M8

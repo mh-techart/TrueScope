@@ -10,6 +10,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/AppStyle.h"
+#include "TrueScopeSettings.h"
 #include "UI/TrueScopeDraw.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopeVectorscope"
@@ -92,15 +93,14 @@ namespace
 	}
 }
 
-const FName STrueScopeVectorscope::SkinToneLineKey(TEXT("ShowSkinToneLine"));
-const FName STrueScopeVectorscope::MarkersKey(TEXT("Markers"));
 
 void STrueScopeVectorscope::Construct(const FArguments& InArgs,
 	const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer)
 {
 	TraceBrush.DrawAs = ESlateBrushDrawType::Image;
 	TraceBrush.Tiling = ESlateBrushTileType::NoTile;
-	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Vectorscope, /*bMaintainSquareAspect*/ true);
+	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Vectorscope, /*bMaintainSquareAspect*/ true,
+		InArgs._PanelIndex);
 }
 
 TArrayView<const FTrueScopeDisplayMode> STrueScopeVectorscope::GetDisplayModes() const
@@ -130,7 +130,7 @@ TArrayView<const FTrueScopeToggleOption> STrueScopeVectorscope::GetToggleOptions
 	// The hue ring and the 5-degree ticks are deliberately NOT here: they are
 	// permanent orientation (work order 15, like Resolve), not options.
 	static const TArray<FTrueScopeToggleOption> Toggles = {
-		FTrueScopeToggleOption{SkinToneLineKey, LOCTEXT("ShowSkinToneLine", "Show Skin Tone Line"),
+		FTrueScopeToggleOption{TrueScope::SkinToneLineOptionKey, LOCTEXT("ShowSkinToneLine", "Show Skin Tone Line"),
 			LOCTEXT("ShowSkinToneLineTooltip",
 				"Show the skin tone line: human skin of every ethnicity clusters at this hue angle.")},
 	};
@@ -139,12 +139,12 @@ TArrayView<const FTrueScopeToggleOption> STrueScopeVectorscope::GetToggleOptions
 
 bool STrueScopeVectorscope::GetToggleOptionValue(FName Key) const
 {
-	return Key == SkinToneLineKey ? bShowSkinToneLine : false;
+	return Key == TrueScope::SkinToneLineOptionKey ? bShowSkinToneLine : false;
 }
 
 void STrueScopeVectorscope::SetToggleOptionValue(FName Key, bool bValue)
 {
-	if (Key == SkinToneLineKey)
+	if (Key == TrueScope::SkinToneLineOptionKey)
 	{
 		bShowSkinToneLine = bValue;
 	}
@@ -154,7 +154,7 @@ TArrayView<const FTrueScopeOptionGroup> STrueScopeVectorscope::GetOptionGroups()
 {
 	// See ETrueScopeVectorscopeMarkers for the choices and the 75 % default.
 	static const TArray<FTrueScopeOptionGroup> Groups = {
-		FTrueScopeOptionGroup{MarkersKey,
+		FTrueScopeOptionGroup{TrueScope::VectorscopeMarkersOptionKey,
 			{
 				FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeVectorscopeMarkers::Bars75),
 					LOCTEXT("Markers75", "75%")},
@@ -169,12 +169,12 @@ TArrayView<const FTrueScopeOptionGroup> STrueScopeVectorscope::GetOptionGroups()
 
 int32 STrueScopeVectorscope::GetOptionGroupValue(FName Key) const
 {
-	return Key == MarkersKey ? static_cast<int32>(Markers) : 0;
+	return Key == TrueScope::VectorscopeMarkersOptionKey ? static_cast<int32>(Markers) : 0;
 }
 
 void STrueScopeVectorscope::SetOptionGroupValue(FName Key, int32 ValueId)
 {
-	if (Key == MarkersKey)
+	if (Key == TrueScope::VectorscopeMarkersOptionKey)
 	{
 		Markers = static_cast<ETrueScopeVectorscopeMarkers>(ValueId);
 	}

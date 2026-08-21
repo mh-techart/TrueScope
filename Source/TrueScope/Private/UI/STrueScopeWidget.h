@@ -242,10 +242,20 @@ public:
 		ApplyGainMultiplier(TrueScope::DefaultGainMultiplier);
 	}
 
-	/** Which scope this is; the key its persisted options are stored under. */
+	/** Which scope this is. */
 	ETrueScopeType GetScopeType() const
 	{
 		return ScopeType;
+	}
+
+	/**
+	 * Which panel of the 2x2 grid this scope sits in — the key its persisted
+	 * options are stored under since M6.4. Settings are owned by the panel, not
+	 * by the scope type, so two panels showing the same type can differ.
+	 */
+	int32 GetPanelIndex() const
+	{
+		return PanelIndex;
 	}
 
 	/** Test seam: inject a result as if the analyzer had published it. */
@@ -257,11 +267,12 @@ public:
 
 protected:
 	/**
-	 * Call from the subclass's Construct. Restores the scope's persisted display
-	 * mode (phase-6.1 Task 3), so a scope opens the way the user left it.
+	 * Call from the subclass's Construct. Restores the persisted options of the
+	 * PANEL this scope sits in (phase-6.1 Task 3, re-keyed to the panel in
+	 * M6.4), so a scope opens the way the user left that panel.
 	 */
 	void InitializeScopeWidget(const TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe>& InAnalyzer,
-		ETrueScopeType InScopeType, bool bInMaintainSquareAspect);
+		ETrueScopeType InScopeType, bool bInMaintainSquareAspect, int32 InPanelIndex);
 
 	/** Latest cached result; null until the first analysis completes. Game thread. */
 	const TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe>& GetCachedResult() const
@@ -362,6 +373,10 @@ private:
 	TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> CachedResult;
 	uint64 LastSeenSerial = 0;
 	ETrueScopeType ScopeType = ETrueScopeType::Waveform;
+
+	/** Panel slot this scope occupies; what its settings are keyed by (M6.4). */
+	int32 PanelIndex = 0;
+
 	bool bMaintainSquareAspect = false;
 
 	/** The user's gain multiplier; 1.0 = this scope's calibrated default. */

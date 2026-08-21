@@ -39,7 +39,8 @@ void STrueScopeParade::Construct(const FArguments& InArgs,
 		Brush.DrawAs = ESlateBrushDrawType::Image;
 		Brush.Tiling = ESlateBrushTileType::NoTile;
 	}
-	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Parade, /*bMaintainSquareAspect*/ false);
+	InitializeScopeWidget(InAnalyzer, ETrueScopeType::Parade, /*bMaintainSquareAspect*/ false,
+		InArgs._PanelIndex);
 }
 
 
