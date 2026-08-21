@@ -120,23 +120,82 @@ namespace TrueScope::Draw
 	inline constexpr float HintPlatePaddingY = 6.0f;
 
 	/**
-	 * Below this content size a scope stops being readable — its fixed chrome
+	 * Metrics of the value-axis label font (GetLabelFont — Regular 8), MEASURED
+	 * through FSlateFontMeasure on this machine at DPI scale 1 and pinned by
+	 * TrueScope.UI.PanelSizeHint, which re-measures them and fails if they move:
+	 *
+	 *   LabelLineHeight       — GetMaxCharacterHeight of the label font: 13.0 px.
+	 *   WidestValueLabelWidth — the widest label string the value axis ever
+	 *                           draws, "1023": 24.0 x 13.0 px.
+	 *   ValueAxisLabelCount   — the nine labelled levels 0,128,...,896,1023 that
+	 *                           waveform, parade and histogram all share since
+	 *                           M6.4 Task 7, hence eight gaps between them.
+	 */
+	inline constexpr float LabelLineHeight = 13.0f;
+	inline constexpr float WidestValueLabelWidth = 24.0f;
+	inline constexpr int32 ValueAxisLabelCount = 9;
+	inline constexpr int32 ValueAxisLabelGaps = ValueAxisLabelCount - 1;
+
+	/**
+	 * Height of one panel header (STrueScopePanel: an SBorder holding the scope
+	 * name and the panel-menu button). MEASURED by laying the real panel out and
+	 * reading the header row's desired height: 20.0 px at DPI scale 1 — a 16 px
+	 * icon inside the SimpleButton style's 1 px vertical padding (StarshipCore-
+	 * Style.cpp, SimpleButtonIconOnly) inside the header's own 1 px padding.
+	 * A retina screenshot of the tab agrees to within one device row.
+	 * TrueScope.UI.PanelSizeHint re-measures it and fails if it moves.
+	 *
+	 * It is the difference between what the user drags (the panel) and what the
+	 * readable-size rule below judges (the canvas), so a 2x2 grid pays it twice
+	 * vertically: 40 px of panel height across the grid is header, not canvas.
+	 */
+	inline constexpr float PanelHeaderHeight = 20.0f;
+
+	/**
+	 * Below this CANVAS size a scope stops being readable — its fixed chrome
 	 * (label strip, padding, graticule) eats the plot, and what is left conveys
 	 * nothing (phase-6.1 Task 5). Scopes show a short hint there instead of a
 	 * broken render; below the size where even the hint plate fits,
 	 * DrawCenteredHint draws nothing rather than clipped text.
 	 *
-	 * The vectorscope reaches this first because it is aspect-locked: its content
-	 * rect is the largest centered SQUARE, so a wide, flat panel shrinks it in
-	 * both axes at once.
+	 * The threshold is where the value-axis labels stop colliding, taken as the
+	 * worst case over the scopes, and derived rather than chosen (M6.4 Task 8 —
+	 * the M6.1 values 180x120 had no recorded origin):
+	 *
+	 *   Width  — driven by the HISTOGRAM, the only scope whose value axis runs
+	 *            horizontally: nine labels centred on their levels need a gap of
+	 *            at least one label width, so the plot needs 8 x 24 = 192 px,
+	 *            plus its horizontal chrome of 2 x PlotPadding = 12 px -> 204 px.
+	 *            (The waveform/parade have no labels along X.)
+	 *   Height — driven by the WAVEFORM and PARADE, whose value axis runs
+	 *            vertically: 8 x 13 = 104 px of plot so the nine stacked labels
+	 *            just clear each other, plus 2 x PlotPadding = 12 px -> 116 px.
+	 *            (Their left label strip is a width cost, not a height one; the
+	 *            histogram's count axis carries no labels.)
+	 *
+	 * These are the CANVAS thresholds — the size the scope widget is given. The
+	 * panel that contains it must additionally afford its header, which is why
+	 * MinReadablePanelHeight exists; it is what a layout or a docking minimum
+	 * would be built from.
+	 *
+	 * The vectorscope reaches the threshold first because it is aspect-locked:
+	 * its content rect is the largest centered SQUARE, so a wide, flat panel
+	 * shrinks it in both axes at once, and its square must clear the WIDTH
+	 * threshold even though it has no value-axis labels of its own.
 	 */
-	inline constexpr float MinReadableScopeWidth = 180.0f;
-	inline constexpr float MinReadableScopeHeight = 120.0f;
+	inline constexpr float MinReadableCanvasWidth =
+		ValueAxisLabelGaps * WidestValueLabelWidth + 2.0f * PlotPadding;   // 204.0
+	inline constexpr float MinReadableCanvasHeight =
+		ValueAxisLabelGaps * LabelLineHeight + 2.0f * PlotPadding;         // 116.0
+
+	/** The same rule expressed for the panel, which also pays for its header. */
+	inline constexpr float MinReadablePanelWidth = MinReadableCanvasWidth;                     // 204.0
+	inline constexpr float MinReadablePanelHeight = MinReadableCanvasHeight + PanelHeaderHeight; // 136.0
 
 	/** The readable-size rule, pure so it can be tested without Slate. */
-	inline bool IsTooSmallToRead(FVector2f ContentSize)
+	inline bool IsTooSmallToRead(FVector2f CanvasSize)
 	{
-		return ContentSize.X < MinReadableScopeWidth || ContentSize.Y < MinReadableScopeHeight;
+		return CanvasSize.X < MinReadableCanvasWidth || CanvasSize.Y < MinReadableCanvasHeight;
 	}
 
 	/**
