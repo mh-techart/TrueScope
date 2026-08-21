@@ -17,6 +17,7 @@
 #include "TrueScopeSettings.h"
 #include "UI/STrueScopeGainSlider.h"
 #include "UI/TrueScopeDraw.h"
+#include "UI/TrueScopeStyle.h"
 #include "Widgets/Layout/SBox.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopeWidget"
@@ -311,7 +312,13 @@ TSharedRef<SWidget> STrueScopeWidget::BuildPanelMenu()
 	// button and the canvas's right-click menu call this, so they cannot offer
 	// different options. Everything in it is derived from what the scope itself
 	// declares, so a panel only ever shows options its own type has.
-	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr);
+	// Built with TrueScope's menu style so that every row of this menu starts
+	// in the same text column as every row of every other TrueScope menu — the
+	// column depends on which check widget the menu contains, so the menu has
+	// to declare that up front (TrueScopeStyle.cpp carries the derivation).
+	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr,
+		/*Extender*/ nullptr, /*bCloseSelfOnly*/ false,
+		&TrueScope::GetMenuStyle(GetPanelMenuCheckColumn()));
 
 	if (!GetDisplayModes().IsEmpty())
 	{
@@ -361,14 +368,50 @@ TSharedRef<SWidget> STrueScopeWidget::BuildPanelMenu()
 
 	// Last entry of every panel menu (M6.4 Task 6), below a separator: it acts
 	// on the whole panel rather than on any one option above it.
+	//
+	// No icon, deliberately (M6.4.1 Task 2). An entry that carries one reserves
+	// a further 24 units of icon column ahead of its label (SMenuEntryBlock.cpp
+	// :846-864: an SBox of Menu.MenuIconSize + 2 in a slot padded 2 and 6),
+	// which put "Reset to default" 24 to the right of every other row. The
+	// engine's own rule for this is all-or-none — SMenuEntryBlock.cpp:512-521
+	// calls it "our menu policy (either all or none of menu items in a section
+	// should have an icon)" and paints a magenta block over an offender when
+	// DisplayMultiboxHooks is on — and none is the right side of that choice
+	// here: no other row in any TrueScope menu has an icon.
 	MenuBuilder.AddSeparator();
 	MenuBuilder.AddMenuEntry(LOCTEXT("ResetPanel", "Reset to default"),
 		LOCTEXT("ResetPanelTooltip",
 			"Return this panel's display options to their defaults. Affects only this panel."),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "PropertyWindow.DiffersFromDefault"),
+		FSlateIcon(),
 		FUIAction(FExecuteAction::CreateSP(this, &STrueScopeWidget::ResetPanelToDefaults)));
 
 	return MenuBuilder.MakeWidget();
+}
+
+TrueScope::EMenuCheckColumn STrueScopeWidget::GetPanelMenuCheckColumn() const
+{
+	// Must describe what BuildPanelMenu() above actually adds: a toggle entry
+	// draws a check box and widens the menu's checkmark column, a radio entry
+	// only a dot, and a menu of plain buttons has no column at all. Toggles are
+	// only reachable inside a section, so a toggle whose section never gets
+	// built does not count. A drift between this and the builder shows up as a
+	// failing TrueScope.UI.MenuTextColumn, which measures the built rows.
+	const bool bHasDisplayModes = !GetDisplayModes().IsEmpty();
+	const bool bHasGroups = !GetOptionGroups().IsEmpty();
+
+	for (const FTrueScopeToggleOption& Toggle : GetToggleOptions())
+	{
+		if (Toggle.SectionKey.IsNone() ? bHasDisplayModes
+										: GetOptionGroups().ContainsByPredicate(
+											  [&Toggle](const FTrueScopeOptionGroup& Group)
+											  { return Group.Key == Toggle.SectionKey; }))
+		{
+			return TrueScope::EMenuCheckColumn::CheckBox;
+		}
+	}
+
+	return (bHasDisplayModes || bHasGroups) ? TrueScope::EMenuCheckColumn::Radio
+											: TrueScope::EMenuCheckColumn::None;
 }
 
 void STrueScopeWidget::AddToggleOptionEntries(FMenuBuilder& MenuBuilder, FName SectionKey)

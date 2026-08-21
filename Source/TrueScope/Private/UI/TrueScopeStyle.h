@@ -45,3 +45,40 @@ namespace TrueScope
 	/** Style name of the plugin's monochrome tab icon (16x16 vector brush). */
 	inline const FName TabIconStyleName("TrueScope.TabIcon");
 }
+
+namespace TrueScope
+{
+	/**
+	 * Which check widget the engine will size a menu's checkmark column to
+	 * (M6.4.1 Task 2).
+	 *
+	 * A menu's checkmark column is one shared width: every entry row puts its
+	 * check widget in an SLinkedBox registered with the multibox's single
+	 * FLinkedBoxManager (SMenuEntryBlock.cpp), so the column is as wide as the
+	 * widest check widget *in that one menu* and every row in it indents by
+	 * that much. A menu of radio entries therefore indents less than a menu
+	 * that also holds a toggle, and a menu with no checkable entry at all
+	 * indents least — which is exactly why TrueScope's menus did not line up
+	 * with each other.
+	 */
+	enum class EMenuCheckColumn : uint8
+	{
+		/** No checkable entry: every check widget is collapsed, column width 0. */
+		None,
+		/** At least one radio entry, no toggle: column is the radio dot's width. */
+		Radio,
+		/** At least one toggle entry: column is the check box's width. */
+		CheckBox
+	};
+
+	/**
+	 * The Slate style to build a TrueScope menu with, so that every row of every
+	 * TrueScope menu starts in the same text column.
+	 *
+	 * Pass the check-column class the menu will actually contain; the returned
+	 * style differs from the engine's only in `Menu.Block.Padding`, which is
+	 * widened by exactly what that menu's checkmark column lacks. See
+	 * TrueScopeStyle.cpp for the derivation.
+	 */
+	const ISlateStyle& GetMenuStyle(EMenuCheckColumn CheckColumn);
+}

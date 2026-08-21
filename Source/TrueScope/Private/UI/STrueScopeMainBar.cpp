@@ -9,6 +9,7 @@
 #include "Styling/AppStyle.h"
 #include "Textures/SlateIcon.h"
 #include "TrueScopeModule.h"
+#include "UI/TrueScopeStyle.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -72,7 +73,12 @@ void STrueScopeMainBar::Construct(const FArguments& InArgs)
 
 TSharedRef<SWidget> STrueScopeMainBar::BuildSettingsMenu()
 {
-	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr);
+	// Same menu style as the panel menus, so the settings popup starts its text
+	// in the same column they do (M6.4.1 Task 2). Every entry here is a radio
+	// entry, so its checkmark column is the radio dot's.
+	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr,
+		/*Extender*/ nullptr, /*bCloseSelfOnly*/ false,
+		&TrueScope::GetMenuStyle(TrueScope::EMenuCheckColumn::Radio));
 
 	// ONE switch selects the path for all four scopes: a per-scope path would
 	// make the user set the same option four times (settled decision,

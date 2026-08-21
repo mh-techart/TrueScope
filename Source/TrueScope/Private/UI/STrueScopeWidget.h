@@ -9,6 +9,7 @@
 #include "Containers/ArrayView.h"
 #include "CoreMinimal.h"
 #include "UI/TrueScopeScopeState.h"
+#include "UI/TrueScopeStyle.h"
 #include "UI/TrueScopeType.h"
 #include "Widgets/SLeafWidget.h"
 
@@ -288,6 +289,9 @@ public:
 	 * a temporary second entry point and goes away with the type switcher.
 	 */
 	TSharedRef<SWidget> BuildPanelMenu();
+
+	/** Which check widget BuildPanelMenu() will put in this menu, for its style. */
+	TrueScope::EMenuCheckColumn GetPanelMenuCheckColumn() const;
 
 	/**
 	 * Back to the compiled defaults for this panel's own display options (M6.4
