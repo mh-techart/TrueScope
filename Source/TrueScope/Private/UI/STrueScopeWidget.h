@@ -110,8 +110,9 @@ struct FTrueScopeGainOption
  * - Panel menu (M6.4): a scope that offers more than one presentation of its
  *   data overrides GetDisplayModes()/GetDisplayModeId()/SetDisplayModeId()
  *   and gets a Display section for free; option groups, toggles and the gain
- *   slider come the same way. BuildPanelMenu() is the single builder behind
- *   both the panel header's menu button and the canvas's right-click menu.
+ *   slider come the same way. BuildPanelMenu() builds it, and the panel
+ *   header's menu button is its single entry point: right-clicking a scope
+ *   canvas deliberately does nothing (M6.4.1 Task 3).
  *   The global options — analysis path, capture rate — are NOT here: they are
  *   TrueScope-wide and live in the main bar's settings popup, so each is
  *   reachable from exactly one place.
@@ -125,9 +126,6 @@ class STrueScopeWidget : public SLeafWidget
 {
 public:
 	virtual FVector2D ComputeDesiredSize(float) const override;
-
-	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 	/** Recompute the scope state from the current inputs; true if it changed. */
 	bool UpdateScopeState(double NowSeconds);
@@ -282,11 +280,15 @@ public:
 	}
 
 	/**
-	 * The panel menu of the panel this scope sits in (M6.4 Task 4) — the ONE
-	 * builder behind both entry points: the panel header's menu button and the
-	 * scope canvas's right-click menu. They cannot offer different options
-	 * because there is nothing else to build them from. The right-click menu is
-	 * a temporary second entry point and goes away with the type switcher.
+	 * The panel menu of the panel this scope sits in (M6.4 Task 4) — built here
+	 * and nowhere else, so the panel header cannot grow a second list beside
+	 * it. M6.4 also opened this menu on a right-click on the scope canvas, as a
+	 * temporary second entry point while the header was new; M6.4.1 removed
+	 * that once the header was confirmed working. **Right-clicking a scope
+	 * canvas now does nothing, and that is deliberate** — one option, one
+	 * place. STrueScopeWidget therefore handles no mouse buttons at all; if a
+	 * future scope needs one (a picker, a drag), it does not get the menu back
+	 * with it. TrueScope.UI.PanelMenuSingleEntryPoint pins both halves.
 	 */
 	TSharedRef<SWidget> BuildPanelMenu();
 
@@ -398,15 +400,6 @@ protected:
 
 private:
 	EActiveTimerReturnType PollAnalyzer(double InCurrentTime, float InDeltaTime);
-
-	/**
-	 * Every scope has a menu: the panel menu, reachable from the panel header
-	 * and — until the type switcher lands — from a right-click on the canvas.
-	 */
-	bool HasContextMenu() const
-	{
-		return true;
-	}
 
 	/** The toggle options belonging to one menu section; NAME_None = the display section. */
 	void AddToggleOptionEntries(class FMenuBuilder& MenuBuilder, FName SectionKey);

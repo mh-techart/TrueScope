@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "Capture/TrueScopeViewExtension.h"
+#include "InputCoreTypes.h"
 #include "Misc/AutomationTest.h"
 #include "TrueScopeModule.h"
 #include "UI/STrueScopeHistogram.h"
@@ -141,15 +142,22 @@ bool FTrueScopePanelMenuContentsTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopePanelMenuEntryPointsTest,
-	"TrueScope.UI.PanelMenuEntryPoints",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopePanelMenuSingleEntryPointTest,
+	"TrueScope.UI.PanelMenuSingleEntryPoint",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FTrueScopePanelMenuEntryPointsTest::RunTest(const FString&)
+bool FTrueScopePanelMenuSingleEntryPointTest::RunTest(const FString&)
 {
-	// The panel header's menu button and the canvas's right-click menu are the
-	// same menu. They are the same function today; this pins that the header
-	// keeps delegating to the scope rather than growing a second list beside it.
+	// M6.4.1 Task 3 repurposed this test. M6.4 shipped two entry points to the
+	// panel menu — the header button and a right-click on the scope canvas —
+	// and this asserted the two agreed. With the right-click removed there is
+	// no second list to compare against, so a test that still only compared
+	// would pass for the wrong reason. It now pins the two halves of "one
+	// option, one place":
+	//   1. the panel header still delegates to the scope's builder rather than
+	//      growing a list of its own, and
+	//   2. right-clicking a scope canvas opens nothing — deliberate, not an
+	//      oversight, so nobody "fixes" the handler back in.
 	TSharedRef<STrueScopePanel> Panel = SNew(STrueScopePanel, nullptr).PanelIndex(2);
 	const TSharedPtr<STrueScopeWidget> Scope = Panel->GetScopeWidget();
 	if (!TestTrue(TEXT("The panel built its scope"), Scope.IsValid()))
@@ -159,11 +167,25 @@ bool FTrueScopePanelMenuEntryPointsTest::RunTest(const FString&)
 
 	const TArray<FString> Ignored = GetSectionHookNames(Scope.ToSharedRef());
 	const TArray<FString> FromHeader = CollectMenuRows(Panel->BuildPanelMenu(), Ignored);
-	const TArray<FString> FromCanvas = CollectMenuRows(Scope->BuildPanelMenu(), Ignored);
+	const TArray<FString> FromScope = CollectMenuRows(Scope->BuildPanelMenu(), Ignored);
 
-	TestEqual(TEXT("Header menu and right-click menu list the same rows"),
-		Describe(FromHeader), Describe(FromCanvas));
+	TestEqual(TEXT("The header menu is the scope's own menu"),
+		Describe(FromHeader), Describe(FromScope));
 	TestTrue(TEXT("...and that list is not empty"), FromHeader.Num() > 0);
+
+	// A right-click delivered straight to the scope widget. Unhandled means the
+	// scope declined it and no menu was pushed; the pre-M6.4.1 handler returned
+	// Handled from both, having captured the mouse and pushed the menu.
+	const FGeometry Geometry = FGeometry::MakeRoot(FVector2f(400.0f, 300.0f), FSlateLayoutTransform());
+	const FPointerEvent RightClick(
+		/*PointerIndex*/ 0, FVector2f(10.0f, 10.0f), FVector2f(10.0f, 10.0f),
+		TSet<FKey>{EKeys::RightMouseButton}, EKeys::RightMouseButton,
+		/*WheelDelta*/ 0.0f, FModifierKeysState());
+
+	TestFalse(TEXT("Right-press on the scope canvas is not handled"),
+		Scope->OnMouseButtonDown(Geometry, RightClick).IsEventHandled());
+	TestFalse(TEXT("Right-release on the scope canvas is not handled"),
+		Scope->OnMouseButtonUp(Geometry, RightClick).IsEventHandled());
 
 	return true;
 }

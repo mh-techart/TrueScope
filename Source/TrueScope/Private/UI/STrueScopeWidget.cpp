@@ -6,11 +6,8 @@
 #include "Analysis/TrueScopeAnalyzer.h"
 #include "Capture/TrueScopeViewExtension.h"
 #include "Editor.h"
-#include "Framework/Application/MenuStack.h"
-#include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Layout/WidgetPath.h"
 #include "Styling/AppStyle.h"
 #include "Textures/SlateIcon.h"
 #include "TrueScopeModule.h"
@@ -277,30 +274,6 @@ FSlateRect STrueScopeWidget::GetScopeContentRect(const FGeometry& AllottedGeomet
 	return FSlateRect(Left, Top, Left + Side, Top + Side);
 }
 
-FReply STrueScopeWidget::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	// Capture on press so the release lands here and opens the menu.
-	if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton && HasContextMenu())
-	{
-		return FReply::Handled().CaptureMouse(SharedThis(this));
-	}
-	return FReply::Unhandled();
-}
-
-FReply STrueScopeWidget::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	if (MouseEvent.GetEffectingButton() != EKeys::RightMouseButton || !HasContextMenu())
-	{
-		return FReply::Unhandled();
-	}
-
-	const FWidgetPath OwnerPath = MouseEvent.GetEventPath() != nullptr ? *MouseEvent.GetEventPath() : FWidgetPath();
-	FSlateApplication::Get().PushMenu(AsShared(), OwnerPath, BuildPanelMenu(),
-		MouseEvent.GetScreenSpacePosition(), FPopupTransitionEffect::ContextMenu);
-
-	return FReply::Handled().ReleaseMouseCapture();
-}
-
 FText STrueScopeWidget::GetDisplayModeSectionLabel() const
 {
 	return LOCTEXT("DisplaySection", "Display");
@@ -308,10 +281,10 @@ FText STrueScopeWidget::GetDisplayModeSectionLabel() const
 
 TSharedRef<SWidget> STrueScopeWidget::BuildPanelMenu()
 {
-	// ONE builder for both entry points (M6.4 Task 4): the panel header's menu
-	// button and the canvas's right-click menu call this, so they cannot offer
-	// different options. Everything in it is derived from what the scope itself
-	// declares, so a panel only ever shows options its own type has.
+	// The single builder behind the panel's only menu entry point (M6.4 Task 4,
+	// M6.4.1 Task 3): the panel header's menu button. Everything in it is
+	// derived from what the scope itself declares, so a panel only ever shows
+	// options its own type has.
 	// Built with TrueScope's menu style so that every row of this menu starts
 	// in the same text column as every row of every other TrueScope menu — the
 	// column depends on which check widget the menu contains, so the menu has
