@@ -14,7 +14,9 @@
 #include "Textures/SlateIcon.h"
 #include "TrueScopeModule.h"
 #include "TrueScopeSettings.h"
+#include "UI/STrueScopeGainSlider.h"
 #include "UI/TrueScopeDraw.h"
+#include "Widgets/Layout/SBox.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopeWidget"
 
@@ -26,6 +28,14 @@ namespace
 	 * serial compare, so an idle tick costs nothing.
 	 */
 	constexpr float ResultPollPeriodSeconds = 0.1f;
+
+	/**
+	 * Gain slider width inside the panel menu. Wide enough that the +/-3
+	 * doublings of travel are draggable in meaningful steps (one doubling is a
+	 * sixth of this), and the menu is sized by its widest row, so it costs
+	 * nothing elsewhere.
+	 */
+	constexpr float GainSliderWidth = 120.0f;
 
 	/**
 	 * The three things the user needs: that the scopes are paused, why, and how to
@@ -284,12 +294,22 @@ FReply STrueScopeWidget::OnMouseButtonUp(const FGeometry& MyGeometry, const FPoi
 	return FReply::Handled().ReleaseMouseCapture();
 }
 
+FText STrueScopeWidget::GetDisplayModeSectionLabel() const
+{
+	return LOCTEXT("DisplaySection", "Display");
+}
+
 TSharedRef<SWidget> STrueScopeWidget::BuildPanelMenu()
 {
+	// ONE builder for both entry points (M6.4 Task 4): the panel header's menu
+	// button and the canvas's right-click menu call this, so they cannot offer
+	// different options. Everything in it is derived from what the scope itself
+	// declares, so a panel only ever shows options its own type has.
 	FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection*/ true, nullptr);
-	if (!GetDisplayModes().IsEmpty() || !GetToggleOptions().IsEmpty() || !GetOptionGroups().IsEmpty())
+
+	if (!GetDisplayModes().IsEmpty())
 	{
-		MenuBuilder.BeginSection(TEXT("TrueScopeDisplayModes"), LOCTEXT("DisplaySection", "Display"));
+		MenuBuilder.BeginSection(TEXT("TrueScopeDisplayModes"), GetDisplayModeSectionLabel());
 		for (const FTrueScopeDisplayMode& Mode : GetDisplayModes())
 		{
 			MenuBuilder.AddMenuEntry(Mode.Label, FText::GetEmpty(), FSlateIcon(),
@@ -299,64 +319,98 @@ TSharedRef<SWidget> STrueScopeWidget::BuildPanelMenu()
 					FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsDisplayModeActive, Mode.Id)),
 				NAME_None, EUserInterfaceActionType::RadioButton);
 		}
-		for (const FTrueScopeOptionGroup& Group : GetOptionGroups())
-		{
-			for (const FTrueScopeDisplayMode& Option : Group.Options)
-			{
-				MenuBuilder.AddMenuEntry(Option.Label, FText::GetEmpty(), FSlateIcon(),
-					FUIAction(
-						FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSelectOptionGroup, Group.Key,
-							Option.Id),
-						FCanExecuteAction(),
-						FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsOptionGroupValueActive, Group.Key,
-							Option.Id)),
-					NAME_None, EUserInterfaceActionType::RadioButton);
-			}
-		}
-		for (const FTrueScopeToggleOption& Toggle : GetToggleOptions())
-		{
-			MenuBuilder.AddMenuEntry(Toggle.Label, Toggle.Tooltip, FSlateIcon(),
-				FUIAction(
-					FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleFlipToggleOption, Toggle.Key),
-					FCanExecuteAction(),
-					FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsToggleOptionChecked, Toggle.Key)),
-				NAME_None, EUserInterfaceActionType::ToggleButton);
-		}
+		AddToggleOptionEntries(MenuBuilder, NAME_None);
 		MenuBuilder.EndSection();
 	}
 
-	// Global analysis-path selection (phase-5.2): offered on every scope, and
-	// ONE switch selects the path for all four scopes at once — a per-scope
-	// path would make the user set the same option four times (decision
-	// recorded in architecture.md). Neither entry is labelled "default"
-	// (architecture, "Analysis path selection"): performance vs. compatibility
-	// is the user-facing contrast, and both must produce identical values.
-	MenuBuilder.BeginSection(TEXT("TrueScopeAnalysisPath"), LOCTEXT("AnalysisPathSection", "Analysis Path (all scopes)"));
-	MenuBuilder.AddMenuEntry(LOCTEXT("AnalysisPathGpu", "GPU (performance)"), FText::GetEmpty(), FSlateIcon(),
-		FUIAction(
-			FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSetUseGpuAnalysis, true),
-			FCanExecuteAction(),
-			FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsAnalysisPathActive, true)),
-		NAME_None, EUserInterfaceActionType::RadioButton);
-	MenuBuilder.AddMenuEntry(LOCTEXT("AnalysisPathCpu", "CPU (compatibility)"), FText::GetEmpty(), FSlateIcon(),
-		FUIAction(
-			FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSetUseGpuAnalysis, false),
-			FCanExecuteAction(),
-			FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsAnalysisPathActive, false)),
-		NAME_None, EUserInterfaceActionType::RadioButton);
-	MenuBuilder.EndSection();
+	// Each secondary radio group gets its own named section, with the toggles
+	// that belong to it after its choices (the skin tone line closes "Markers").
+	for (const FTrueScopeOptionGroup& Group : GetOptionGroups())
+	{
+		MenuBuilder.BeginSection(Group.Key, Group.SectionLabel);
+		for (const FTrueScopeDisplayMode& Option : Group.Options)
+		{
+			MenuBuilder.AddMenuEntry(Option.Label, FText::GetEmpty(), FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleSelectOptionGroup, Group.Key,
+						Option.Id),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsOptionGroupValueActive, Group.Key,
+						Option.Id)),
+				NAME_None, EUserInterfaceActionType::RadioButton);
+		}
+		AddToggleOptionEntries(MenuBuilder, Group.Key);
+		MenuBuilder.EndSection();
+	}
+
+	// The gain slider, unsectioned, after the choices: it is the only continuous
+	// control in the menu, and it is the one an artist reaches for most, so it
+	// sits where the eye lands after the radio rows rather than behind a
+	// heading of its own.
+	if (const FTrueScopeGainOption* Gain = GetGainOption())
+	{
+		MenuBuilder.AddWidget(BuildGainSlider(*Gain), Gain->Label, /*bNoIndent*/ false,
+			/*bSearchable*/ true, Gain->Tooltip);
+	}
 
 	return MenuBuilder.MakeWidget();
 }
 
-void STrueScopeWidget::HandleSetUseGpuAnalysis(bool bUseGpu)
+void STrueScopeWidget::AddToggleOptionEntries(FMenuBuilder& MenuBuilder, FName SectionKey)
 {
-	FTrueScopeModule::Get().SetUseGpuAnalysis(bUseGpu);
+	for (const FTrueScopeToggleOption& Toggle : GetToggleOptions())
+	{
+		if (Toggle.SectionKey != SectionKey)
+		{
+			continue;
+		}
+
+		MenuBuilder.AddMenuEntry(Toggle.Label, Toggle.Tooltip, FSlateIcon(),
+			FUIAction(
+				FExecuteAction::CreateSP(this, &STrueScopeWidget::HandleFlipToggleOption, Toggle.Key),
+				FCanExecuteAction(),
+				FIsActionChecked::CreateSP(this, &STrueScopeWidget::IsToggleOptionChecked, Toggle.Key)),
+			NAME_None, EUserInterfaceActionType::ToggleButton);
+	}
 }
 
-bool STrueScopeWidget::IsAnalysisPathActive(bool bGpu) const
+TSharedRef<SWidget> STrueScopeWidget::BuildGainSlider(const FTrueScopeGainOption& Option)
 {
-	return FTrueScopeModule::Get().GetUseGpuAnalysis() == bGpu;
+	// The slider works in POSITION space and the scope stores a GAIN, so both
+	// directions go through the shared law (M6.3) — there is no second copy of
+	// it to drift. Everything else about it is unchanged from the toolbar it
+	// moved out of: continuous, centre-detented, double-click resets, and no
+	// numeric readout.
+	const TWeakPtr<STrueScopeWidget> WeakSelf = SharedThis(this);
+
+	return SNew(SBox)
+		.WidthOverride(GainSliderWidth)
+		.VAlign(VAlign_Center)
+		[
+			SNew(STrueScopeGainSlider)
+			.ToolTipText(Option.Tooltip)
+			.Value_Lambda([WeakSelf]()
+			{
+				const TSharedPtr<STrueScopeWidget> Pinned = WeakSelf.Pin();
+				return Pinned.IsValid()
+					? TrueScope::GainToSliderPosition(Pinned->GetGainMultiplier())
+					: 0.5f;
+			})
+			.OnValueChanged_Lambda([WeakSelf](float NewPosition)
+			{
+				if (const TSharedPtr<STrueScopeWidget> Pinned = WeakSelf.Pin())
+				{
+					Pinned->ApplyGainMultiplier(TrueScope::SliderPositionToGain(NewPosition));
+				}
+			})
+			.OnResetRequested_Lambda([WeakSelf]()
+			{
+				if (const TSharedPtr<STrueScopeWidget> Pinned = WeakSelf.Pin())
+				{
+					Pinned->ResetGainMultiplier();
+				}
+			})
+		];
 }
 
 void STrueScopeWidget::ApplyDisplayMode(int32 ModeId)

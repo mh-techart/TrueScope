@@ -4,27 +4,21 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UI/TrueScopeType.h"
 #include "Widgets/SCompoundWidget.h"
 
-class STrueScopeWidget;
-struct FTrueScopeGainOption;
 
 /**
- * The TrueScope tab's toolbar (phase-6.1 Task 2): the visible home of every
- * user-facing option.
+ * The TrueScope tab's main bar (phase-6.1 Task 2, reorganised in M6.4): the row
+ * above all panels, carrying what is TrueScope-wide.
  *
  * "The end user is an artist, not an engine programmer" (architecture.md): an
- * option that exists only in a Slate right-click menu is, for practical
- * purposes, hidden — so the analysis path, the per-scope display modes and the
- * measurement rate are all operable from here. The right-click menus stay: they
- * are the fast path for someone already pointing at a scope, and both routes
- * drive exactly the same state (the scope widgets' display modes and the
- * module's global analysis path), so they cannot disagree.
- *
- * The display-mode controls are generated from each scope's own
- * GetDisplayModes(), so a scope that gains a mode gains its toolbar control
- * with no change here.
+ * option that exists only in a Slate menu is, for practical purposes, hidden.
+ * M6.4 answers that per level of ownership rather than by showing everything at
+ * once: a panel's own options live in its panel header, one click from the scope
+ * they change, while the two global options — analysis path and capture rate —
+ * live here. Nothing that belongs to a single panel is on this bar any more; a
+ * bar carrying four scopes' worth of controls had become the reason a panel's
+ * own settings were hard to find.
  */
 class STrueScopeToolbar : public SCompoundWidget
 {
@@ -35,9 +29,7 @@ public:
 
 	SLATE_END_ARGS()
 
-	/** Scopes shown in the tab, in layout order; entries may be null (placeholders). */
-	void Construct(const FArguments& InArgs,
-		const TArray<TPair<ETrueScopeType, TSharedPtr<STrueScopeWidget>>>& InScopes);
+	void Construct(const FArguments& InArgs);
 
 private:
 	/** One labelled group of mutually exclusive toggle buttons. */
@@ -46,9 +38,6 @@ private:
 	/** Analysis path: one control for all four scopes (the decided global behaviour). */
 	TSharedRef<SWidget> MakeAnalysisPathControl();
 
-	/** A scope's display modes, built from the scope itself. */
-	TSharedRef<SWidget> MakeDisplayModeControl(ETrueScopeType Type, const TSharedPtr<STrueScopeWidget>& Scope);
-
 	/** Measurement rate: the shortlist of cadences from TrueScopeViewExtension.h. */
 	TSharedRef<SWidget> MakeMeasurementRateControl();
 
@@ -56,24 +45,8 @@ private:
 	TSharedRef<SWidget> MakeOptionButton(const FText& Label, const FText& Tooltip,
 		FSimpleDelegate OnSelected, TAttribute<bool> IsSelected);
 
-	/** Independent on/off button for a scope's toggle option (phase-6.2). */
-	TSharedRef<SWidget> MakeToggleButton(const FText& Label, const FText& Tooltip,
-		TWeakPtr<STrueScopeWidget> Scope, FName Key);
-
-	/**
-	 * A scope's gain slider (M6.3): the continuous control the density scopes'
-	 * Trace Brightness and the histogram's Gain share. It lives in the visible
-	 * toolbar rather than only in the right-click menu because it is not a
-	 * rarely-touched preference — it is how an artist makes a dark trace
-	 * readable, so hiding it would hide the fix.
-	 */
-	TSharedRef<SWidget> MakeGainControl(TWeakPtr<STrueScopeWidget> Scope, const FTrueScopeGainOption& Option);
-
 	void HandleSetAnalysisPath(bool bUseGpu);
 	bool IsAnalysisPathSelected(bool bGpu) const;
-
-	void HandleSetDisplayMode(TWeakPtr<STrueScopeWidget> Scope, int32 ModeId);
-	bool IsDisplayModeSelected(TWeakPtr<STrueScopeWidget> Scope, int32 ModeId) const;
 
 	void HandleSetMeasurementRate(float RateHz);
 	bool IsMeasurementRateSelected(float RateHz) const;

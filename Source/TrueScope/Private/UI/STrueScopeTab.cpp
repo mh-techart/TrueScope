@@ -9,7 +9,6 @@
 #include "UI/STrueScopePanel.h"
 #include "UI/STrueScopeStatusLine.h"
 #include "UI/STrueScopeToolbar.h"
-#include "UI/STrueScopeWidget.h"
 #include "UI/TrueScopeType.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SBoxPanel.h"
@@ -27,27 +26,23 @@ void STrueScopeTab::Construct(const FArguments& InArgs)
 	// one of them. Today all four are the compiled defaults, so this reproduces
 	// the M4 grid exactly.
 	//
-	// The toolbar is still handed the scope widgets themselves, because it
-	// generates each scope's display-mode control from the scope's own
-	// GetDisplayModes() — those controls move into the panel menus in Task 4.
-	TArray<TPair<ETrueScopeType, TSharedPtr<STrueScopeWidget>>> Scopes;
+	// Each panel carries its own options in its panel header since M6.4, so the
+	// tab hands the main bar nothing: the bar is global-only.
 	TArray<TSharedRef<STrueScopePanel>> Panels;
 	for (int32 PanelIndex = 0; PanelIndex < TrueScope::NumPanels; ++PanelIndex)
 	{
-		TSharedRef<STrueScopePanel> Panel = SNew(STrueScopePanel, Analyzer).PanelIndex(PanelIndex);
-		Scopes.Emplace(Panel->GetScopeType(), Panel->GetScopeWidget());
-		Panels.Emplace(Panel);
+		Panels.Emplace(SNew(STrueScopePanel, Analyzer).PanelIndex(PanelIndex));
 	}
 
 	ChildSlot
 	[
 		SNew(SVerticalBox)
 
-		// Visible home of the user-facing options (phase-6.1 Task 2).
+		// The main bar: TrueScope-wide options only (M6.4).
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
-			SNew(STrueScopeToolbar, Scopes)
+			SNew(STrueScopeToolbar)
 		]
 
 		+ SVerticalBox::Slot()

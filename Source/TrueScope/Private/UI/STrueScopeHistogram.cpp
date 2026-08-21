@@ -194,7 +194,10 @@ const FTrueScopeGainOption* STrueScopeHistogram::GetGainOption() const
 	// sparse bins (0.20 %). See TrueScopeDisplayGains.h for the derivation.
 	static const FTrueScopeGainOption Option{
 		TrueScope::HistogramGainKey,
-		LOCTEXT("HistogramGain", "Gain"),
+		// Named in full even inside the histogram's own menu: the phase-6.3
+		// term for this control is "Histogram Gain", and the docs, the settings
+		// key and the row the user sees should all say the same thing.
+		LOCTEXT("HistogramGain", "Histogram Gain"),
 		LOCTEXT("HistogramGainTooltip",
 			"Vertical scale of the curves. Centre is the calibrated default (a bin holding 1.58% of the frame's pixels fills the band); left compresses, right magnifies. Double-click to reset."),
 	};

@@ -82,6 +82,7 @@ protected:
 	virtual void OnAnalysisResultChanged() override;
 
 	virtual TArrayView<const FTrueScopeDisplayMode> GetDisplayModes() const override;
+	virtual FText GetDisplayModeSectionLabel() const override;
 	virtual int32 GetDisplayModeId() const override;
 	virtual void SetDisplayModeId(int32 InModeId) override;
 

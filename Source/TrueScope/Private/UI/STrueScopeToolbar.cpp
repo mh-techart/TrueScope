@@ -3,15 +3,11 @@
 
 #include "UI/STrueScopeToolbar.h"
 
-#include "Analysis/TrueScopeDisplayGains.h"
 #include "Capture/TrueScopeViewExtension.h"
 #include "Styling/AppStyle.h"
 #include "TrueScopeModule.h"
-#include "UI/STrueScopeGainSlider.h"
-#include "UI/STrueScopeWidget.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -24,13 +20,6 @@ namespace
 	constexpr float GroupSpacing = 12.0f;
 	constexpr float ButtonSpacing = 2.0f;
 
-	/**
-	 * Gain slider width. Wide enough that the +/-3 doublings of travel are
-	 * draggable in meaningful steps (one doubling is a sixth of this), narrow
-	 * enough that four scopes' toolbars still fit a docked tab.
-	 */
-	constexpr float GainSliderWidth = 90.0f;
-
 	FText GetMeasurementRateLabel(float RateHz)
 	{
 		// "2.5 Hz" reads as a rate; the exactness matters to nobody, the cadence does.
@@ -40,8 +29,7 @@ namespace
 	}
 }
 
-void STrueScopeToolbar::Construct(const FArguments& InArgs,
-	const TArray<TPair<ETrueScopeType, TSharedPtr<STrueScopeWidget>>>& InScopes)
+void STrueScopeToolbar::Construct(const FArguments& InArgs)
 {
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
 
@@ -52,28 +40,6 @@ void STrueScopeToolbar::Construct(const FArguments& InArgs,
 		[
 			MakeGroup(LOCTEXT("AnalysisLabel", "Analysis"), MakeAnalysisPathControl())
 		];
-
-	// One group per scope that offers display modes or toggle options —
-	// generated from the scopes, so this list follows whatever the scopes offer
-	// (waveform RGB/Luma, histogram modes, vectorscope zoom + Show Guides).
-	for (const TPair<ETrueScopeType, TSharedPtr<STrueScopeWidget>>& Scope : InScopes)
-	{
-		if (!Scope.Value.IsValid()
-			|| (Scope.Value->GetDisplayModes().IsEmpty() && Scope.Value->GetToggleOptions().IsEmpty()
-				&& Scope.Value->GetOptionGroups().IsEmpty() && Scope.Value->GetGainOption() == nullptr))
-		{
-			continue;
-		}
-
-		Row->AddSlot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, GroupSpacing, 0.0f)
-			[
-				MakeGroup(TrueScope::GetScopeTypeDisplayName(Scope.Key),
-					MakeDisplayModeControl(Scope.Key, Scope.Value))
-			];
-	}
 
 	Row->AddSlot()
 		.AutoWidth()
@@ -171,168 +137,6 @@ TSharedRef<SWidget> STrueScopeToolbar::MakeAnalysisPathControl()
 		];
 }
 
-TSharedRef<SWidget> STrueScopeToolbar::MakeDisplayModeControl(ETrueScopeType Type,
-	const TSharedPtr<STrueScopeWidget>& Scope)
-{
-	TSharedRef<SHorizontalBox> Box = SNew(SHorizontalBox);
-
-	const TWeakPtr<STrueScopeWidget> WeakScope = Scope;
-	for (const FTrueScopeDisplayMode& Mode : Scope->GetDisplayModes())
-	{
-		Box->AddSlot()
-			.AutoWidth()
-			.Padding(0.0f, 0.0f, ButtonSpacing, 0.0f)
-			[
-				MakeOptionButton(Mode.Label,
-					FText::Format(LOCTEXT("DisplayModeTooltip", "{0}: show as {1}"),
-						TrueScope::GetScopeTypeDisplayName(Type), Mode.Label),
-					FSimpleDelegate::CreateSP(this, &STrueScopeToolbar::HandleSetDisplayMode, WeakScope, Mode.Id),
-					TAttribute<bool>::CreateSP(this, &STrueScopeToolbar::IsDisplayModeSelected, WeakScope, Mode.Id))
-			];
-	}
-
-	// Secondary radio groups after the modes (work order 15): same radio
-	// behaviour as the display modes, driven through ApplyOptionGroup.
-	for (const FTrueScopeOptionGroup& Group : Scope->GetOptionGroups())
-	{
-		for (const FTrueScopeDisplayMode& Option : Group.Options)
-		{
-			const FName GroupKey = Group.Key;
-			const int32 OptionId = Option.Id;
-			Box->AddSlot()
-				.AutoWidth()
-				.Padding(0.0f, 0.0f, ButtonSpacing, 0.0f)
-				[
-					MakeOptionButton(Option.Label,
-						FText::Format(LOCTEXT("OptionGroupTooltip", "{0}: show {1}"),
-							TrueScope::GetScopeTypeDisplayName(Type), Option.Label),
-						FSimpleDelegate::CreateLambda([WeakScope, GroupKey, OptionId]()
-						{
-							if (const TSharedPtr<STrueScopeWidget> Pinned = WeakScope.Pin())
-							{
-								Pinned->ApplyOptionGroup(GroupKey, OptionId);
-							}
-						}),
-						TAttribute<bool>::CreateLambda([WeakScope, GroupKey, OptionId]()
-						{
-							const TSharedPtr<STrueScopeWidget> Pinned = WeakScope.Pin();
-							return Pinned.IsValid() && Pinned->GetOptionGroupValue(GroupKey) == OptionId;
-						}))
-				];
-		}
-	}
-
-	// Toggle options last (phase-6.2): same button style, but an independent
-	// on/off — clicking flips it rather than selecting it.
-	for (const FTrueScopeToggleOption& Toggle : Scope->GetToggleOptions())
-	{
-		Box->AddSlot()
-			.AutoWidth()
-			.Padding(0.0f, 0.0f, ButtonSpacing, 0.0f)
-			[
-				MakeToggleButton(Toggle.Label, Toggle.Tooltip, WeakScope, Toggle.Key)
-			];
-	}
-
-	// The gain slider closes the group (M6.3): it is the only continuous
-	// control here, so it reads as a separate kind of thing after the buttons.
-	if (const FTrueScopeGainOption* Gain = Scope->GetGainOption())
-	{
-		Box->AddSlot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(6.0f, 0.0f, 0.0f, 0.0f)
-			[
-				MakeGainControl(WeakScope, *Gain)
-			];
-	}
-
-	return Box;
-}
-
-TSharedRef<SWidget> STrueScopeToolbar::MakeGainControl(TWeakPtr<STrueScopeWidget> Scope,
-	const FTrueScopeGainOption& Option)
-{
-	const FName Key = Option.Key;
-
-	return SNew(SHorizontalBox)
-
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, 4.0f, 0.0f)
-		[
-			SNew(STextBlock)
-			.Text(Option.Label)
-			.ToolTipText(Option.Tooltip)
-			.TextStyle(FAppStyle::Get(), "SmallText")
-			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-		]
-
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		[
-			SNew(SBox)
-			.WidthOverride(GainSliderWidth)
-			[
-				// The slider works in POSITION space and the scope stores a
-				// GAIN, so both directions go through the shared law — there is
-				// no second copy of it to drift.
-				SNew(STrueScopeGainSlider)
-				.ToolTipText(Option.Tooltip)
-				.Value_Lambda([Scope]()
-				{
-					const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin();
-					return Pinned.IsValid()
-						? TrueScope::GainToSliderPosition(Pinned->GetGainMultiplier())
-						: 0.5f;
-				})
-				.OnValueChanged_Lambda([Scope](float NewPosition)
-				{
-					if (const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin())
-					{
-						Pinned->ApplyGainMultiplier(TrueScope::SliderPositionToGain(NewPosition));
-					}
-				})
-				.OnResetRequested_Lambda([Scope]()
-				{
-					if (const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin())
-					{
-						Pinned->ResetGainMultiplier();
-					}
-				})
-			]
-		];
-}
-
-TSharedRef<SWidget> STrueScopeToolbar::MakeToggleButton(const FText& Label, const FText& Tooltip,
-	TWeakPtr<STrueScopeWidget> Scope, FName Key)
-{
-	return SNew(SCheckBox)
-		.Style(FAppStyle::Get(), "DetailsView.SectionButton")
-		.ToolTipText(Tooltip)
-		.IsChecked_Lambda([Scope, Key]()
-		{
-			const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin();
-			return Pinned.IsValid() && Pinned->GetToggleOptionValue(Key)
-				? ECheckBoxState::Checked
-				: ECheckBoxState::Unchecked;
-		})
-		.OnCheckStateChanged_Lambda([Scope, Key](ECheckBoxState NewState)
-		{
-			if (const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin())
-			{
-				Pinned->ApplyToggleOption(Key, NewState == ECheckBoxState::Checked);
-			}
-		})
-		[
-			SNew(STextBlock)
-			.Text(Label)
-			.TextStyle(FAppStyle::Get(), "SmallText")
-		];
-}
-
 TSharedRef<SWidget> STrueScopeToolbar::MakeMeasurementRateControl()
 {
 	TSharedRef<SHorizontalBox> Box = SNew(SHorizontalBox);
@@ -365,20 +169,6 @@ bool STrueScopeToolbar::IsAnalysisPathSelected(bool bGpu) const
 	// The EFFECTIVE path, so the button shows what actually produced the numbers
 	// on screen even while a diagnostic CVar override is in force.
 	return FTrueScopeModule::Get().GetEffectiveUseGpuAnalysis() == bGpu;
-}
-
-void STrueScopeToolbar::HandleSetDisplayMode(TWeakPtr<STrueScopeWidget> Scope, int32 ModeId)
-{
-	if (const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin())
-	{
-		Pinned->ApplyDisplayMode(ModeId);
-	}
-}
-
-bool STrueScopeToolbar::IsDisplayModeSelected(TWeakPtr<STrueScopeWidget> Scope, int32 ModeId) const
-{
-	const TSharedPtr<STrueScopeWidget> Pinned = Scope.Pin();
-	return Pinned.IsValid() && Pinned->GetDisplayModeId() == ModeId;
 }
 
 void STrueScopeToolbar::HandleSetMeasurementRate(float RateHz)

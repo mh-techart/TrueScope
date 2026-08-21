@@ -49,10 +49,14 @@ public:
 		return ScopeType;
 	}
 
-private:
-	/** The panel menu, built by the scope itself so it matches its right-click menu. */
+	/**
+	 * The panel menu, built by the scope itself so the header's menu button and
+	 * the canvas's right-click menu can never list different options. Public so
+	 * a test can compare the two entry points.
+	 */
 	TSharedRef<SWidget> BuildPanelMenu();
 
+private:
 	TSharedPtr<STrueScopeWidget> ScopeWidget;
 	ETrueScopeType ScopeType = ETrueScopeType::Waveform;
 	int32 PanelIndex = 0;

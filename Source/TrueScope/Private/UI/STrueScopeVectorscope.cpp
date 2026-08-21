@@ -115,6 +115,14 @@ TArrayView<const FTrueScopeDisplayMode> STrueScopeVectorscope::GetDisplayModes()
 	return Modes;
 }
 
+FText STrueScopeVectorscope::GetDisplayModeSectionLabel() const
+{
+	// Normal / 2x Zoom is a magnification, not a way of displaying the same
+	// data, so the section says Zoom - otherwise the user goes looking for a
+	// zoom control that is already in front of them.
+	return LOCTEXT("ZoomSection", "Zoom");
+}
+
 int32 STrueScopeVectorscope::GetDisplayModeId() const
 {
 	return static_cast<int32>(Mode);
@@ -132,7 +140,10 @@ TArrayView<const FTrueScopeToggleOption> STrueScopeVectorscope::GetToggleOptions
 	static const TArray<FTrueScopeToggleOption> Toggles = {
 		FTrueScopeToggleOption{TrueScope::SkinToneLineOptionKey, LOCTEXT("ShowSkinToneLine", "Show Skin Tone Line"),
 			LOCTEXT("ShowSkinToneLineTooltip",
-				"Show the skin tone line: human skin of every ethnicity clusters at this hue angle.")},
+				"Show the skin tone line: human skin of every ethnicity clusters at this hue angle."),
+			// Last entry of the Markers section: it is one more thing drawn over
+			// the trace, not a topic of its own.
+			TrueScope::VectorscopeMarkersOptionKey},
 	};
 	return Toggles;
 }
@@ -155,13 +166,17 @@ TArrayView<const FTrueScopeOptionGroup> STrueScopeVectorscope::GetOptionGroups()
 	// See ETrueScopeVectorscopeMarkers for the choices and the 75 % default.
 	static const TArray<FTrueScopeOptionGroup> Groups = {
 		FTrueScopeOptionGroup{TrueScope::VectorscopeMarkersOptionKey,
+			LOCTEXT("MarkersSection", "Markers"),
 			{
 				FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeVectorscopeMarkers::Bars75),
 					LOCTEXT("Markers75", "75%")},
 				FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeVectorscopeMarkers::Bars100),
 					LOCTEXT("Markers100", "100%")},
+				// Named for what it shows rather than "Both": in a list of three
+				// it is the only entry that says nothing about the targets it
+				// draws, and it reads as ambiguous next to the other two.
 				FTrueScopeDisplayMode{static_cast<int32>(ETrueScopeVectorscopeMarkers::Both),
-					LOCTEXT("MarkersBoth", "Both")},
+					LOCTEXT("MarkersBoth", "75% + 100%")},
 			}},
 	};
 	return Groups;

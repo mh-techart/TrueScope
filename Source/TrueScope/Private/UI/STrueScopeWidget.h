@@ -40,6 +40,15 @@ struct FTrueScopeToggleOption
 
 	FText Label;
 	FText Tooltip;
+
+	/**
+	 * Which option group's menu section this toggle joins, by that group's key;
+	 * NAME_None puts it with the display modes (M6.4 Task 4). The vectorscope's
+	 * skin tone line belongs to "Markers" — it is one of the things drawn over
+	 * the trace, not a separate topic — and the menu says so by placing it as
+	 * the last entry of that section.
+	 */
+	FName SectionKey;
 };
 
 /**
@@ -53,6 +62,9 @@ struct FTrueScopeOptionGroup
 {
 	/** Stable, scope-local settings key (not localized, never renamed). */
 	FName Key;
+
+	/** Heading of the group's own section in the panel menu (M6.4). */
+	FText SectionLabel;
 
 	/** The radio choices: scope-local ids with their labels. */
 	TArray<FTrueScopeDisplayMode> Options;
@@ -94,13 +106,14 @@ struct FTrueScopeGainOption
  *   scale uniformly and center within the allotted area. Subclasses draw
  *   inside GetScopeContentRect() and remain policy-agnostic.
  *
- * - Right-click menu: a scope that offers more than one presentation of its
+ * - Panel menu (M6.4): a scope that offers more than one presentation of its
  *   data overrides GetDisplayModes()/GetDisplayModeId()/SetDisplayModeId()
- *   and gets a Display section for free. Every scope's menu also carries the
- *   global Analysis Path section (phase-5.2): GPU (performance) /
- *   CPU (compatibility) — ONE switch selecting the path for all four scopes
- *   at once (a per-scope path would make the user set the same option four
- *   times; simple operation for the artist takes priority).
+ *   and gets a Display section for free; option groups, toggles and the gain
+ *   slider come the same way. BuildPanelMenu() is the single builder behind
+ *   both the panel header's menu button and the canvas's right-click menu.
+ *   The global options — analysis path, capture rate — are NOT here: they are
+ *   TrueScope-wide and live in the main bar's settings popup, so each is
+ *   reachable from exactly one place.
  *
  * - Paused state (M4.1): when the measured viewport enters PIE it drops out as
  *   a source and the scopes hold their last frame — intended, but silent, so
@@ -161,6 +174,15 @@ public:
 	{
 		return TArrayView<const FTrueScopeDisplayMode>();
 	}
+
+	/**
+	 * Heading the display modes appear under in the panel menu. "Display" for
+	 * every scope whose modes are ways of showing the same data; the vectorscope
+	 * overrides it with "Zoom", because Normal / 2x Zoom is a magnification, and
+	 * calling that "Display" would leave the user looking for a zoom control
+	 * that is already on screen.
+	 */
+	virtual FText GetDisplayModeSectionLabel() const;
 
 	/** Id of the active display mode. */
 	virtual int32 GetDisplayModeId() const
@@ -349,22 +371,25 @@ private:
 	EActiveTimerReturnType PollAnalyzer(double InCurrentTime, float InDeltaTime);
 
 	/**
-	 * Every scope has a menu since phase-5.2: the global Analysis Path
-	 * section is offered on all four scopes, so the option is discoverable
-	 * from any of them (it selects the path for all scopes at once).
+	 * Every scope has a menu: the panel menu, reachable from the panel header
+	 * and — until the type switcher lands — from a right-click on the canvas.
 	 */
 	bool HasContextMenu() const
 	{
 		return true;
 	}
 
+	/** The toggle options belonging to one menu section; NAME_None = the display section. */
+	void AddToggleOptionEntries(class FMenuBuilder& MenuBuilder, FName SectionKey);
+
+	/** The gain slider row of the panel menu, in the M6.3 slider law's terms. */
+	TSharedRef<SWidget> BuildGainSlider(const FTrueScopeGainOption& Option);
+
 	bool IsDisplayModeActive(int32 ModeId) const;
 	void HandleFlipToggleOption(FName Key);
 	bool IsToggleOptionChecked(FName Key) const;
 	void HandleSelectOptionGroup(FName Key, int32 ValueId);
 	bool IsOptionGroupValueActive(FName Key, int32 ValueId) const;
-	void HandleSetUseGpuAnalysis(bool bUseGpu);
-	bool IsAnalysisPathActive(bool bGpu) const;
 
 	TSharedPtr<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer;
 
