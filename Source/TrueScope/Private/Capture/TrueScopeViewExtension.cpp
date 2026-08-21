@@ -118,6 +118,16 @@ void FTrueScopeViewExtension::HandleAnalysisPathChanged()
 		}
 		return;
 	}
+
+	// Logged here rather than in ReanalyzeLastCapture: the re-analysis itself
+	// serves two callers now (the path switch and the M6.4.1 gain redraw), and
+	// only this one is a path switch.
+	UE_LOG(LogTrueScope, Log, TEXT("Analysis path switched to %s — re-analysing the last capture (%s)"),
+		Action == TrueScope::EPathSwitchAction::ReanalyzeGpu ? TEXT("GPU") : TEXT("CPU"),
+		Action == TrueScope::EPathSwitchAction::ReanalyzeGpu
+			? TEXT("GPU compute on the resident capture RT, no readback")
+			: TEXT("one-time readback seeding the CPU path — the sole documented exception"));
+
 	ReanalyzeLastCapture(Action);
 }
 
@@ -141,12 +151,6 @@ void FTrueScopeViewExtension::ReanalyzeLastCapture(TrueScope::EPathSwitchAction 
 		// FIFO render commands: the resource cache lands before the passes below.
 		GpuAnalysis->CacheResources_GameThread();
 	}
-
-	UE_LOG(LogTrueScope, Log, TEXT("Analysis path switched to %s — re-analysing the last capture (%s)"),
-		Action == TrueScope::EPathSwitchAction::ReanalyzeGpu ? TEXT("GPU") : TEXT("CPU"),
-		Action == TrueScope::EPathSwitchAction::ReanalyzeGpu
-			? TEXT("GPU compute on the resident capture RT, no readback")
-			: TEXT("one-time readback seeding the CPU path — the sole documented exception"));
 
 	ENQUEUE_RENDER_COMMAND(TrueScopeReanalyzeLastCapture)(
 		[WeakThis = AsWeak(), Resource, Action](FRHICommandListImmediate& RHICmdList)
@@ -179,6 +183,34 @@ void FTrueScopeViewExtension::ReanalyzeLastCapture(TrueScope::EPathSwitchAction 
 			}
 			GraphBuilder.Execute();
 		});
+}
+
+TrueScope::ERedrawOutcome FTrueScopeViewExtension::RedrawFromLastCapture()
+{
+	check(IsInGameThread());
+
+	// GPU path only, and never the readback branch: a gain change is a steady-
+	// state event and the no-readback rule is absolute there. The CPU path
+	// re-maps its retained counts instead, so "not the GPU path" is NoData here
+	// rather than a fallback.
+	if (!GpuAnalysis || !ResolveEffectiveUseGpu())
+	{
+		return TrueScope::ERedrawOutcome::NoData;
+	}
+
+	// Same cold-start guard as the path switch: before the first capture the RT
+	// holds only its initial clear, and analysing that would fabricate a
+	// measurement.
+	if (!bHasCapturedFrame.load(std::memory_order_acquire))
+	{
+		return TrueScope::ERedrawOutcome::NoData;
+	}
+
+	UE_LOG(LogTrueScope, Verbose,
+		TEXT("Display setting changed — re-analysing the resident capture (GPU compute, no readback)"));
+
+	ReanalyzeLastCapture(TrueScope::EPathSwitchAction::ReanalyzeGpu);
+	return TrueScope::ERedrawOutcome::Started;
 }
 
 bool FTrueScopeViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const

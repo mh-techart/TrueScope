@@ -56,6 +56,13 @@ void FTrueScopeModule::ShutdownModule()
 {
 	FCoreDelegates::GetOnPostEngineInit().RemoveAll(this);
 
+	// Before the producers below are released: the tick calls into both.
+	if (ScopeRedrawTickHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ScopeRedrawTickHandle);
+		ScopeRedrawTickHandle.Reset();
+	}
+
 	// The extension registry only holds a weak reference; releasing ours
 	// unregisters the extension, so no further capture pass can enqueue a
 	// readback or GPU analysis. Then tear down the analyzer (unhooks its
@@ -151,6 +158,11 @@ void FTrueScopeModule::OnPostEngineInit()
 	// after opening the tab differ from every one after it.
 	SeedDisplayGainsFromSettings();
 
+	// Services the sliders' redraw requests (M6.4.1). One tick per frame is
+	// what makes the coalescing a per-FRAME budget rather than a per-event one.
+	ScopeRedrawTickHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateRaw(this, &FTrueScopeModule::TickScopeRedraw));
+
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TrueScopeTabName,
 			FOnSpawnTab::CreateRaw(this, &FTrueScopeModule::SpawnTrueScopeTab))
 		.SetDisplayName(LOCTEXT("TabTitle", "TrueScope"))
@@ -158,6 +170,46 @@ void FTrueScopeModule::OnPostEngineInit()
 			"Open the TrueScope panel: Waveform, RGB Parade, Vectorscope and Histogram scopes for the active viewport."))
 		.SetGroup(WorkspaceMenu::GetMenuStructure().GetLevelEditorCategory())
 		.SetIcon(FSlateIcon(FTrueScopeStyle::GetStyleSetName(), TrueScope::TabIconStyleName));
+}
+
+void FTrueScopeModule::RequestScopeRedraw()
+{
+	ScopeRedrawRequest.Request();
+}
+
+bool FTrueScopeModule::TickScopeRedraw(float /*DeltaSeconds*/)
+{
+	if (!ScopeRedrawRequest.Consume())
+	{
+		return true; // nothing asked for; two atomic loads is the whole cost
+	}
+
+	// Which producer holds the last frame decides how it is re-rendered: the GPU
+	// path re-derives its bins from the resident capture RT, the CPU path
+	// re-maps the counts it retained. Neither captures and neither reads back.
+	const TrueScope::ERedrawOutcome Outcome = GetEffectiveUseGpuAnalysis()
+		? (ViewExtension.IsValid() ? ViewExtension->RedrawFromLastCapture() : TrueScope::ERedrawOutcome::NoData)
+		: (Analyzer.IsValid() ? Analyzer->RemapLastResultWithCurrentGains() : TrueScope::ERedrawOutcome::NoData);
+
+	switch (Outcome)
+	{
+	case TrueScope::ERedrawOutcome::Started:
+		++ScopeRedrawCount;
+		break;
+
+	case TrueScope::ERedrawOutcome::Busy:
+		// Put it back rather than drop it: the value that would be lost is the
+		// one the user stopped on, which is the only one that really matters.
+		ScopeRedrawRequest.Request();
+		break;
+
+	case TrueScope::ERedrawOutcome::NoData:
+		// Nothing measured yet. Whatever arrives next already carries the
+		// current gains, so there is nothing to retry.
+		break;
+	}
+
+	return true;
 }
 
 void FTrueScopeModule::SetUseGpuAnalysis(bool bUseGpuAnalysis)

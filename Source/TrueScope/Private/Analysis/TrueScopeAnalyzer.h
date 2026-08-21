@@ -7,6 +7,7 @@
 #include "Analysis/TrueScopeDisplayGains.h"
 #include "CoreMinimal.h"
 #include "RenderGraphFwd.h"
+#include "TrueScopeRedrawRequest.h"
 
 #include <atomic>
 
@@ -63,6 +64,27 @@ public:
 	void PublishResult(TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result);
 
 	/**
+	 * Re-runs ONLY the display mapping (counts -> intensity images) of the last
+	 * published CPU result at the gains currently published, and republishes it
+	 * (M6.4.1, Trace Brightness taking effect during the drag).
+	 *
+	 * No capture, no readback, no re-binning: the exact counts are ground truth
+	 * and are retained in the published result, so a new gain is a pure
+	 * re-mapping of numbers the analyzer already has. That is the whole reason
+	 * the CPU path needs no equivalent of the GPU path's re-analysis.
+	 *
+	 * Runs on a background task like a normal analysis cycle, so the game
+	 * thread never waits for it, and publishes only if the frame it started
+	 * from is still the latest — a capture that completes meanwhile always
+	 * wins, since it carries newer data at the same gains.
+	 *
+	 * Game thread. Returns NoData when the last result came from the GPU path
+	 * (whose bins do not exist in CPU memory — see FTrueScopeViewExtension::
+	 * RedrawFromLastCapture) or when nothing has been measured yet.
+	 */
+	TrueScope::ERedrawOutcome RemapLastResultWithCurrentGains();
+
+	/**
 	 * The scopes' Trace Brightness gains, read by the background analysis task
 	 * when it maps counts to density brightness (M6.3). Set once at start-up;
 	 * the object itself is atomic inside, so the task may read it freely.
@@ -75,6 +97,7 @@ public:
 private:
 	void PollReadback_RenderThread();
 	void RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size, double InCaptureStartSeconds, double InCopyMs);
+	void RunRemapTask(TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Source);
 	void LogCycleCost(const FTrueScopeAnalysisResult& Result, double TotalCycleMs, double CopyMs);
 
 	// --- Render thread state ---

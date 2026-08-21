@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Capture/TrueScopePathSwitch.h"
+#include "TrueScopeRedrawRequest.h"
 #include "CoreMinimal.h"
 #include "SceneViewExtension.h"
 #include "UObject/GCObject.h"
@@ -140,6 +141,26 @@ public:
 	 * running, which is what the UI must show (phase-6.1). Game thread.
 	 */
 	bool ResolveEffectiveUseGpu() const;
+
+	/**
+	 * Re-runs the GPU analysis on the RESIDENT capture render target so a
+	 * changed display setting becomes visible without waiting for a new capture
+	 * (M6.4.1, Trace Brightness / Histogram Gain taking effect during the drag).
+	 *
+	 * The same route the path switch has used since phase-5.1, for the same
+	 * reason: while any Slate menu is open the level viewport does not tick, so
+	 * no further capture can arrive — exactly the condition under which the
+	 * sliders appeared dead. No new capture, no readback, and no retained bin
+	 * buffers: the bins are re-derived from the frame that is still in the RT.
+	 *
+	 * GPU path only. On the CPU path the counts are retained in the published
+	 * result and re-mapped there (FTrueScopeAnalyzer::
+	 * RemapLastResultWithCurrentGains) — this must never fall back to the
+	 * readback branch, which exists solely for the manual path switch.
+	 *
+	 * Non-blocking: it enqueues one render command and returns. Game thread.
+	 */
+	TrueScope::ERedrawOutcome RedrawFromLastCapture();
 
 	/**
 	 * Measurement rate (captures per second, phase-6.1 Task 2). Set from the

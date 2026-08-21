@@ -164,6 +164,88 @@ void FTrueScopeAnalyzer::RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size
 	bAnalysisInFlight.store(false, std::memory_order_release);
 }
 
+TrueScope::ERedrawOutcome FTrueScopeAnalyzer::RemapLastResultWithCurrentGains()
+{
+	check(IsInGameThread());
+
+	TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Last = GetLatestResult();
+	if (!Last.IsValid() || Last->SourceSize.X <= 0)
+	{
+		return TrueScope::ERedrawOutcome::NoData; // nothing measured yet
+	}
+	if (Last->bHasGpuParade)
+	{
+		// A GPU result carries textures, not counts: its bins are RDG-scoped and
+		// gone. The GPU path re-derives them from the resident capture RT
+		// instead (FTrueScopeViewExtension::RedrawFromLastCapture).
+		return TrueScope::ERedrawOutcome::NoData;
+	}
+
+	// Taken last, so a rejected request never has to hand the flag back.
+	if (bAnalysisInFlight.exchange(true, std::memory_order_acq_rel))
+	{
+		return TrueScope::ERedrawOutcome::Busy;
+	}
+
+	UE::Tasks::Launch(UE_SOURCE_LOCATION,
+		[Self = AsShared(), Source = MoveTemp(Last)]() mutable
+		{
+			Self->RunRemapTask(MoveTemp(Source));
+		});
+
+	return TrueScope::ERedrawOutcome::Started;
+}
+
+void FTrueScopeAnalyzer::RunRemapTask(TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Source)
+{
+	const double StartSeconds = FPlatformTime::Seconds();
+
+	// A copy, not an in-place edit: the published result is immutable by
+	// contract and widgets read it from their paint without locking.
+	// AnalysisDurationMs comes along unchanged on purpose — it measures the
+	// analysis that produced these counts, and a re-mapping does not make that
+	// frame any newer than it is.
+	TSharedRef<FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result =
+		MakeShared<FTrueScopeAnalysisResult, ESPMode::ThreadSafe>(*Source);
+
+	TrueScope::FDensityGains Gains;
+	if (DisplayGains)
+	{
+		Gains.Parade = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Parade);
+		Gains.Waveform = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Waveform);
+		Gains.Vectorscope = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Vectorscope);
+	}
+
+	// The histogram is deliberately absent: it maps counts to curve height at
+	// PAINT time, from the same retained counts, so it was already immediate
+	// before M6.4.1 and re-mapping it here would produce nothing new.
+	TrueScope::BuildParadeImage(*Result, Gains);
+	TrueScope::BuildLumaWaveformImage(*Result, Gains);
+	TrueScope::BuildVectorscopeImage(*Result, Gains);
+
+	bool bPublished = false;
+	{
+		FScopeLock Lock(&ResultLock);
+		// A capture that completed while this ran carries newer data at the same
+		// gains, so it wins; republishing over it would show an older frame.
+		if (LatestResult == Source)
+		{
+			LatestResult = Result;
+			bPublished = true;
+		}
+	}
+	if (bPublished)
+	{
+		ResultSerial.fetch_add(1, std::memory_order_release);
+	}
+
+	UE_LOG(LogTrueScopeAnalysis, Verbose, TEXT("Gain re-map of the last capture: %.2f ms%s"),
+		(FPlatformTime::Seconds() - StartSeconds) * 1000.0,
+		bPublished ? TEXT("") : TEXT(" (superseded by a newer capture, dropped)"));
+
+	bAnalysisInFlight.store(false, std::memory_order_release);
+}
+
 void FTrueScopeAnalyzer::PublishResult(TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result)
 {
 	{

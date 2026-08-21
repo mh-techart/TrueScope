@@ -437,6 +437,12 @@ void STrueScopeWidget::ResetPanelToDefaults()
 	UTrueScopeSettings::Get().ResetPanelToDefaults(PanelIndex);
 	RestoreOptionsFromPanelState();
 	Invalidate(EInvalidateWidgetReason::Paint);
+
+	// RestoreOptionsFromPanelState publishes the restored gain directly, so the
+	// redraw ApplyGainMultiplier would have asked for has to be asked for here
+	// — otherwise "Reset to default" would be the one control that still waits
+	// for the next capture (M6.4.1).
+	FTrueScopeModule::Get().RequestScopeRedraw();
 }
 
 void STrueScopeWidget::ApplyDisplayMode(int32 ModeId)
@@ -502,15 +508,28 @@ void STrueScopeWidget::ApplyGainMultiplier(float Multiplier)
 		return; // scope has no gain control
 	}
 
-	GainMultiplier = FMath::Clamp(Multiplier,
+	const float NewMultiplier = FMath::Clamp(Multiplier,
 		TrueScope::MinGainMultiplier(), TrueScope::MaxGainMultiplier());
+	if (NewMultiplier == GainMultiplier)
+	{
+		// A drag reports every mouse move, including the ones that land on the
+		// value already set (and every move once the slider is at an end stop).
+		// Re-rendering for those would spend a full analysis on an identical
+		// picture.
+		return;
+	}
+
+	GainMultiplier = NewMultiplier;
 	PublishGainMultiplier();
 	UTrueScopeSettings::Get().SetPanelGainMultiplier(PanelIndex, Gain->Key, GainMultiplier);
 
-	// The histogram applies its gain at draw time, so a repaint is enough
-	// there; the density scopes' transfer is applied by the analysis producer,
-	// so their new gain shows on the next analysis cycle.
+	// A repaint alone only moves the CPU histogram, which maps counts to curve
+	// height at draw time. Every other scope draws an image the producer
+	// rasterized with the OLD gain baked in, and while a menu is open no
+	// further capture arrives to replace it — so ask for a re-render of the
+	// frame already measured (M6.4.1). No new capture, no readback.
 	Invalidate(EInvalidateWidgetReason::Paint);
+	FTrueScopeModule::Get().RequestScopeRedraw();
 }
 
 void STrueScopeWidget::ApplyOptionGroup(FName Key, int32 ValueId)
