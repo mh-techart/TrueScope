@@ -17,8 +17,10 @@
 #include "Misc/Paths.h"
 #include "SceneViewExtension.h"
 #include "ShaderCore.h"
+#include "Textures/SlateIcon.h"
 #include "TrueScopeSettings.h"
 #include "UI/STrueScopePanel.h"
+#include "UI/TrueScopeStyle.h"
 #include "UI/TrueScopeType.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -39,6 +41,11 @@ void FTrueScopeModule::StartupModule()
 		AddShaderSourceDirectoryMapping(TEXT("/Plugin/TrueScope"),
 			FPaths::Combine(Plugin->GetBaseDir(), TEXT("Shaders")));
 	}
+
+	// The plugin's own brushes (tab icon). The style set only reads files and
+	// registers brushes, so it is safe this early; the UI that uses it is
+	// created later.
+	FTrueScopeStyle::Initialize();
 
 	// The engine, Slate and the editor UI do not exist yet at PostConfigInit —
 	// defer view-extension and UI registration until engine init completes.
@@ -70,6 +77,8 @@ void FTrueScopeModule::ShutdownModule()
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TrueScopeTabName);
 	}
+
+	FTrueScopeStyle::Shutdown();
 }
 
 void FTrueScopeModule::SeedDisplayGainsFromSettings()
@@ -141,7 +150,8 @@ void FTrueScopeModule::OnPostEngineInit()
 		.SetDisplayName(LOCTEXT("TabTitle", "TrueScope"))
 		.SetTooltipText(LOCTEXT("TabTooltip",
 			"Open the TrueScope panel: Waveform, RGB Parade, Vectorscope and Histogram scopes for the active viewport."))
-		.SetGroup(WorkspaceMenu::GetMenuStructure().GetLevelEditorCategory());
+		.SetGroup(WorkspaceMenu::GetMenuStructure().GetLevelEditorCategory())
+		.SetIcon(FSlateIcon(FTrueScopeStyle::GetStyleSetName(), TrueScope::TabIconStyleName));
 }
 
 void FTrueScopeModule::SetUseGpuAnalysis(bool bUseGpuAnalysis)
