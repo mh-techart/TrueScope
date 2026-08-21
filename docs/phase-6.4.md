@@ -330,6 +330,72 @@ unavailable in this session.
 - **Greying out "Reset to default" when nothing deviates.** Considered, rejected
   by the human as unnecessary visual noise.
 
+## Addendum — M6.4.1
+
+Three items found in the M6.4 acceptance walkthrough, fixed in a follow-up pass.
+
+### 1. Sliders take effect immediately (regression from this phase)
+
+Moving the sliders into the panel menus made them stop responding until the menu
+closed, while the radio entries in the same menus kept responding at once. That is
+a regression introduced by M6.4 — in the main bar no menu was open, so feedback
+had been immediate. Under `dev-rules.md` §5 it was fixed rather than tracked.
+
+**Why the two behaved differently.** The setters are identical; both persist and
+invalidate for repaint. What differs is what a repaint can express. A display-mode
+switch selects between images the producer already rasterised for every mode of
+that capture. The gain, by contrast, is baked into those images at raster time, so
+repainting redraws the same pre-gained pixels. Scaling the finished texture at
+draw time is not an option either: both transfers hard-clip at the top (white,
+band top), and a clipped texture cannot be brightened or darkened back to the
+truth.
+
+**How it is fixed.** On the GPU path a gain change re-runs the analysis on the
+**resident capture render target** via `FTrueScopeViewExtension::ReanalyzeLastCapture`
+— the path already shipped for "make a change visible while the viewport is not
+ticking". No new capture, no readback, no retained bin buffers. The GPU bin
+buffers are RDG-scoped and gone by the time a slider moves; retaining them was
+weighed (+4.00 MiB VRAM, ColumnBins 3.75 MiB + VectorBins 0.25 MiB) and rejected,
+not for the memory but for the retained-state lifetime it would add — the M4 bugs
+were of that family, and re-deriving from the frame we still hold has one source
+of truth.
+
+On the CPU path the intensity arrays are rebuilt from the retained counts.
+**The CPU histogram is deliberately untouched:** it already reads the gain at
+paint time and was immediate before this fix. Routing it through the more
+expensive path for uniformity's sake would cost work and gain nothing. This is
+why the regression covered three scopes on CPU and four on GPU.
+
+**Three conditions on the GPU route**, because a drag can fire at frame rate while
+normal cadence is 1–5 Hz — roughly a twelve- to twentyfold load increase, on the
+deliberately weak reference machine: at most one re-analysis per rendered frame
+(events within a frame coalesce, last value wins); the call never blocks; and the
+cost was measured on the M1 Mac Mini, not on the RTX machine.
+
+*(record the measured idle vs. dragging frame times here)*
+
+**Showing the previous capture while a menu is open is correct, not merely
+tolerated, and there is deliberately no "stale" indicator.** While any Slate menu
+is open anywhere in the editor the level viewport does not tick, so no fresh
+capture could arrive in any case — and the image the user is comparing against is
+frozen at the same moment. Scope and viewport stay consistent, so WYSIWYG holds.
+Setting a trace brightness and precisely measuring a live viewport are not
+simultaneous activities.
+
+### 2. Uniform text column in the menus
+
+Slider rows were indented further than radio and checkbox rows, and the amount
+differed between menus depending on which entry types a menu contained. All rows
+in all four panel menus and the settings popup now share one text column.
+
+### 3. Right-click menu removed
+
+M6.4 kept the scope-canvas right-click menu as a temporary second entry point
+while the panel header was new. With the header menu confirmed working and
+identical, right-click was removed. **Right-clicking a scope canvas now does
+nothing, deliberately** — the panel header is the single entry point. The menu
+builder is unchanged and now has one caller.
+
 ## Status
 
 Code complete and green at 46/46, and everything MCP can see has been seen. **Open:
@@ -341,7 +407,7 @@ they can be walked through in one sitting:
 1. Window → TrueScope: does the menu entry carry the icon?
 2. Each panel's hamburger: does the menu open, does it list exactly the rows for
    that panel's type, and does every control still do what it says?
-3. The same, from the scope canvas's right-click menu.
+3. Right-click on a scope canvas: nothing opens (removed in M6.4.1, deliberately).
 4. "Reset to default" in one panel, with a neighbour deliberately off-default.
 5. The gear: both sections present, path switch flips all four scopes, and both
    settings survive a restart.

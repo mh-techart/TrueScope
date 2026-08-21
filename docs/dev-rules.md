@@ -104,6 +104,14 @@ requires it.
   updating" indistinguishable from "unchanged". To confirm a scope actually
   measures live, use a visibly moving source (e.g. a never-still particle effect)
   with the viewport in Realtime — then "frozen" and "updating" are distinguishable.
+- **A viewport that has stopped is not automatically a bug — an open menu freezes
+  it.** While any Slate menu is open anywhere in the editor (the main menu bar, a
+  viewport toolbar, the content browser, a TrueScope panel menu), the level
+  viewport stops ticking and the scopes receive no new captures. Confirmed with
+  animated particles and Realtime enabled: scopes update normally, stop while a
+  menu is open, resume when it closes. This is normal editor behaviour. Close
+  every menu before concluding that live updating is broken — and do not
+  "fix" it by forcing a tick.
 - **Two-part acceptance: automated test AND human eye.** The automated test catches
   what the eye misses (a single wrong bin, an off-by-one); the human visual check
   catches what the test doesn't model (gamma/brightness, stroke width, upscaling
