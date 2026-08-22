@@ -366,6 +366,21 @@ paint time and was immediate before this fix. Routing it through the more
 expensive path for uniformity's sake would cost work and gain nothing. This is
 why the regression covered three scopes on CPU and four on GPU.
 
+**That exemption needed a guard, because the redraw latch is global.** There is one
+latch for all four panels, so it also fires when the *histogram* gain moves — and on
+the CPU path that request has nothing to do: the histogram maps counts to curve
+height at paint time, and the widget's own `Invalidate` has already redrawn it.
+Without a guard the re-map would rebuild the three density images at unchanged gains
+and repaint an identical picture for ~2–5 ms on every frame of a histogram drag
+(measured on the M1, 2026-08-22). `FTrueScopeAnalysisResult::AppliedDensityGains`
+records the gains the retained images were built at; `RemapLastResultWithCurrentGains`
+compares it against the current gains and returns `NoData` when nothing it controls
+has moved. So the exemption is not "the histogram is skipped" but "the CPU re-map
+runs only when a gain it actually owns has changed" — the histogram simply never
+owns one. The comparison is against the *applied* gains rather than a dirty flag
+because the same result object can also be replaced by a fresh capture mid-drag,
+which republishes at the current gains and must not leave a stale flag behind.
+
 **Three conditions on the GPU route**, because a drag can fire at frame rate while
 normal cadence is 1–5 Hz — roughly a twelve- to twentyfold load increase, on the
 deliberately weak reference machine: at most one re-analysis per rendered frame
@@ -426,6 +441,38 @@ sweep at 3–5 s per pass changed the value 17.9–21.7 times per second, roughl
 redraw-only-when-the-value-changed guard suppresses the rest). A sweep fast enough
 to change the value every frame would produce about twice this analysis load. The
 margin against the 1.5× line was large enough that this was not pursued.
+
+**Condition 2 (“never block”), answered by code inspection rather than by timing.**
+Both routes start on the game thread and return without waiting for completion.
+GPU: `RedrawFromLastCapture` (`check(IsInGameThread())`) does game-thread
+bookkeeping — `CacheResources_GameThread`, whose `ResizeTarget` is bucketed and so
+does not fire during a drag — then `ENQUEUE_RENDER_COMMAND` and returns; the RDG
+graph is built and executed inside that command, on the render thread. CPU:
+`RemapLastResultWithCurrentGains` takes the `bAnalysisInFlight` flag and hands the
+work to `UE::Tasks::Launch`, returning `Started` immediately; the task publishes
+under a short `FScopeLock` that the caller never holds. There is no
+`FlushRenderingCommands`, no `FRenderCommandFence`, and no GPU-idle wait anywhere on
+either path — the plugin's only `FlushRenderingCommands()` is in the analyzer's
+shutdown, where it is correct.
+
+*This leaves the game-thread rise unexplained, and it is deliberately left so.* GT
+went 6.90 → 17.87 ms on the GPU path while the chart reported RT 0.04 ms, which is
+what prompted the question. It is not a blocking call in TrueScope's code, since
+there is none. The remaining candidates — frame-pacing waits accounted to the game
+thread, or the chart mis-attributing render-thread work while the level viewport is
+frozen — were **not** measured. *Hypothesis / unverified assumption;* it did not
+affect the verdict, because the frame time and FPS that decide the criterion are
+measured directly.
+
+*Estimate, not a measurement — what a saturating drag would cost.* The measured load
+was 17.9–21.7 value changes per second against a per-frame ceiling of roughly 40
+(GPU) to 54 (CPU), so about half the theoretical maximum. Attributing the GPU path's
+extra game-thread time to the re-analysis (17.87 − 6.90 = 10.97 ms per frame) and
+doubling it gives 25.23 + 10.97 ≈ 36.20 ms, or **≈1.05× the 34.65 ms idle frame
+time** — about 27.6 FPS. Still far below the 1.5× line and well above the 15 FPS
+floor. This is arithmetic on the reported figures, **not** a measured result: it
+assumes the cost is linear in the number of re-analyses and that nothing else
+changes, neither of which was tested.
 
 *This is an idle-vs-dragging measurement, **not** the tab-closed-vs-tab-open A/B of
 `dev-rules.md` "Benchmark methodology".* Both baselines here have the tab open with
