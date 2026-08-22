@@ -112,8 +112,9 @@ the Window menu entry and in the tab itself. `Resources/Icon128.png` unchanged.
       log lines from TrueScope, no new warnings.
 - [x] Icon visible on the tab next to the title — MCP screenshot, the ring-and-T
       mark renders correctly at 16 px.
-- [ ] Icon in the Window menu entry — **human eye check outstanding** (opening
-      that menu is a Slate popup, which MCP cannot drive).
+- [x] Icon in the Window menu entry — verified 2026-08-22 (Status step 1): the
+      row is `generic "TrueScope"` with a 14 × 14 image in the same icon column as
+      its neighbours, rendering as a distinct circled "T".
 
 ## Task 2 — Settings ownership: per scope type → per panel
 
@@ -145,8 +146,9 @@ menu button in the Task 0.3 pattern.
 - [x] All four headers render with the right type name on the left and the
       hamburger on the right, and the vectorscope is still circular in its
       reduced canvas — MCP screenshot.
-- [ ] Clicking the button opens the panel menu — **human click outstanding**
-      (MCP cannot open Slate popup menus).
+- [x] Clicking the button opens the panel menu — verified 2026-08-22 on all four
+      panels through MCP, using the `Click` + `PressKey "Enter"` sequence
+      (Status step 2).
 
 ## Task 4 — Panel menu, and emptying the main bar
 
@@ -161,8 +163,10 @@ survives as a temporary second entry point and calls the *same* builder
 - [x] Right-click menu and panel menu are the same content — one builder, pinned
       by test.
 - [x] The main bar contains no per-scope control any more.
-- [ ] Every moved control still works and still persists — **human clicks
-      outstanding**.
+- [x] Every moved control still works and still persists — radios and the skin-tone
+      checkbox verified 2026-08-22 through MCP and re-read from a reopened menu
+      (Status step 2); the two gain sliders, which need a held drag, verified by the
+      human in the closing walkthrough.
 
 ## Task 5 — Main bar settings popup
 
@@ -183,8 +187,9 @@ exists and still stays in sync.
 - [x] No analysis-path or capture-rate control remains anywhere else in the UI.
 - [x] Gear present and right-aligned in an otherwise empty main bar — MCP
       screenshot.
-- [ ] Both settings survive a restart with the popup as the only entry point —
-      **human click outstanding**.
+- [x] Both settings survive a restart with the popup as the only entry point —
+      verified 2026-08-22 (Status step 5): the editor came back on the GPU path with
+      `MeasurementRateHz=5.0`, both as left.
 
 ## Task 6 — Reset to Defaults
 
@@ -283,9 +288,10 @@ draws no value-axis labels of its own.
       what the derivation produces — so a derived number cannot silently rot into
       a chosen one. Teeth-proven: width put back to 180 and header to 20.5, both
       assertions failed, reverted.
-- [ ] Hint triggers at the corrected size on both RHIs — the rule is
+- [x] Hint triggers at the corrected size on both RHIs — the rule is
       RHI-independent (pure geometry, no render path involved) and is covered
-      headless; **the on-screen check by dragging a panel small is outstanding**.
+      headless; the on-screen check needs a splitter drag, which synthetic input
+      cannot perform, and was done by the human in the closing walkthrough.
 
 ## Verification summary
 
@@ -306,7 +312,15 @@ menus and the settings popup are read out of the *built* menu widgets, not
 described in a comment. What remains human is everything requiring a click on a
 Slate popup or a judgement by eye: the icons, the gear's alignment, the black
 backgrounds, the histogram numbers, and that each moved control still does what it
-says. MCP cannot open Slate popup menus (now recorded in `dev-rules.md`).
+says.
+
+*Superseded on 2026-08-22.* At the close of M6.4 this section recorded that MCP
+could not open Slate popup menus, which is why so much of the list above was left
+to the human. That turned out to be too broad: `Click` followed by
+`PressKey "Enter"` opens them reliably, and the click-through below drove all four
+panel menus and the settings popup that way with no human input. What is genuinely
+out of reach is narrower — anything needing a **held drag** (sliders, splitters).
+The rule in `dev-rules.md` has been replaced accordingly.
 
 **MCP access path.** Direct HTTP to the running editor's MCP server (the permitted
 fallback in `dev-rules.md`), because the `unreal-mcp` skill harness was
@@ -396,8 +410,10 @@ from the live CVars, because the FPSChart header reports scalability from
 `UGameUserSettings` and is meaningless in-editor (`dev-rules.md`). Each analysis
 path was selected deliberately via `TrueScope.AnalysisPath` and confirmed from the
 panel footer, never left to the persisted ini. **The drag was performed by a human
-hand** — synthetic input cannot drive a Slate slider with High DPI off
-(`dev-rules.md`) — sweeping Trace Brightness end to end continuously at 3–5 s per
+hand** — synthetic input cannot drive a Slate slider at all (`dev-rules.md`; this
+was first read as a consequence of High DPI being off, and later disproved — it
+behaves identically with High DPI on) — sweeping Trace Brightness end to end
+continuously at 3–5 s per
 one-way pass, button held for the whole window. The hand on the slider *is* the
 load under test, so it is a condition of the measurement, not extraneous
 interaction.
@@ -523,6 +539,16 @@ row pairs did. Rows within a group now share one gap, in every panel menu and th
 settings popup; section headings and the pre-reset separator keep their larger
 spacing.
 
+**Row pitch differs between menus on purpose.** The *gap* between rows is
+identical everywhere; the *row height* follows the tallest control in that menu,
+because `SLinkedBox` sizes every row to the tallest check widget present. The
+vectorscope menu contains a check box ("Show Skin Tone Line") and runs at 48
+units per row; the other three contain only radio dots and run at 44. Each menu
+is internally even (48/48/48/48, 44/44/44), and two menus are never open at once,
+so the difference is not observable in use. Equalising it would mean overriding
+row heights against the framework for four pixels nobody sees. Deliberately left
+as it is.
+
 **"Reset to default" → "Reset to Defaults".** Unreal uses the singular where one
 value is reset and the plural where several are; this entry resets several at
 once. Human decision, verified against the engine by the human.
@@ -597,7 +623,26 @@ reverting the padding override reddens `MenuRowPadding` alone.
 
 ## Status
 
-Code complete and green at 46/46. The click-through was walked on 2026-08-22 with
+**M6.4 and M6.4.1 are complete and signed off (2026-08-22).** Code complete and
+green at **52/52**.
+
+**Test counts, step by step.** The count is the stale-code tripwire, so every
+change to it is recorded: a number lower than expected means stale code, not fewer
+tests.
+
+| Point | Count | What changed |
+|---|---|---|
+| Close of M6.3 | 40 | — |
+| Close of M6.4 | 46 | +1 Task 2 (`PanelStateIndependence`), +2 Task 4, +2 Task 5, +1 Task 6 (`PanelResetToDefault`). Tasks 7 and 8 extended existing tests rather than adding new ones. |
+| M6.4.1 Task 1 | 49 | +3: `TrueScope.UI.GainRedrawRequest`, `TrueScope.Analysis.GainRemapWithoutCapture`, `TrueScope.UI.RedrawRequestCoalescing`. |
+| M6.4.1 Task 2 | 50 | +1: `TrueScope.UI.MenuTextColumn`. |
+| M6.4.1 Task 3 | 50 | ±0: `PanelMenuEntryPoints` had two entry points to compare and one was removed, so it was repurposed into `TrueScope.UI.PanelMenuSingleEntryPoint` rather than left passing for the wrong reason. |
+| CPU re-map guard | 51 | +1: `TrueScope.Analysis.HistogramGainSkipsCpuRemap`. |
+| Work order 18 | **52** | +1: `TrueScope.UI.MenuRowPadding`. The label rename and the parade clearance guard changed existing tests instead of adding new ones. |
+
+52 is the tripwire from here on.
+
+The click-through was walked on 2026-08-22 with
 the editor on the GPU path, panels at defaults, High DPI on. Five of the six steps
 were driven through MCP/synthetic input and are recorded below; the two checks that
 need a *dragged* Slate control are open for the human, for the reason given at the
@@ -662,11 +707,140 @@ specific to High DPI being off. High DPI was **on** for all of the above — men
 opened, rows clicked, radios flipped — and the drag-capture widgets were still
 unreachable. Menus and buttons are drivable; sliders and splitters are not.
 
-Left for the human, in one sitting:
+Both were then done by the human, in one sitting, and both passed:
 
-- Open each panel menu and drag **Trace Brightness** (waveform, parade,
-  vectorscope) and **Histogram Gain** (histogram): the trace must change
-  *continuously during the drag*, on both analysis paths.
-- Drag a panel below 204 × 116 px of canvas and confirm "Panel too small" appears.
+- Each panel menu opened and **Trace Brightness** (waveform, parade, vectorscope)
+  and **Histogram Gain** (histogram) dragged: the trace changes *continuously
+  during the drag*, on both analysis paths.
+- A panel dragged below 204 × 116 px of canvas: "Panel too small" appears.
 
-Everything else in the list above is verified.
+That closes the list. The same walkthrough was the final visual pass, and it found
+**no functional fault** — the two things it did find were presentation defects, and
+they are the subject of addendum item 4.
+
+## Verification summary — M6.4.1
+
+Covers the immediate-slider-feedback fix, the menu work, and the menu polish of
+work order 18. Signed off 2026-08-22 together with M6.4.
+
+### Acceptance
+
+*Sliders take effect immediately (work order 17 Task 1, restated by its addendum):*
+
+- [x] Dragging Trace Brightness changes the trace continuously in waveform, parade
+      and vectorscope, and Histogram Gain the histogram — human drag, both paths.
+- [x] Verified on **both** analysis paths, each selected deliberately via
+      `TrueScope.AnalysisPath` and confirmed from the panel footer, never left to
+      the persisted ini.
+- [x] No new capture and no readback introduced — GPU re-analysis runs on the
+      resident capture render target; the only staging copy in the logs is the one
+      that exists on the CPU path anyway.
+- [x] Coalescing: at most one re-analysis per rendered frame, pinned by
+      `TrueScope.UI.RedrawRequestCoalescing`.
+- [x] Condition 2 — the call never blocks. Answered by code inspection; both routes
+      start on the game thread and return without waiting.
+- [x] Condition 3 — measured on the M1 Mac Mini, not the RTX machine.
+- [x] Double-click reset and "Reset to Defaults" are immediate by the same route.
+- [x] The persisted value is still the factor, never the slider position.
+- [x] A test pins that a gain change alone re-renders without a new capture; teeth
+      proven.
+
+*Menus (work order 17 Tasks 2–3, work order 18 Tasks 1–3):*
+
+- [x] Every row of every panel menu and the settings popup starts in one common
+      text column — asserted across all five menus by `TrueScope.UI.MenuTextColumn`
+      and seen in a screenshot of each.
+- [x] Right-clicking a scope canvas opens nothing — confirmed on all four canvases
+      against a baseline with nothing open.
+- [x] The reset icon is present in all four panel menus and shares the left column
+      with the radio dots and check boxes.
+- [x] No row is clipped or crowded — the one case where this failed (parade) is
+      recorded below and is now guarded.
+- [x] Rows within a group share one vertical gap in all five menus; headings and
+      the pre-reset separator keep their larger spacing.
+- [x] All four menus read "Reset to Defaults"; no stale wording in code or docs.
+
+### What was automated
+
+Everything that is a fact about the widget tree, the settings store, or a
+derivation:
+
+- Panel-menu and settings-popup **contents read out of the built menu widgets**,
+  not described in a comment — `TrueScope.UI.PanelMenuContents`,
+  `TrueScope.UI.SettingsPopupContents`, `TrueScope.UI.PanelMenuSingleEntryPoint`.
+- Per-panel state: `TrueScope.UI.PanelStateIndependence`, and
+  `TrueScope.UI.PanelResetToDefault` for reset scoping.
+- Menu geometry: the label column asserted equal across all five menus and the
+  glyph column asserted equal within each menu, both in
+  `TrueScope.UI.MenuTextColumn`, plus the clearance guard that catches an icon
+  crowding its own label.
+- Menu rhythm: `TrueScope.UI.MenuRowPadding`, structurally rather than
+  geometrically, for the reason given under "How both were reached".
+- `TrueScope.UI.PanelSizeHint`, which re-measures both font metrics and lays the
+  hint out rather than trusting a threshold constant.
+- The settings popup's radio state following the **effective** analysis path in
+  both directions — `TrueScope.UI.SettingsPopupEffectivePath`.
+- Histogram/waveform level equality — `TrueScope.UI.ValueScale`.
+
+### What was verified live, and how
+
+- **MCP, `Click` + `PressKey "Enter"`** (2026-08-22): all four panel menus and the
+  settings popup opened and screenshotted with no human input — row inventories,
+  every radio clicked and re-read from a reopened menu, the skin-tone checkbox
+  toggled both ways, right-click confirmed inert on all four canvases, reset
+  confirmed to scope to its own panel by reading
+  `EditorPerProjectUserSettings.ini` rather than appearance. This is what
+  superseded the old "MCP cannot open Slate popup menus" rule.
+- **The human's own walkthrough**, for what synthetic input cannot reach: the
+  held-drag controls — the four gain sliders and the panel splitter — and the
+  final visual pass over the whole UI. It found **no functional fault**.
+
+### What was measured
+
+Four benchmark runs on the M1 Mac Mini (idle and dragging, on each analysis path),
+under the fixed benchmark editor state, with the three-phase handshake. The pass
+criterion was fixed **before any number existed**: ≤1.5× the same path's own idle
+frame time, with an absolute floor at 15 FPS.
+
+| | multiple | verdict |
+|---|---|---|
+| GPU path | **0.73×** (28.86 → 39.65 FPS) | passes, by a wide margin |
+| CPU path | **0.61×** (32.73 → 54.00 FPS) | passes, by a wide margin |
+
+**The caveat the numbers depend on:** dragging measures *faster* than idle because
+an open menu freezes the level viewport, so the 3D scene is not rendered during a
+drag and the re-analysis lands in frames that are otherwise nearly empty. That is
+not an artefact of the test — it is the condition every real drag happens in — but
+it does mean these figures cannot be read as "re-analysis is free". They also are
+**not** the tab-closed-vs-tab-open A/B of `dev-rules.md`: both baselines here have
+the tab open and analysis running, so neither is a zero point, and they must never
+be compared against the M5 figures. The per-thread split inside the drag window is
+reported as indicative only and is carried to M7 as an open question
+(`backlog.md`).
+
+### What only a human eye could catch
+
+Both presentation defects fixed in work order 18 were found by the human's
+walkthrough, and neither could have been caught by the checks that existed — which
+is a standing lesson about the limits of geometry assertions, not a gap that was
+later closed by adding more of them:
+
+- **The lost reset icon.** Every assertion was about *alignment*, and the menus
+  were perfectly aligned without the icon. Nothing asserted that the icon was
+  there at all, because its absence broke no relationship between rows.
+- **The parade menu's glyph clearance.** The checks compare rows against each
+  other. The parade menu has a single entry row, so there is no second row for it
+  to disagree with, and its arrow could touch the R of "Reset to Defaults" while
+  every assertion stayed green. A screenshot caught it in one look.
+
+Both are now guarded — the icon by the per-menu glyph column, the clearance by an
+explicit minimum-gap assertion — but the guards were written *after* the eye found
+the defects, which is the point.
+
+### Commits
+
+`43d15b1` (immediate sliders), `b363208` (uniform text column), `f9e73e6`
+(right-click removed), `0fb8608` (M6.4.1 documentation), `b715da3` (CPU re-map
+guard), `cc33ea9` (drag benchmark), `9ceb4f6` (condition 2 and the frozen-viewport
+caveat), `f74e640` (click-through results), `b162423` (reset icon and row rhythm),
+`4d93651` (parade clearance bound), plus this closing documentation commit.

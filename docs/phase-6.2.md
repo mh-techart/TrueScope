@@ -23,6 +23,8 @@ If a decision-level surprise appears, stop and ask (Rule 3 self-check). Where a
 control is only reachable via a Slate right-click menu that MCP cannot open, pause
 and ask the human to click (approved).
 
+*Superseded 2026-08-22 — see `dev-rules.md`.* MCP opens Slate popup menus with `Click` + `PressKey "Enter"`. Right-click context menus were never re-tested, because TrueScope no longer has any (M6.4.1); what is genuinely out of reach is the held drag, not the menu.
+
 ## Task 1 — Vectorscope graticule extensions
 
 The M4 graticule ships the six 75 % target boxes and a plain outer circle. Add the

@@ -24,6 +24,8 @@ click / change the option** — the human has approved this. The tab menu built 
 Task 2 should reduce how often this is needed (visible controls, not only
 right-click), which is a deliberate side benefit.
 
+*Superseded 2026-08-22 — see `dev-rules.md`.* MCP opens Slate popup menus with `Click` + `PressKey "Enter"`. Right-click context menus were never re-tested, because TrueScope no longer has any (M6.4.1); what is genuinely out of reach is the held drag, not the menu.
+
 ## Task 1 (FIRST — foundation) — Render scope textures at display resolution
 
 The root cause logged from phase-5.2: all four GPU scopes rasterize into fixed

@@ -783,3 +783,14 @@ flips.
   difference sitting almost entirely on the game thread (17.87 vs 5.39 ms).
   Recorded here because it is the same M7 question seen from the other side. It
   did not affect the M6.4.1 verdict, where both paths passed comfortably.
+- **Unexplained thread split during a drag.** The M6.4.1 benchmark showed the game
+  thread rising 6.90 → 17.87 ms while the render thread reported 0.04 ms — a
+  figure Claude Code flagged as not credible while Slate is still drawing. It is
+  *not* a blocking call: the gain path enqueues a render command and returns, with
+  no fence or flush (verified by reading `TrueScopeViewExtension.cpp`, work order
+  18). So the cause lies in the instrumentation or in how FPSChart attributes work
+  during a frozen viewport, not in TrueScope's control flow. Not a correctness
+  question, and it does not affect the M6.4.1 result — frame time and FPS are the
+  result, the thread split was explicitly reported as indicative only. But M7's
+  GPU-default decision will need trustworthy per-thread numbers, so this has to be
+  understood before that measurement, not during it.

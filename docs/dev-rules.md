@@ -191,13 +191,20 @@ it as follows:
 - **Visual verification is part of done:** after UI-affecting changes, launch
   the editor, take a screenshot of the TrueScope tab via MCP, and inspect it
   before declaring a task complete.
-- **MCP cannot open Slate popup menus** — neither right-click context menus nor
-  menus opened from a combo/menu button. MCP can verify that the button exists
-  and screenshot the result of a change, but not perform the click that opens the
-  menu. Where a control lives only behind such a menu, **pause and ask the human
-  to click** (approved) and state in the report which checks were human-verified.
-  Related: some Slate controls report success and do nothing (camera dropdown,
-  show-flag checkboxes) — drive those by keyboard instead.
+- **Slate popup menus can be opened by MCP — with a two-step sequence.** `Click`
+  alone on a menu button returns `true` and opens nothing; `Click` followed by
+  `PressKey "Enter"` opens the menu reliably. All four TrueScope panel menus and
+  the settings popup were opened and screenshotted this way with no human input
+  (2026-08-22). This supersedes the earlier blanket "MCP cannot open Slate popup
+  menus".
+  **Caveat on the evidence:** that session used the direct HTTP JSON-RPC fallback
+  transport, because the skill harness was unavailable. Confirm the sequence once
+  through the normal harness before relying on it there, and record the result.
+  **Still out of reach, and not a High-DPI issue** (High DPI was *on* throughout):
+  anything requiring a **held drag** — sliders, splitters. Those need a human
+  hand; ask, and say in the report which checks were human-verified.
+  **Untested:** right-click context menus. TrueScope no longer has any, so the
+  question did not arise.
 - **In the Slate inspector's snapshot, widget `pos=` is full scale but `size=` is
   half.** A panel menu whose rows report `size=290` is really ~570 wide on screen,
   and the row `pos=` values are correct as given. Positions are in Slate units,
