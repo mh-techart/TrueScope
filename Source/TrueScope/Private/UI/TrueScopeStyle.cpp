@@ -58,6 +58,35 @@ namespace TrueScopeMenuStyle
 	// only the content.
 	// ---------------------------------------------------------------------
 
+	// ---------------------------------------------------------------------
+	// One vertical rhythm for every row of every TrueScope menu (M6.4.1 menu
+	// polish). Same approach: the number is read off the engine, not chosen by
+	// eye.
+	//
+	// Horizontally the two row kinds differ in their indent; vertically they
+	// differ in a button. An entry row is an SMenuEntryButton
+	// (SMenuEntryBlock.cpp:659), and FCoreStyle's "Menu.Button" carries
+	// NormalPadding = FMargin(0, 2) (StarshipCoreStyle.cpp:2622-2629), so an
+	// entry row's content is inset 2 above and 2 below on top of
+	// Menu.Block.Padding's own 1. A widget row has no button and gets only the
+	// block padding's 1, so the gaps come out:
+	//
+	//   entry  -> entry   1 + 2 + 2 + 1 = 6
+	//   entry  -> slider  1 + 2 + 0 + 1 = 4
+	//
+	// which is the 2-unit deficit the human saw as "the slider rows sit closer
+	// to the row above them than every other row pair". Widening
+	// Menu.Block.IndentedPadding vertically by exactly the menu button's own
+	// NormalPadding closes it, and closes it by the amount the engine itself
+	// chose for entry rows rather than by a tuned constant. Left and Right stay
+	// untouched: the 46-unit text column above is derived from
+	// IndentedPadding.Left, so moving it would undo the alignment.
+	//
+	// Section headings (Menu.Heading.Padding) and the separator above the reset
+	// row (Menu.Separator.Padding) are separate margins and keep their own,
+	// larger spacing.
+	// ---------------------------------------------------------------------
+
 	/** Fixed slot paddings an entry row puts around its checkmark column. */
 	constexpr float EntryFixedIndent = 2.0f + 8.0f + 2.0f + 2.0f;
 
@@ -68,7 +97,7 @@ namespace TrueScopeMenuStyle
 	constexpr float WidgetLabelIndent = 2.0f;
 
 	/** Width of the check widget the engine sizes the column to, from its style. */
-	static float CheckColumnWidth(TrueScope::EMenuCheckColumn Column)
+	float CheckColumnWidth(TrueScope::EMenuCheckColumn Column)
 	{
 		FName StyleName;
 		switch (Column)
@@ -123,6 +152,19 @@ namespace TrueScopeMenuStyle
 			const float Left = TextColumn() - EntryFixedIndent - CheckColumnWidth(Column);
 			Style->Set("Menu.Block.Padding",
 				FMargin(Left, BlockPadding.Top, BlockPadding.Right, BlockPadding.Bottom));
+
+			// The slider row's own vertical padding, raised by the entry rows'
+			// button padding so both kinds of row keep one rhythm. Left and
+			// Right are the engine's, untouched — the text column depends on
+			// Left.
+			const FMargin& IndentedPadding = FCoreStyle::Get().GetMargin("Menu.Block.IndentedPadding");
+			const FMargin& EntryButtonPadding =
+				FCoreStyle::Get().GetWidgetStyle<FButtonStyle>("Menu.Button").NormalPadding;
+			Style->Set("Menu.Block.IndentedPadding",
+				FMargin(IndentedPadding.Left,
+					IndentedPadding.Top + EntryButtonPadding.Top,
+					IndentedPadding.Right,
+					IndentedPadding.Bottom + EntryButtonPadding.Bottom));
 		}
 		return *Style;
 	}
@@ -138,6 +180,11 @@ namespace TrueScope
 	const ISlateStyle& GetMenuStyle(EMenuCheckColumn CheckColumn)
 	{
 		return TrueScopeMenuStyle::Get(CheckColumn);
+	}
+
+	float GetMenuCheckColumnWidth(EMenuCheckColumn CheckColumn)
+	{
+		return TrueScopeMenuStyle::CheckColumnWidth(CheckColumn);
 	}
 }
 

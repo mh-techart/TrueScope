@@ -292,6 +292,14 @@ public:
 	 */
 	TSharedRef<SWidget> BuildPanelMenu();
 
+	/**
+	 * The "Reset to Defaults" row: the reset arrow drawn in the menu's check
+	 * column, then the label in the shared text column. Built by hand rather
+	 * than from an FSlateIcon so the icon lands in that column; see the
+	 * derivation on the definition.
+	 */
+	static TSharedRef<SWidget> BuildResetRow(TrueScope::EMenuCheckColumn CheckColumn);
+
 	/** Which check widget BuildPanelMenu() will put in this menu, for its style. */
 	TrueScope::EMenuCheckColumn GetPanelMenuCheckColumn() const;
 

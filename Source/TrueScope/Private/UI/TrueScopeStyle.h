@@ -81,4 +81,15 @@ namespace TrueScope
 	 * TrueScopeStyle.cpp for the derivation.
 	 */
 	const ISlateStyle& GetMenuStyle(EMenuCheckColumn CheckColumn);
+
+	/**
+	 * Width of that menu's checkmark column, in Slate units — the column the
+	 * radio dots and check boxes are drawn in.
+	 *
+	 * Needed by the one row that carries an icon rather than a check widget:
+	 * the icon belongs in this same column, so the row has to know where it
+	 * starts. Derived from the engine's own check-box styles, not measured by
+	 * eye; see TrueScopeStyle.cpp.
+	 */
+	float GetMenuCheckColumnWidth(EMenuCheckColumn CheckColumn);
 }

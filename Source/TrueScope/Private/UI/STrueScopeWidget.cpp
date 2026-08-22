@@ -9,13 +9,17 @@
 #include "Framework/Commands/UIAction.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/AppStyle.h"
+#include "Styling/CoreStyle.h"
 #include "Textures/SlateIcon.h"
 #include "TrueScopeModule.h"
 #include "TrueScopeSettings.h"
 #include "UI/STrueScopeGainSlider.h"
 #include "UI/TrueScopeDraw.h"
 #include "UI/TrueScopeStyle.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "STrueScopeWidget"
 
@@ -341,24 +345,88 @@ TSharedRef<SWidget> STrueScopeWidget::BuildPanelMenu()
 
 	// Last entry of every panel menu (M6.4 Task 6), below a separator: it acts
 	// on the whole panel rather than on any one option above it.
-	//
-	// No icon, deliberately (M6.4.1 Task 2). An entry that carries one reserves
-	// a further 24 units of icon column ahead of its label (SMenuEntryBlock.cpp
-	// :846-864: an SBox of Menu.MenuIconSize + 2 in a slot padded 2 and 6),
-	// which put "Reset to default" 24 to the right of every other row. The
-	// engine's own rule for this is all-or-none — SMenuEntryBlock.cpp:512-521
-	// calls it "our menu policy (either all or none of menu items in a section
-	// should have an icon)" and paints a magenta block over an offender when
-	// DisplayMultiboxHooks is on — and none is the right side of that choice
-	// here: no other row in any TrueScope menu has an icon.
 	MenuBuilder.AddSeparator();
-	MenuBuilder.AddMenuEntry(LOCTEXT("ResetPanel", "Reset to default"),
+	MenuBuilder.AddMenuEntry(
+		FUIAction(FExecuteAction::CreateSP(this, &STrueScopeWidget::ResetPanelToDefaults)),
+		BuildResetRow(GetPanelMenuCheckColumn()), NAME_None,
 		LOCTEXT("ResetPanelTooltip",
-			"Return this panel's display options to their defaults. Affects only this panel."),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateSP(this, &STrueScopeWidget::ResetPanelToDefaults)));
+			"Return this panel's display options to their defaults. Affects only this panel."));
 
 	return MenuBuilder.MakeWidget();
+}
+
+TSharedRef<SWidget> STrueScopeWidget::BuildResetRow(TrueScope::EMenuCheckColumn CheckColumn)
+{
+	// The reset row is the one ACTION row in menus otherwise made of STATE
+	// rows, and it carries the editor's standard reset arrow to say so: a radio
+	// dot and a check box report how things stand, the arrow says what happens
+	// on click. The same artwork appears throughout the editor (details panel,
+	// viewport show-flags), so it is recognised before the words are read.
+	//
+	// It is drawn in the CHECK column, not in the engine's icon column, which
+	// is why this row is built by hand rather than passed as an FSlateIcon.
+	// The engine puts an entry's icon in a box of its own AFTER the checkmark
+	// column (SMenuEntryBlock.cpp:581-600: an SBox of Menu.MenuIconSize + 2 in
+	// a slot padded 2 and 6), so an icon on one row pushes that row's label
+	// MenuIconSize + 10 = 24 units right of every other row — the alignment
+	// M6.4.1 Task 2 exists to prevent. The engine's own answer to a mixed
+	// section is "give every row an icon" (SMenuEntryBlock.cpp:512-521, the
+	// all-or-none menu policy), which is not available here: the other rows'
+	// state is drawn by their check widgets, and inventing artwork for each
+	// would say less than the dot already says.
+	//
+	// So the icon goes where the dots go. Supplying custom contents replaces
+	// the icon box and the label together (SMenuEntryBlock.cpp:576), and the
+	// contents start one fixed distance to the right of the checkmark column:
+	//
+	//   check slot        FMargin(2, 0, 8, 0) around the column   (:632)
+	//   contents slot     FMargin(2, 0, 0, 0)                     (:653)
+	//
+	// so the column's left edge is its own width plus the 8 and the 2 that
+	// follow it — column + 10 units — left of where these contents begin, and
+	// the icon reaches it with that much negative left padding. (The check
+	// slot's leading 2 sits before the column, not between it and the text, so
+	// it is not part of the distance.) Because the check widget on THIS row is collapsed
+	// (a plain action has nothing to check, SMenuEntryBlock.cpp:546-549) the
+	// space it reserves is empty, so nothing is overlapped or clipped — the
+	// icon simply occupies the column its neighbours use.
+	//
+	// The label then has to land where every other row's label lands. Entry
+	// contents begin 2 units before the shared text column, and a horizontal
+	// box places the label at the icon slot's total width, so that width must
+	// come to exactly 2: PullLeft is spent, the icon's own extent is added, and
+	// the right padding makes up the difference. Every term is an engine
+	// constant, none is chosen by eye — a wrong one shows up as a failing
+	// TrueScope.UI.MenuTextColumn, which measures the built rows.
+	const float PullLeft = TrueScope::GetMenuCheckColumnWidth(CheckColumn) + 10.0f;
+	const float IconExtent = FCoreStyle::Get().GetFloat("Menu", ".MenuIconSize", 14.0f);
+	const float LabelIndent = 2.0f;
+
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(FMargin(-PullLeft, 0.0f, PullLeft - IconExtent + LabelIndent, 0.0f))
+		[
+			SNew(SBox)
+			.WidthOverride(IconExtent)
+			.HeightOverride(IconExtent)
+			[
+				SNew(SImage)
+				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				// Named for what it marks in a details panel rather than for
+				// what it depicts; the artwork is the reset arrow (M6.4).
+				.Image(FAppStyle::GetBrush("PropertyWindow.DiffersFromDefault"))
+			]
+		]
+		+ SHorizontalBox::Slot()
+		.FillWidth(1.0f)
+		.VAlign(VAlign_Center)
+		[
+			SNew(STextBlock)
+			.TextStyle(&TrueScope::GetMenuStyle(CheckColumn), "Menu.Label")
+			.Text(LOCTEXT("ResetPanel", "Reset to Defaults"))
+		];
 }
 
 TrueScope::EMenuCheckColumn STrueScopeWidget::GetPanelMenuCheckColumn() const
@@ -456,7 +524,7 @@ void STrueScopeWidget::ResetPanelToDefaults()
 
 	// RestoreOptionsFromPanelState publishes the restored gain directly, so the
 	// redraw ApplyGainMultiplier would have asked for has to be asked for here
-	// — otherwise "Reset to default" would be the one control that still waits
+	// — otherwise "Reset to Defaults" would be the one control that still waits
 	// for the next capture (M6.4.1).
 	FTrueScopeModule::Get().RequestScopeRedraw();
 }

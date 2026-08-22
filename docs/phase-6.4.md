@@ -49,7 +49,7 @@ across engine layout changes and raises no licensing question.
 |---|---|---|
 | main bar gear | `Starship/Common/settings.svg` | `Icons.Settings` (16×16) |
 | panel header menu button | `Starship/Common/menu.svg` | *no standalone style name in UE 5.8* — reached as `FAppStyle::Get().GetWidgetStyle<FToolBarStyle>("SlimToolBar").WrapButtonStyle.ExpandBrush` |
-| Reset to default | `Starship/Common/ResetToDefault.svg` | `PropertyWindow.DiffersFromDefault` (16×16) |
+| Reset to Defaults | `Starship/Common/ResetToDefault.svg` | `PropertyWindow.DiffersFromDefault` (16×16) |
 
 The plugin's own window/tab icon **is** in the repository:
 `Resources/Icons/TrueScope_Icon_mono.svg`, 16×16 viewBox, a filled 2 px ring plus
@@ -186,7 +186,7 @@ exists and still stays in sync.
 - [ ] Both settings survive a restart with the popup as the only entry point —
       **human click outstanding**.
 
-## Task 6 — Reset to default
+## Task 6 — Reset to Defaults
 
 Last entry of every panel menu, with `PropertyWindow.DiffersFromDefault`. It resets
 only that panel's own display options, reading them from the single central source
@@ -327,7 +327,7 @@ unavailable in this session.
 - **Migration of previously persisted per-type settings.** Dropped on purpose;
   the compiled defaults are the M6.3 calibrated values, so the one-time reset
   lands on correct values.
-- **Greying out "Reset to default" when nothing deviates.** Considered, rejected
+- **Greying out "Reset to Defaults" when nothing deviates.** Considered, rejected
   by the human as unnecessary visual noise.
 
 ## Addendum — M6.4.1
@@ -505,6 +505,84 @@ identical, right-click was removed. **Right-clicking a scope canvas now does
 nothing, deliberately** — the panel header is the single entry point. The menu
 builder is unchanged and now has one caller.
 
+### 4. Menu polish (found in the human walkthrough)
+
+Two presentation defects introduced by the uniform-text-column work, plus a label
+correction.
+
+**The reset icon came back.** It was present in M6.4 and lost while the text
+column was straightened. It is not decoration: the reset row is the only *action*
+row in menus otherwise built of *state* rows — a radio dot and a checkbox report
+how things stand, the arrow says what happens on click — and the same artwork
+appears throughout the editor (details panel, viewport show-flags), so it is
+recognised before the words are read. Icon, radio dot and checkbox share one left
+column; all row text starts at one common x.
+
+**Even vertical rhythm.** Slider rows sat closer to the row above them than other
+row pairs did. Rows within a group now share one gap, in every panel menu and the
+settings popup; section headings and the pre-reset separator keep their larger
+spacing.
+
+**"Reset to default" → "Reset to Defaults".** Unreal uses the singular where one
+value is reset and the plural where several are; this entry resets several at
+once. Human decision, verified against the engine by the human.
+
+#### How both were reached, since neither is what the engine does by default
+
+*The icon.* An entry's `FSlateIcon` is drawn in a box of its own **after** the
+checkmark column (`SMenuEntryBlock.cpp:581-600`), so an icon on one row pushes
+that row's label `Menu.MenuIconSize + 10` = 24 units right of every other row —
+exactly the misalignment Task 2 exists to prevent. The engine's own answer to a
+mixed section is "give every row an icon" (`SMenuEntryBlock.cpp:512-521`, the
+all-or-none menu policy, which paints a magenta block over an offender when
+`DisplayMultiboxHooks` is on); that is not available here, because the other rows
+already say their state with a dot or a check box. So the arrow is drawn **in the
+checkmark column instead of the icon column**: the row supplies its own contents,
+and the icon is pulled left by `column + 10` units — the 8 and the 2 that the
+engine puts between the column and the contents — to land on the column's left
+edge. This row's own check widget is collapsed (a plain action has nothing to
+check), so the space it reserves is empty and nothing is overlapped. The label
+still lands on the shared column because the icon slot is given a total width of
+exactly the 2 units a normal label slot indents by.
+
+*The rhythm.* Horizontally the two row kinds differ in their indent; vertically
+they differ in a button. An entry row is an `SMenuEntryButton`, and `Menu.Button`
+carries `NormalPadding = FMargin(0, 2)` (`StarshipCoreStyle.cpp:2622-2629`), so
+its content is inset 2 above and below on top of `Menu.Block.Padding`'s 1. A
+slider row has no button and gets only the block padding's 1, so an entry→entry
+gap came to 1+2+2+1 = 6 while entry→slider came to 1+2+0+1 = **4**. TrueScope's
+menu style now widens `Menu.Block.IndentedPadding` vertically by exactly that
+button's own `NormalPadding`, read from the style set at build time — the amount
+the engine itself chose for entry rows, not a tuned constant. Left and Right are
+untouched, since the 46-unit text column is derived from `IndentedPadding.Left`.
+Headings (`Menu.Heading.Padding`) and the pre-reset separator
+(`Menu.Separator.Padding`) are separate margins and keep their larger spacing.
+
+*How each is pinned.* `TrueScope.UI.MenuTextColumn` lays the five menus out for
+real and reads the arranged geometry twice over: the label column, asserted equal
+across **all** menus, and the glyph column, asserted equal **within** each menu —
+the reset arrow lands where that menu's dots and boxes land, at 24 units in the
+waveform and histogram menus, 14 in the vectorscope, 34 in the parade menu, each
+being that menu's own `Menu.Block.Padding.Left + 2`.
+
+The rhythm is pinned structurally instead, by `TrueScope.UI.MenuRowPadding`, and
+that is a deliberate choice rather than a shortcut. Geometry cannot answer the
+question: every row of a menu is as tall as that menu's shared checkmark column,
+so a row holding a smaller glyph reports its content sitting further from the row
+edge while being spaced exactly like its neighbours. Measured on 2026-08-22, the
+vectorscope's radio rows report an inset of 4.5 against 3.0 everywhere else, for
+precisely that reason — its column is sized by a check box while a radio dot is
+smaller — and no measurement of the built tree distinguishes that from a real
+spacing defect. So the test asserts the **padding**, in the engine's own terms
+(a slider row reserves its block padding plus `Menu.Button`'s `NormalPadding`,
+above and below), which is what the fix sets and what the eye reads as the gap.
+The insets are still logged by the column test, marked as diagnostics, with that
+reasoning next to them so the 4.5 is not later read as a bug.
+
+Teeth proven on 2026-08-22, each half separately: moving the label indent reddens
+the label column alone, moving the icon pull reddens the glyph column alone, and
+reverting the padding override reddens `MenuRowPadding` alone.
+
 ## Status
 
 Code complete and green at 46/46. The click-through was walked on 2026-08-22 with
@@ -520,13 +598,13 @@ end.
 2. **Each panel's hamburger — menu opens, rows are exactly the panel's type,
    radio/checkbox controls act.** Row inventory, by diffing each open menu against a
    closed-menu baseline:
-   - Waveform — DISPLAY · RGB · Luma · Trace Brightness · Reset to default
-   - Parade — Trace Brightness · Reset to default (no DISPLAY section; parade is
+   - Waveform — DISPLAY · RGB · Luma · Trace Brightness · Reset to Defaults
+   - Parade — Trace Brightness · Reset to Defaults (no DISPLAY section; parade is
      always RGB)
    - Vectorscope — ZOOM · Normal · 2× Zoom · MARKERS · 75% · 100% · 75% + 100% ·
-     Show Skin Tone Line · Trace Brightness · Reset to default
+     Show Skin Tone Line · Trace Brightness · Reset to Defaults
    - Histogram — DISPLAY · Separate Channels RGB · Separate Channels YRGB ·
-     RGB Overlay · Histogram Gain · Reset to default
+     RGB Overlay · Histogram Gain · Reset to Defaults
 
    Every radio was clicked and re-read from a reopened menu: selection moves to the
    clicked row and off its siblings, and clicking an already-selected radio leaves it
@@ -536,9 +614,9 @@ end.
 3. **Right-click opens nothing — confirmed on all four canvases.** Right-clicking
    each of waveform, parade, vectorscope and histogram added zero popup windows and
    produced zero menu rows, against a baseline taken with nothing open.
-4. **"Reset to default" resets only its own panel.** With the vectorscope
+4. **"Reset to Defaults" resets only its own panel.** With the vectorscope
    deliberately off-default (`bShowSkinToneLine=False`) and the waveform's
-   `TraceBrightness` at 0.125, "Reset to default" in the waveform menu took the
+   `TraceBrightness` at 0.125, "Reset to Defaults" in the waveform menu took the
    waveform to 1.000 while the vectorscope stayed off-default. Read from
    `EditorPerProjectUserSettings.ini`, not from appearance.
 5. **The gear — both sections present, the switch reaches all four scopes, both
@@ -561,7 +639,7 @@ end.
 the two controls that require a *held* drag, and synthetic input cannot drive them.
 This was established here by a clean control experiment rather than inferred: a
 Quartz click at the slider track produced no change, while a click 30 px below it,
-computed with the *same* coordinate mapping, fired "Reset to default" and moved the
+computed with the *same* coordinate mapping, fired "Reset to Defaults" and moved the
 value 0.125 → 1.000. So the coordinates were right and the widget is simply not
 reached. A press-and-drag along the track, and keyboard navigation into the menu
 followed by arrow keys, both left the value untouched as well; a drag on the panel

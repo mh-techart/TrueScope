@@ -159,7 +159,7 @@ mechanism rather than leaving stale traces.
   transforms such as P3 or PQ). V1 is deliberately display-referred
   sRGB/Rec.709 only (see architecture.md).
 - **Toolbar button** to open the TrueScope tab (V1: Window menu only).
-- **"Reset to default" for the settings popup** — M6.4 gave every panel menu a
+- **"Reset to Defaults" for the settings popup** — M6.4 gave every panel menu a
   reset. The global options (analysis path, capture rate) have none. Low value
   while there are only two of them; revisit if the popup grows.
 - **Plugin icon + tab icon (assets available 2026-07-20; tab/window part resolved

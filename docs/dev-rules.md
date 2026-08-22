@@ -316,6 +316,15 @@ them; verify, do not silently alter — see the settings-hygiene rule):
 - `t.MaxFPS 0`, editor VSync off, "Use less CPU in Background" off,
   High DPI **off**
 
+- **Changing "Enable High DPI Support" — do not use the editor's own restart
+  button.** Editor Preferences → Enable High DPI Support prompts for a restart and
+  offers "Restart Now" (and "Restart Later"). **Using either loses the change:**
+  the editor restarts but comes back with the old setting. Instead: `File → Save
+  All`, then close and relaunch the editor yourself. That works reliably.
+  (macOS path: `Edit → Editor Preferences… → Enable High DPI Support`.) Verified
+  by the human, 2026-08-22. Always confirm the live CVar
+  `EnableHighDPIAwareness` after the restart rather than trusting the checkbox.
+
 **Step 0 of any benchmark — verify the query commands against 5.8 source.**
 Do not assume console-variable or setting names. Confirm, in the installed
 engine source, the actual variable/INI key that *reads* the editor VSync state

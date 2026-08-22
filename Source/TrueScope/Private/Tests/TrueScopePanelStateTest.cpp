@@ -94,7 +94,7 @@ bool FTrueScopePanelStateIndependenceTest::RunTest(const FString&)
 	TestEqual(TEXT("Panel D keeps its marker set"),
 		Settings.GetPanelOptionGroupValue(PanelD, TrueScope::VectorscopeMarkersOptionKey), 0);
 
-	// --- Reset to default (M6.4 Task 6) reads the central defaults ---------
+	// --- Reset to Defaults (M6.4 Task 6) reads the central defaults ---------
 	// Panel C above has been moved off every default; resetting it must bring
 	// all of them back at once, keep its scope type, and touch nothing else.
 	const FTrueScopePanelState Defaults = TrueScope::MakeDefaultPanelState(Settings.GetPanelScopeType(PanelC));
@@ -133,7 +133,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopePanelResetTest,
 
 bool FTrueScopePanelResetTest::RunTest(const FString&)
 {
-	// M6.4 Task 6: the menu's "Reset to default" must reach the LIVE widget, not
+	// M6.4 Task 6: the menu's "Reset to Defaults" must reach the LIVE widget, not
 	// only the stored state. The vectorscope is the richest panel — display mode,
 	// an option group and a toggle, plus a gain — so one reset exercises every
 	// kind of option the generic widget API carries.

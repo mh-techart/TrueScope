@@ -42,7 +42,7 @@ namespace TrueScope
  * settings intact.
  *
  * **These member initializers are the single central source of the defaults**:
- * the panel menu's "Reset to default" (M6.4 Task 6) and the default 2x2 layout
+ * the panel menu's "Reset to Defaults" (M6.4 Task 6) and the default 2x2 layout
  * both read them, and nothing inlines a default of its own.
  */
 USTRUCT()
