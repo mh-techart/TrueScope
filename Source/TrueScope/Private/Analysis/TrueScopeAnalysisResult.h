@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "Analysis/TrueScopeDisplayGains.h"
 #include "CoreMinimal.h"
 #include "UObject/WeakObjectPtrTemplates.h"
 
@@ -89,6 +90,18 @@ struct FTrueScopeAnalysisResult
 	 * highest Cr. Derived convenience data, not ground truth.
 	 */
 	TArray<uint8> VectorscopeIntensity;
+
+	/**
+	 * The gains the three intensity images above were rasterised with (M6.4.1).
+	 *
+	 * The counts are ground truth and gain-free; the intensity arrays are not,
+	 * and once built they cannot be rescaled — the transfer hard-clips at white.
+	 * Recording the gains lets a re-map ask the only question that matters,
+	 * "would rebuilding these produce a different picture?", and answer it
+	 * without a second copy of the gains living somewhere else. Meaningless on
+	 * a GPU result (bHasGpuParade): those images are never in CPU memory.
+	 */
+	TrueScope::FDensityGains AppliedDensityGains = TrueScope::FDensityGains::Defaults();
 
 	/** Cost of the CPU analysis (background task), for the M3 measurement. */
 	double AnalysisDurationMs = 0.0;

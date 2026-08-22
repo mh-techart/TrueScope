@@ -80,7 +80,10 @@ public:
 	 *
 	 * Game thread. Returns NoData when the last result came from the GPU path
 	 * (whose bins do not exist in CPU memory — see FTrueScopeViewExtension::
-	 * RedrawFromLastCapture) or when nothing has been measured yet.
+	 * RedrawFromLastCapture), when nothing has been measured yet, or when the
+	 * current gains are the ones the retained images were already built with —
+	 * which is what a HISTOGRAM gain change looks like from here, since the
+	 * redraw request is one global latch for all four panels.
 	 */
 	TrueScope::ERedrawOutcome RemapLastResultWithCurrentGains();
 
@@ -95,6 +98,9 @@ public:
 	}
 
 private:
+	/** The current effective density gains, or the scope defaults with no producer. */
+	TrueScope::FDensityGains ReadCurrentDensityGains() const;
+
 	void PollReadback_RenderThread();
 	void RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size, double InCaptureStartSeconds, double InCopyMs);
 	void RunRemapTask(TSharedPtr<const FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Source);

@@ -14,22 +14,10 @@
  */
 namespace TrueScope
 {
-	/**
-	 * The density scopes' per-scope Trace Brightness gains, as published by the
-	 * widgets (TrueScopeDisplayGains.h). Passed explicitly into every mapping
-	 * call rather than read from a global, so the automation tests can pin the
-	 * transfer at a chosen gain and the GPU pass provably applies the same one.
-	 */
-	struct FDensityGains
-	{
-		/** Effective gain (scope default x user multiplier) per density scope. */
-		float Parade = GetDefaultDensityGain(EDensityScope::Parade);
-		float Waveform = GetDefaultDensityGain(EDensityScope::Waveform);
-		float Vectorscope = GetDefaultDensityGain(EDensityScope::Vectorscope);
-
-		/** The gains the three scopes carry with no user adjustment. */
-		static FDensityGains Defaults() { return FDensityGains(); }
-	};
+	// FDensityGains moved to TrueScopeDisplayGains.h in M6.4.1, so that
+	// FTrueScopeAnalysisResult can record the gains its intensity images were
+	// built with without depending on this header. Still reachable from here:
+	// TrueScopeAnalysis.h includes TrueScopeDisplayGains.h.
 
 	/**
 	 * Builds histogram, parade, luma and vectorscope counts from an 8-bit BGRA

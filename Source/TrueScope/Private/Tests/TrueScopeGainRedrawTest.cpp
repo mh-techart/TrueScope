@@ -26,6 +26,9 @@
  *      actually moved                              — GainRedrawRequest
  *   2. the CPU producer can re-derive the display images from the counts it
  *      still holds, without touching capture       — GainRemapWithoutCapture
+ *   2b. ...and declines when the gains it controls have not moved, which is
+ *      what a histogram gain change looks like from there
+ *                                                  — HistogramGainSkipsCpuRemap
  *   3. requests arriving faster than frames collapse to one
  *                                                  — RedrawRequestCoalescing
  *
@@ -274,6 +277,73 @@ bool FTrueScopeGainRemapWithoutCaptureTest::RunTest(const FString&)
 	TestEqual(TEXT("A GPU result is declined, not re-mapped on the CPU"),
 		static_cast<int32>(Analyzer->RemapLastResultWithCurrentGains()),
 		static_cast<int32>(TrueScope::ERedrawOutcome::NoData));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 2b. A histogram gain change costs the CPU path nothing
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrueScopeHistogramGainSkipsCpuRemapTest,
+	"TrueScope.Analysis.HistogramGainSkipsCpuRemap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTrueScopeHistogramGainSkipsCpuRemapTest::RunTest(const FString&)
+{
+	// The redraw request is ONE global latch for all four panels, so the CPU
+	// producer is asked to re-map whenever any gain moves — including the
+	// histogram's, which on this path needs nothing: it maps counts to curve
+	// height at paint time and the widget's own Invalidate has already redrawn
+	// it. Re-mapping anyway would rebuild the three density images at unchanged
+	// gains, i.e. repaint the identical picture, every frame of a drag.
+	TSharedRef<FTrueScopeAnalyzer, ESPMode::ThreadSafe> Analyzer =
+		MakeShared<FTrueScopeAnalyzer, ESPMode::ThreadSafe>();
+	TSharedPtr<FTrueScopeDisplayGains, ESPMode::ThreadSafe> Gains =
+		MakeShared<FTrueScopeDisplayGains, ESPMode::ThreadSafe>();
+	Analyzer->SetDisplayGains(Gains);
+
+	TArray<FColor> Pixels;
+	TSharedRef<FResult, ESPMode::ThreadSafe> Measured = MakeShared<FResult, ESPMode::ThreadSafe>();
+	MakeRampResult(*Measured, Pixels);
+	const TrueScope::FDensityGains AtDefaults = TrueScope::FDensityGains::Defaults();
+	TrueScope::BuildParadeImage(*Measured, AtDefaults);
+	TrueScope::BuildLumaWaveformImage(*Measured, AtDefaults);
+	TrueScope::BuildVectorscopeImage(*Measured, AtDefaults);
+	Measured->AppliedDensityGains = AtDefaults;
+	Analyzer->PublishResult(Measured);
+
+	const uint64 SerialBefore = Analyzer->GetResultSerial();
+
+	// Well clear of 1.0 in both directions, so this is not a rounding question.
+	for (const float HistogramGain : {4.0f, 0.25f})
+	{
+		Gains->SetHistogramGain(HistogramGain);
+		TestEqual(*FString::Printf(
+			TEXT("Histogram gain %.2f leaves the CPU re-map nothing to do"), HistogramGain),
+			static_cast<int32>(Analyzer->RemapLastResultWithCurrentGains()),
+			static_cast<int32>(TrueScope::ERedrawOutcome::NoData));
+	}
+
+	TestEqual(TEXT("...and therefore publishes no new result"),
+		static_cast<int64>(Analyzer->GetResultSerial()), static_cast<int64>(SerialBefore));
+
+	// The guard must not swallow the case it exists beside: one density gain
+	// moving still starts a re-map. Without this the test would pass just as
+	// well against an analyzer that declined everything.
+	Gains->SetDensityGain(TrueScope::EDensityScope::Waveform, 0.5f);
+	TestEqual(TEXT("A Trace Brightness change still starts a re-map"),
+		static_cast<int32>(Analyzer->RemapLastResultWithCurrentGains()),
+		static_cast<int32>(TrueScope::ERedrawOutcome::Started));
+
+	// Let the task finish before the analyzer goes out of scope.
+	const double Deadline = FPlatformTime::Seconds() + 5.0;
+	while (Analyzer->GetResultSerial() == SerialBefore && FPlatformTime::Seconds() < Deadline)
+	{
+		FPlatformProcess::Sleep(0.001f);
+	}
+	TestEqual(TEXT("The Trace Brightness re-map did publish"),
+		static_cast<int64>(Analyzer->GetResultSerial()), static_cast<int64>(SerialBefore + 1));
 
 	return true;
 }

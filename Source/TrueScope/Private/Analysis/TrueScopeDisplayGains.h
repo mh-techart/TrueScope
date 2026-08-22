@@ -216,6 +216,41 @@ namespace TrueScope
 		default:                         return 1.0f;
 		}
 	}
+
+	/**
+	 * The density scopes' per-scope Trace Brightness gains, as published by the
+	 * widgets. Passed explicitly into every mapping call rather than read from a
+	 * global, so the automation tests can pin the transfer at a chosen gain and
+	 * the GPU pass provably applies the same one.
+	 *
+	 * Lives here rather than in TrueScopeAnalysis.h (where it was until M6.4.1)
+	 * so that FTrueScopeAnalysisResult can record the gains its intensity images
+	 * were built with; that header cannot include TrueScopeAnalysis.h, which
+	 * includes it.
+	 */
+	struct FDensityGains
+	{
+		/** Effective gain (scope default x user multiplier) per density scope. */
+		float Parade = GetDefaultDensityGain(EDensityScope::Parade);
+		float Waveform = GetDefaultDensityGain(EDensityScope::Waveform);
+		float Vectorscope = GetDefaultDensityGain(EDensityScope::Vectorscope);
+
+		/** The gains the three scopes carry with no user adjustment. */
+		static FDensityGains Defaults() { return FDensityGains(); }
+
+		/**
+		 * Exact float equality on purpose: these values are copied, never
+		 * recomputed, so equal means "the same slider positions produced both"
+		 * and a tolerance could only ever hide a real difference.
+		 */
+		bool operator==(const FDensityGains& Other) const
+		{
+			return Parade == Other.Parade
+				&& Waveform == Other.Waveform
+				&& Vectorscope == Other.Vectorscope;
+		}
+		bool operator!=(const FDensityGains& Other) const { return !(*this == Other); }
+	};
 }
 
 /**

@@ -133,6 +133,18 @@ void FTrueScopeAnalyzer::PollReadback_RenderThread()
 		});
 }
 
+TrueScope::FDensityGains FTrueScopeAnalyzer::ReadCurrentDensityGains() const
+{
+	TrueScope::FDensityGains Gains; // scope defaults when there is no producer
+	if (DisplayGains)
+	{
+		Gains.Parade = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Parade);
+		Gains.Waveform = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Waveform);
+		Gains.Vectorscope = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Vectorscope);
+	}
+	return Gains;
+}
+
 void FTrueScopeAnalyzer::RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size, double InCaptureStartSeconds,
 	double InCopyMs)
 {
@@ -142,18 +154,13 @@ void FTrueScopeAnalyzer::RunAnalysisTask(TArray<FColor>&& Pixels, FIntPoint Size
 		MakeShared<FTrueScopeAnalysisResult, ESPMode::ThreadSafe>();
 	// The user's Trace Brightness per density scope, sampled once for this
 	// cycle so all three scopes' images come from one consistent set (M6.3).
-	TrueScope::FDensityGains Gains;
-	if (DisplayGains)
-	{
-		Gains.Parade = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Parade);
-		Gains.Waveform = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Waveform);
-		Gains.Vectorscope = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Vectorscope);
-	}
+	const TrueScope::FDensityGains Gains = ReadCurrentDensityGains();
 
 	TrueScope::AnalyzePixels(Pixels, Size.X, Size.Y, *Result);
 	TrueScope::BuildParadeImage(*Result, Gains);
 	TrueScope::BuildLumaWaveformImage(*Result, Gains);
 	TrueScope::BuildVectorscopeImage(*Result, Gains);
+	Result->AppliedDensityGains = Gains;
 
 	const double Now = FPlatformTime::Seconds();
 	Result->AnalysisDurationMs = (Now - AnalysisStartSeconds) * 1000.0;
@@ -178,6 +185,17 @@ TrueScope::ERedrawOutcome FTrueScopeAnalyzer::RemapLastResultWithCurrentGains()
 		// A GPU result carries textures, not counts: its bins are RDG-scoped and
 		// gone. The GPU path re-derives them from the resident capture RT
 		// instead (FTrueScopeViewExtension::RedrawFromLastCapture).
+		return TrueScope::ERedrawOutcome::NoData;
+	}
+	if (Last->AppliedDensityGains == ReadCurrentDensityGains())
+	{
+		// Nothing this task controls has moved. The redraw request is global —
+		// one latch for all four panels — so it also arrives when the HISTOGRAM
+		// gain changes, and on the CPU path the histogram needs no re-map at
+		// all: it maps counts to curve height at paint time, and the widget's
+		// own Invalidate has already redrawn it. Rebuilding the three density
+		// images at unchanged gains would repaint the identical picture for
+		// ~2-5 ms every frame of the drag (measured on the M1, 2026-08-22).
 		return TrueScope::ERedrawOutcome::NoData;
 	}
 
@@ -208,13 +226,7 @@ void FTrueScopeAnalyzer::RunRemapTask(TSharedPtr<const FTrueScopeAnalysisResult,
 	TSharedRef<FTrueScopeAnalysisResult, ESPMode::ThreadSafe> Result =
 		MakeShared<FTrueScopeAnalysisResult, ESPMode::ThreadSafe>(*Source);
 
-	TrueScope::FDensityGains Gains;
-	if (DisplayGains)
-	{
-		Gains.Parade = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Parade);
-		Gains.Waveform = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Waveform);
-		Gains.Vectorscope = DisplayGains->GetEffectiveDensityGain(TrueScope::EDensityScope::Vectorscope);
-	}
+	const TrueScope::FDensityGains Gains = ReadCurrentDensityGains();
 
 	// The histogram is deliberately absent: it maps counts to curve height at
 	// PAINT time, from the same retained counts, so it was already immediate
@@ -222,6 +234,7 @@ void FTrueScopeAnalyzer::RunRemapTask(TSharedPtr<const FTrueScopeAnalysisResult,
 	TrueScope::BuildParadeImage(*Result, Gains);
 	TrueScope::BuildLumaWaveformImage(*Result, Gains);
 	TrueScope::BuildVectorscopeImage(*Result, Gains);
+	Result->AppliedDensityGains = Gains;
 
 	bool bPublished = false;
 	{
