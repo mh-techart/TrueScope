@@ -216,6 +216,10 @@ it as follows:
   control is missing" report. When geometry matters, take a `Screenshot` of the
   widget and calibrate against it; the image is a faithful 2x render of the real
   layout. Measured 2026-08-22 while locating a slider inside a panel menu.
+  Since 2026-08-22 both benchmarks and MCP click-throughs run with High DPI on,
+  so this halving applies uniformly. The two previously ran in different DPI
+  states, which was a standing source of coordinate error; keep them in the
+  same state.
 - **Some Slate controls accept a click and change nothing.** `Click` on the viewport
   camera-dropdown rows and on the show-flag checkboxes returns **true** while having no
   effect, so a verification built on them passes without testing anything. Where this

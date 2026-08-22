@@ -807,5 +807,12 @@ flips.
      pixels, so the "no measurable felt impact" result was measured at one
      quarter of the real raster load. It is the figure most likely to be quoted
      publicly, so it should hold under the conditions users actually run in.
+     Note the mechanism differs by path. On the GPU path the scope render
+     targets themselves are sized in device pixels (M6.1 Task 1). On the CPU
+     path — still the compiled default — the raster goes through Slate, whose
+     cost also scales with device pixels. Both scale, so the rationale for the
+     condition change holds either way, but a CPU-path re-take is measuring
+     Slate's raster, not render-target size. Do not read a small result there
+     as contradicting the reason the condition was changed.
   4. *Optional, cheap while set up:* spot-check the M6.4.1 drag result (0.73× /
      0.61×) under High DPI on.
