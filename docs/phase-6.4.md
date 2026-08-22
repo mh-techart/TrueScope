@@ -372,7 +372,69 @@ deliberately weak reference machine: at most one re-analysis per rendered frame
 (events within a frame coalesce, last value wins); the call never blocks; and the
 cost was measured on the M1 Mac Mini, not on the RTX machine.
 
-*(record the measured idle vs. dragging frame times here)*
+**Measured on the M1 Mac Mini, 2026-08-22.** Four runs in one session, one scene
+throughout — `/Game/Maps/StartMap`, whose never-still Niagara actor keeps "live"
+distinguishable from "frozen". Conditions: Scalability Epic (all eight `sg.*Quality`
+= 3, `sg.ResolutionQuality` 100), `r.ScreenPercentage.Default` 100, `t.MaxFPS` 0,
+editor VSync off, High DPI off, "Use less CPU in Background" off — all verified
+from the live CVars, because the FPSChart header reports scalability from
+`UGameUserSettings` and is meaningless in-editor (`dev-rules.md`). Each analysis
+path was selected deliberately via `TrueScope.AnalysisPath` and confirmed from the
+panel footer, never left to the persisted ini. **The drag was performed by a human
+hand** — synthetic input cannot drive a Slate slider with High DPI off
+(`dev-rules.md`) — sweeping Trace Brightness end to end continuously at 3–5 s per
+one-way pass, button held for the whole window. The hand on the slider *is* the
+load under test, so it is a condition of the measurement, not extraneous
+interaction.
+
+| | idle (90 s) | dragging | multiple |
+|---|---|---|---|
+| **GPU path** | 28.86 FPS · 34.65 ms · GT 6.90 / RT 34.10 / GPU 32.97 ms | 39.65 FPS · 25.23 ms · GT 17.87 / RT 0.04 / GPU 5.34 ms | **0.73×** |
+| **CPU path** | 32.73 FPS · 30.55 ms · GT 6.71 / RT 30.04 / GPU 28.49 ms | 54.00 FPS · 18.52 ms · GT 5.39 / RT 0.04 / GPU 4.14 ms | **0.61×** |
+
+Drag windows were 99.03 s (GPU, 3926 frames) and 93.55 s (CPU, 5052 frames),
+trimmed to the interval where gain changes actually occurred so that neither
+party's reaction time is measured. The pass criterion — fixed before any number
+existed — was ≤1.5× the same path's own idle frame time, with an absolute floor at
+15 FPS. **Neither line binds: both paths came in below 1.0×, at 39.65 and 54.00
+FPS.** Condition 3 is met on both paths and A is affordable.
+
+**Dragging is faster than idle, and the reason matters.** An open menu freezes the
+level viewport, so the 3D scene is not rendered during a drag at all: the render
+thread and GPU costs collapse (RT 34.10 → 0.04 ms, GPU 32.97 → 5.34 ms) and the
+re-analysis lands in frames that are otherwise nearly empty. That is not an
+artefact of the test — it is the condition every real drag happens in, because the
+slider exists only inside a menu. But it does mean the multiple understates A's own
+price: what it measures is the user's actual experience, not the isolated cost of a
+re-analysis. The isolated cost shows up on the game thread instead — GPU
+re-derivation adds ≈11 ms of game-thread time per frame at 17.9 re-analyses/s,
+while the CPU re-map costs less game-thread time than idle analysis did.
+
+**Coalescing, measured rather than asserted.** 1769 gain changes over 99.03 s
+against 3926 rendered frames = **0.45 re-analyses per rendered frame** (CPU: 2034
+over 93.55 s against 5052 frames = 0.40). It never exceeded one per frame, as the
+once-per-ticker-tick latch guarantees structurally. 136 GPU log lines do share a
+frame number with their predecessor, but those pairs are 21–107 ms apart (median
+41 ms — one to four frame-times), so they are the logging frame counter stalling,
+not two re-analyses inside one frame. **Zero captures occurred inside either drag
+window**, which is the direct evidence that no new capture and no readback were
+introduced.
+
+*Limit of this measurement, stated so it is not mistaken for a worst case:* a human
+sweep at 3–5 s per pass changed the value 17.9–21.7 times per second, roughly
+45–55 % of the per-frame ceiling the coalescing latch would allow (the
+redraw-only-when-the-value-changed guard suppresses the rest). A sweep fast enough
+to change the value every frame would produce about twice this analysis load. The
+margin against the 1.5× line was large enough that this was not pursued.
+
+*This is an idle-vs-dragging measurement, **not** the tab-closed-vs-tab-open A/B of
+`dev-rules.md` "Benchmark methodology".* Both baselines here have the tab open with
+analysis running at ~5.1 Hz, so they are not zero points and must never be compared
+against the M5 figures.
+
+*Reported as measured, but not to be built upon:* RT 0.04 ms is not credible as a
+literal render-thread cost while Slate is still drawing. Treat the drag-window RT
+and GPU figures as indicative and the frame time and FPS as the result.
 
 **Showing the previous capture while a menu is open is correct, not merely
 tolerated, and there is deliberately no "stale" indicator.** While any Slate menu

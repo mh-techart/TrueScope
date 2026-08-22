@@ -751,3 +751,35 @@ All three items were delivered by phase-5.2 (2026-07-13):
 - **Luma waveform binned integer-exactly** — `PixelToLumaBin` (CPU) and its
   shader mirror in `TrueScopeParade.usf`, done before the GPU port, exactly
   as this item demanded; `TrueScope.GPU.WaveformBinEquivalence` pins it.
+
+
+## [M7 input] CPU vs. GPU path cost on the M1 Mac Mini — measured, not settled
+
+From the M6.4.1 condition-3 benchmark (2026-08-22, `/Game/Maps/StartMap`,
+Scalability Epic, `r.ScreenPercentage` 100, `t.MaxFPS 0`, editor VSync off, High
+DPI off). Full conditions and all four runs are recorded in `phase-6.4.md`.
+**One machine, one run per condition — these are hypotheses, not results.** Do
+not chase them here; M7 must take its own measurement before the default path
+flips.
+
+- **CPU idle came out faster than GPU idle** — 32.73 FPS (30.55 ms) against
+  28.86 FPS (34.65 ms), at a matched capture cadence of ~5.1 Hz on both paths.
+  *Hypothesis / unverified assumption.* If it holds it bears directly on the M7
+  decision to flip the compiled default to GPU.
+- **The CPU path hitched ~36× more often** — 108 hitches in 90 s (71.33/min)
+  against 3 (1.97/min) on GPU; 107 of the CPU hitches fell in the 0.06–0.10 s
+  bucket and 101 were render-thread-bound. *Hypothesis / unverified assumption:*
+  the CPU path's readback `Lock` (M5: ≈2× frame time, `dev-rules.md`). The rate
+  does not match cleanly — 1.19 hitches/s against 5.07 captures/s — so the cause
+  is **suspected, not established**.
+- **Taken together, CPU wins on average frame rate and loses on smoothness.**
+  Neither figure alone decides the default, and averaging them would hide exactly
+  the trade-off that matters. M7 needs a measurement designed for *this* question
+  — both quantities, repeated runs, and a hitch analysis that actually identifies
+  what stalls — rather than this one, which was designed to answer whether a
+  slider drag is affordable.
+- **During a drag the ordering reverses:** GPU re-derivation ran at 25.23 ms per
+  frame against the CPU re-map's 18.52 ms under identical drag conditions, the
+  difference sitting almost entirely on the game thread (17.87 vs 5.39 ms).
+  Recorded here because it is the same M7 question seen from the other side. It
+  did not affect the M6.4.1 verdict, where both paths passed comfortably.

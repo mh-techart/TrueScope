@@ -335,6 +335,32 @@ CVar). Report the verified query commands; only then use them to confirm state.
   more than one frame deep. The cost remains **independent of texture size**, so
   the consequence is unchanged and if anything stronger: the M5 GPU path must
   contain no runtime readback at all.
+- **FPSChart headers do not report the editor's live scalability — the CVars do.**
+  `StartFPSChart`/`StopFPSChart` print `Resolution Quality` and every `sg.*` group
+  from `UGameUserSettings` (`ChartCreation.cpp`, UE 5.8), which the editor's own
+  scalability menu never writes. A correctly configured Epic-preset editor still
+  produces a header reading `Resolution Quality: 50.00` with every quality group
+  `0`. That is an in-editor artefact, **not** a failed condition. Verify the state
+  from the live CVars (`sg.*Quality`, `sg.ResolutionQuality`, `t.MaxFPS`,
+  `r.VSyncEditor`, `EnableHighDPIAwareness`, `r.ScreenPercentage.Default`) and say
+  in the report that you did — and never "fix" the conditions to make the header
+  agree. Measured 2026-08-22 during the M6.4.1 drag benchmark.
+- **Benchmarks run with High DPI off, and in that state synthetic input cannot
+  drive a Slate slider.** Hover is routed — a slider's tooltip tracks the injected
+  cursor — but press-and-drag produces no value change at all. Confirmed on both
+  injection routes: OS-level Quartz `CGEvent`s, and the MCP Slate inspector's own
+  `Click`, which bypasses the OS to call `ProcessMouseButtonDownEvent` directly and
+  still returns `true` while changing nothing (the standing "a click that reports
+  success may have done nothing" rule). Sliders inside popup menus are not
+  reachable by ref either: the inspector's widget tree lists a menu's labels,
+  checkboxes and buttons but never the `SSlider`, so `Drag {startRef, endRef}` has
+  nothing to grab. **Any future benchmark whose load is a control therefore needs a
+  human hand on that control** — and when the hand *is* the load under test, that
+  is not extraneous interaction, but it must be recorded as a condition alongside
+  the numbers. Plan such a run around it: start the chart, let the human drive,
+  then trim the chart CSV (whose first column is elapsed seconds in time order) to
+  the interval where the effect actually occurred, so neither party's reaction time
+  enters the measurement. Recorded 2026-08-22; cause not investigated.
 - **Do not sweep scalability levels.** The `Lock` cost is proportional to
   frame-time by construction, so a scalability sweep only re-derives a known
   proportionality. One fixed state (above) suffices; the frame-time rule
