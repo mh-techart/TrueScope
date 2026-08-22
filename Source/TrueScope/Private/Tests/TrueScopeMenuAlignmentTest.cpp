@@ -222,6 +222,24 @@ bool FTrueScopeMenuAlignmentTest::RunTest(const FString&)
 				continue;   // section headings sit in their own column by design
 			}
 
+			// A glyph must also not run into the text it belongs to. The
+			// engine leaves 8 units between the check column and a row's
+			// contents (SMenuEntryBlock.cpp:632), and the widest glyph in
+			// these menus is the reset arrow at Menu.MenuIconSize, so no
+			// glyph may start closer than that sum to the label. This is
+			// what a menu with no check column at all gets wrong: there is
+			// no column to draw the icon in, and the arrow lands on the
+			// label unless the icon's pull is bounded.
+			if (Row.Block.Contains(TEXT("MenuEntryBlock")))
+			{
+				const float MenuIconSize = FCoreStyle::Get().GetFloat("Menu", ".MenuIconSize", 14.0f);
+				const float Clearance = Row.Left - Row.GlyphLeft;
+				TestTrue(*FString::Printf(
+					TEXT("%s: '%s' leaves %.1f between glyph and text, at least %.1f"),
+					Menu.Name, *Row.Text, Clearance, MenuIconSize + 8.0f),
+					Clearance >= MenuIconSize + 8.0f - 0.5f);
+			}
+
 			// The glyph column is per menu, not per family: it sits at that
 			// menu's own Menu.Block.Padding.Left + 2, which varies with how
 			// wide a check widget the menu holds. What must hold is that the

@@ -398,9 +398,23 @@ TSharedRef<SWidget> STrueScopeWidget::BuildResetRow(TrueScope::EMenuCheckColumn 
 	// the right padding makes up the difference. Every term is an engine
 	// constant, none is chosen by eye — a wrong one shows up as a failing
 	// TrueScope.UI.MenuTextColumn, which measures the built rows.
-	const float PullLeft = TrueScope::GetMenuCheckColumnWidth(CheckColumn) + 10.0f;
+	//
+	// One case has no column to move into: the parade menu holds neither a
+	// radio nor a check box, so its check column is 0 wide and its rows are
+	// indented by block padding alone. Pulling the icon "into" that column put
+	// it 34 units in, where its 14-unit extent ran straight into a label at 46
+	// — the arrow touching the R of "Reset to Defaults" (seen in the M6.4.1
+	// screenshots, not in any measurement, because a menu with one entry row
+	// has no second row to be misaligned against). So the pull is bounded: the
+	// icon never comes closer to the text than the 8 units the engine itself
+	// leaves between the check column and the contents. For a radio column the
+	// bound and the column coincide at 20, so only the column-less menu moves.
 	const float IconExtent = FCoreStyle::Get().GetFloat("Menu", ".MenuIconSize", 14.0f);
 	const float LabelIndent = 2.0f;
+	const float CheckToContents = 8.0f + 2.0f;
+	const float ColumnPull = TrueScope::GetMenuCheckColumnWidth(CheckColumn) + CheckToContents;
+	const float MinimumGapPull = IconExtent + 8.0f - LabelIndent;
+	const float PullLeft = FMath::Max(ColumnPull, MinimumGapPull);
 
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot()

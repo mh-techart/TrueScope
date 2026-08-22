@@ -558,6 +558,18 @@ untouched, since the 46-unit text column is derived from `IndentedPadding.Left`.
 Headings (`Menu.Heading.Padding`) and the pre-reset separator
 (`Menu.Separator.Padding`) are separate margins and keep their larger spacing.
 
+*The menu with no column at all.* The parade menu holds neither a radio nor a
+check box, so its checkmark column is 0 wide. Drawing the arrow "in the column"
+there put it 34 units in, where its 14-unit extent ran into the label at 46 — the
+arrow touching the R of "Reset to Defaults". No measurement caught it and none
+could have: the checks compare rows against each other, and a menu with one entry
+row has no second row to disagree with. The screenshot caught it. The pull is now
+bounded so the icon never comes closer to the text than the 8 units the engine
+itself leaves between check column and contents (`SMenuEntryBlock.cpp:632`), which
+for a radio column coincides with the column at 20 units, so only the column-less
+menu moves. The bound is guarded: with it removed the parade row measures 12 units
+of clearance where 22 are required, and the test says so by name.
+
 *How each is pinned.* `TrueScope.UI.MenuTextColumn` lays the five menus out for
 real and reads the arranged geometry twice over: the label column, asserted equal
 across **all** menus, and the glyph column, asserted equal **within** each menu —
