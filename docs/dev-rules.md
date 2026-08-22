@@ -321,15 +321,28 @@ Headless automation tests are exempt (no viewport, no contention).
 them; verify, do not silently alter — see the settings-hygiene rule):
 - Scalability preset **Epic**, `r.ScreenPercentage` **100**
 - `t.MaxFPS 0`, editor VSync off, "Use less CPU in Background" off,
-  High DPI **off**
+  High DPI **on**
 
-- **Changing "Enable High DPI Support" — do not use the editor's own restart
-  button.** Editor Preferences → Enable High DPI Support prompts for a restart and
-  offers "Restart Now" (and "Restart Later"). **Using either loses the change:**
-  the editor restarts but comes back with the old setting. Instead: `File → Save
-  All`, then close and relaunch the editor yourself. That works reliably.
-  (macOS path: `Edit → Editor Preferences… → Enable High DPI Support`.) Verified
-  by the human, 2026-08-22. Always confirm the live CVar
+**High DPI on is the default because TrueScope's own cost depends on it.** Since
+M6.1 the four scopes rasterise one texel per *device* pixel, so High DPI on means
+four times the render-target pixels per scope. Measuring with it off understates
+exactly the cost these benchmarks exist to measure, and it is not a state any
+user works in. Changed from "off" on 2026-08-22; figures taken before that date
+were measured with High DPI off and are labelled as such where they are recorded.
+
+**"High DPI off" is a diagnostic variant, not the default.** Use it only when a
+measurement deliberately needs to isolate cost that does *not* scale with
+resolution — the analysis pass on the fixed 960×540 capture, or the CPU path's
+readback `Lock`. Say in the report that the variant was used and why. Everything
+else runs with High DPI on.
+
+- **Entering or leaving the diagnostic variant — do not use the editor's own
+  restart button.** Editor Preferences → Enable High DPI Support prompts for a
+  restart and offers "Restart Now" (and "Restart Later"). **Using either loses
+  the change:** the editor restarts but comes back with the old setting.
+  Instead: `File → Save All`, then close and relaunch the editor yourself. That
+  works reliably. (macOS path: `Edit → Editor Preferences… → Enable High DPI
+  Support`.) Verified by the human, 2026-08-22. Always confirm the live CVar
   `EnableHighDPIAwareness` after the restart rather than trusting the checkbox.
 
 **Step 0 of any benchmark — verify the query commands against 5.8 source.**
@@ -388,13 +401,14 @@ CVar). Report the verified query commands; only then use them to confirm state.
   then trim the chart CSV (whose first column is elapsed seconds in time order) to
   the interval where the effect actually occurred, so neither party's reaction time
   enters the measurement. Recorded 2026-08-22; cause not investigated.
-  **This is not a High-DPI artefact.** It was first met with High DPI off, where
-  benchmarks run, and read as a property of that state; re-tested with High DPI
-  **on** during the M6.4.1 click-through it behaves identically. Menus open, rows
-  click and radios flip under synthetic input in both states — only the
-  drag-capture widgets are unreachable, and a panel-splitter drag leaves the
-  layout byte-identical just as a slider drag leaves the value untouched. Keyboard
-  navigation into a menu followed by arrow keys does not reach a slider either.
+  **This is not a High-DPI artefact.** It was first met with High DPI off, the
+  benchmark condition at the time, and read as a property of that state;
+  re-tested with High DPI **on** during the M6.4.1 click-through it behaves
+  identically. Menus open, rows click and radios flip under synthetic input in
+  both states — only the drag-capture widgets are unreachable, and a
+  panel-splitter drag leaves the layout byte-identical just as a slider drag
+  leaves the value untouched. Keyboard navigation into a menu followed by arrow
+  keys does not reach a slider either.
   Prove reachability before believing a negative result: click a *neighbouring*
   row computed with the same coordinate mapping and confirm it fires. Without that
   control, a missed coordinate and an unreachable widget look the same — that

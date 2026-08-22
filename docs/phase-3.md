@@ -229,4 +229,6 @@ still mandating a readback-free GPU path in M5. Full figures and conditions:
 `architecture.md`, "Measured: controlled readback benchmark". The same benchmark
 also showed the *felt* impact at 2.5 Hz is below this machine's noise floor
 (A/B delta +1.5 FPS in favour of the TrueScope run) — the block is real, but it
-does not show up as lost frames per second.
+does not show up as lost frames per second. That felt-impact figure was taken
+with High DPI **off** and is a floor, not a typical case — see the caveat in the
+same `architecture.md` section.

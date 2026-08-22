@@ -434,9 +434,17 @@ figures**, which were taken under uncontrolled conditions.
 `t.MaxFPS 0`, editor VSync off, "Use less CPU in Background" off, editor-wide
 High DPI **off**. Capture at the shipped ~2.5 Hz throttle (measured 2.38 Hz).
 
+**These figures were taken with High DPI off, which since M6.1 means the
+smallest possible scope render targets — one quarter of the device pixels a
+user's editor actually rasterises.** The A/B result below ("cost below this
+machine's run-to-run noise floor") is therefore a **floor, not a typical case**.
+The benchmark default changed to High DPI on on 2026-08-22; these numbers have
+not been re-taken under it. Do not quote the no-measurable-impact result as a
+general property of the plugin until it has been.
+
 | Quantity | Result |
 |---|---|
-| **A/B felt impact** | Run 1, TrueScope *not loaded* (`-DisablePlugins=TrueScope`, the only provably-idle baseline — see below): 24.15 FPS (2727 frames / 112.90 s), median frame 34.77 ms. Run 2, tab open: 25.68 FPS (3728 frames / 145.19 s), median frame 33.81 ms. **Delta +1.5 FPS in favour of the TrueScope run** — i.e. TrueScope's cost is below this machine's run-to-run noise floor. **No measurable felt impact at 2.5 Hz.** |
+| **A/B felt impact** | Run 1, TrueScope *not loaded* (`-DisablePlugins=TrueScope`, the only provably-idle baseline — see below): 24.15 FPS (2727 frames / 112.90 s), median frame 34.77 ms. Run 2, tab open: 25.68 FPS (3728 frames / 145.19 s), median frame 33.81 ms. **Delta +1.5 FPS in favour of the TrueScope run** — i.e. TrueScope's cost is below this machine's run-to-run noise floor. **No measurable felt impact at 2.5 Hz** — under High DPI **off**, i.e. a floor, not a typical case; see the conditions above. |
 | **Readback `Lock` alone** | 345 samples over the same window: **median 65.92 ms**, min 39.14 ms, max 227.94 ms, mean 71.87 ms. |
 | **`Lock` as frame-time** | Against the 33.81 ms median frame: **median ≈1.95×**, min ≈1.16×, i.e. **1–2× frame-time**. |
 

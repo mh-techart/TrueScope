@@ -794,3 +794,18 @@ flips.
   result, the thread split was explicitly reported as indicative only. But M7's
   GPU-default decision will need trustworthy per-thread numbers, so this has to be
   understood before that measurement, not during it.
+- **Three measurements to take in one M7 benchmark session**, since the machine
+  is set up once and the questions share the setup:
+  1. **The M7 question itself** — GPU vs. CPU as the shipped default, with
+     trustworthy per-thread numbers (see the unexplained thread-split entry).
+  2. **What High DPI actually costs on this machine** — run the same idle
+     baseline with High DPI on and off. This has been assumed since the first
+     benchmark and never measured; it is the assumption that the old "off"
+     default rested on, and it should be on the record either way.
+  3. **Re-take the M5 A/B under High DPI on** — TrueScope loaded vs. not, at the
+     shipped capture rate. Since M6.1 the scope render targets scale with device
+     pixels, so the "no measurable felt impact" result was measured at one
+     quarter of the real raster load. It is the figure most likely to be quoted
+     publicly, so it should hold under the conditions users actually run in.
+  4. *Optional, cheap while set up:* spot-check the M6.4.1 drag result (0.73× /
+     0.61×) under High DPI on.

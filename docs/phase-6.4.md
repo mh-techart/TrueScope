@@ -418,6 +418,13 @@ one-way pass, button held for the whole window. The hand on the slider *is* the
 load under test, so it is a condition of the measurement, not extraneous
 interaction.
 
+Taken with **High DPI off**, the fixed benchmark state at the time. The default
+changed to High DPI on on 2026-08-22. The result is not re-opened here: 0.73×
+and 0.61× against a 1.5× line is a wide margin, and both the idle baseline and
+the re-derivation cost would rise together under High DPI on. A spot check is
+listed as an M7-session item, since the machine will be set up for a benchmark
+anyway.
+
 | | idle (90 s) | dragging | multiple |
 |---|---|---|---|
 | **GPU path** | 28.86 FPS · 34.65 ms · GT 6.90 / RT 34.10 / GPU 32.97 ms | 39.65 FPS · 25.23 ms · GT 17.87 / RT 0.04 / GPU 5.34 ms | **0.73×** |
