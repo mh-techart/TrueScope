@@ -198,6 +198,17 @@ it as follows:
   to click** (approved) and state in the report which checks were human-verified.
   Related: some Slate controls report success and do nothing (camera dropdown,
   show-flag checkboxes) — drive those by keyboard instead.
+- **In the Slate inspector's snapshot, widget `pos=` is full scale but `size=` is
+  half.** A panel menu whose rows report `size=290` is really ~570 wide on screen,
+  and the row `pos=` values are correct as given. Positions are in Slate units,
+  which on a HiDPI display are twice the screen points Quartz takes, so a click
+  goes to `pos/2`; sizes must be doubled *before* that halving, i.e. a row centre
+  is `(pos + size)/2` in points, not `(pos + size/2)/2`. Reported menu *window*
+  rects are unreliable in the same way and must not be used to decide whether a row
+  exists — filtering rows to a reported window rect once produced a false "the
+  control is missing" report. When geometry matters, take a `Screenshot` of the
+  widget and calibrate against it; the image is a faithful 2x render of the real
+  layout. Measured 2026-08-22 while locating a slider inside a panel menu.
 - **Some Slate controls accept a click and change nothing.** `Click` on the viewport
   camera-dropdown rows and on the show-flag checkboxes returns **true** while having no
   effect, so a verification built on them passes without testing anything. Where this
@@ -345,8 +356,8 @@ CVar). Report the verified query commands; only then use them to confirm state.
   `r.VSyncEditor`, `EnableHighDPIAwareness`, `r.ScreenPercentage.Default`) and say
   in the report that you did — and never "fix" the conditions to make the header
   agree. Measured 2026-08-22 during the M6.4.1 drag benchmark.
-- **Benchmarks run with High DPI off, and in that state synthetic input cannot
-  drive a Slate slider.** Hover is routed — a slider's tooltip tracks the injected
+- **Synthetic input cannot drive a Slate widget that needs a held drag — sliders
+  and splitters.** Hover is routed — a slider's tooltip tracks the injected
   cursor — but press-and-drag produces no value change at all. Confirmed on both
   injection routes: OS-level Quartz `CGEvent`s, and the MCP Slate inspector's own
   `Click`, which bypasses the OS to call `ProcessMouseButtonDownEvent` directly and
@@ -361,6 +372,17 @@ CVar). Report the verified query commands; only then use them to confirm state.
   then trim the chart CSV (whose first column is elapsed seconds in time order) to
   the interval where the effect actually occurred, so neither party's reaction time
   enters the measurement. Recorded 2026-08-22; cause not investigated.
+  **This is not a High-DPI artefact.** It was first met with High DPI off, where
+  benchmarks run, and read as a property of that state; re-tested with High DPI
+  **on** during the M6.4.1 click-through it behaves identically. Menus open, rows
+  click and radios flip under synthetic input in both states — only the
+  drag-capture widgets are unreachable, and a panel-splitter drag leaves the
+  layout byte-identical just as a slider drag leaves the value untouched. Keyboard
+  navigation into a menu followed by arrow keys does not reach a slider either.
+  Prove reachability before believing a negative result: click a *neighbouring*
+  row computed with the same coordinate mapping and confirm it fires. Without that
+  control, a missed coordinate and an unreachable widget look the same — that
+  ambiguity cost several rounds here.
 - **Do not sweep scalability levels.** The `Lock` cost is proportional to
   frame-time by construction, so a scalability sweep only re-derives a known
   proportionality. One fixed state (above) suffices; the frame-time rule

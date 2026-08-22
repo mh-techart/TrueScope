@@ -507,17 +507,76 @@ builder is unchanged and now has one caller.
 
 ## Status
 
-Code complete and green at 46/46, and everything MCP can see has been seen. **Open:
-the click-through session** — the boxes left unticked above all need a human to open
-a Slate popup (the panel menus, the settings popup, the Window menu) or to drag a
-panel down to the hint threshold. They are collected here rather than scattered so
-they can be walked through in one sitting:
+Code complete and green at 46/46. The click-through was walked on 2026-08-22 with
+the editor on the GPU path, panels at defaults, High DPI on. Five of the six steps
+were driven through MCP/synthetic input and are recorded below; the two checks that
+need a *dragged* Slate control are open for the human, for the reason given at the
+end.
 
-1. Window → TrueScope: does the menu entry carry the icon?
-2. Each panel's hamburger: does the menu open, does it list exactly the rows for
-   that panel's type, and does every control still do what it says?
-3. Right-click on a scope canvas: nothing opens (removed in M6.4.1, deliberately).
-4. "Reset to default" in one panel, with a neighbour deliberately off-default.
-5. The gear: both sections present, path switch flips all four scopes, and both
-   settings survive a restart.
-6. Drag a panel below 204 × 116 px of canvas and confirm the hint appears.
+1. **Window → TrueScope carries the icon — yes.** The row is
+   `generic "TrueScope"` with a 14 × 14 image in the same icon column as its
+   neighbours (`Place Actors`, `Variant Manager`), and it renders as a distinct
+   circled "T", not a blank slot. Screenshot taken.
+2. **Each panel's hamburger — menu opens, rows are exactly the panel's type,
+   radio/checkbox controls act.** Row inventory, by diffing each open menu against a
+   closed-menu baseline:
+   - Waveform — DISPLAY · RGB · Luma · Trace Brightness · Reset to default
+   - Parade — Trace Brightness · Reset to default (no DISPLAY section; parade is
+     always RGB)
+   - Vectorscope — ZOOM · Normal · 2× Zoom · MARKERS · 75% · 100% · 75% + 100% ·
+     Show Skin Tone Line · Trace Brightness · Reset to default
+   - Histogram — DISPLAY · Separate Channels RGB · Separate Channels YRGB ·
+     RGB Overlay · Histogram Gain · Reset to default
+
+   Every radio was clicked and re-read from a reopened menu: selection moves to the
+   clicked row and off its siblings, and clicking an already-selected radio leaves it
+   selected. `Show Skin Tone Line` toggled both ways. All rows report their text at
+   the same x in all four menus (slate 1988), which is Task 2's uniform column
+   observed rather than assumed. **The two sliders are the open item** — see below.
+3. **Right-click opens nothing — confirmed on all four canvases.** Right-clicking
+   each of waveform, parade, vectorscope and histogram added zero popup windows and
+   produced zero menu rows, against a baseline taken with nothing open.
+4. **"Reset to default" resets only its own panel.** With the vectorscope
+   deliberately off-default (`bShowSkinToneLine=False`) and the waveform's
+   `TraceBrightness` at 0.125, "Reset to default" in the waveform menu took the
+   waveform to 1.000 while the vectorscope stayed off-default. Read from
+   `EditorPerProjectUserSettings.ini`, not from appearance.
+5. **The gear — both sections present, the switch reaches all four scopes, both
+   settings survive a restart.** The popup carries `ANALYSIS PATH (ALL SCOPES)`
+   (GPU (performance) / CPU (compatibility)) and `CAPTURE RATE` (1 Hz / 2,5 Hz /
+   5 Hz). Switching to CPU flipped `bUseGpuAnalysis` to False, the footer to
+   "CPU path", and the log to CPU-path cycles carrying a ~27.7 ms staging copy — the
+   readback that exists only on that path. All four scopes were screenshotted on each
+   path and all four draw on both. Restart survival: the editor had been restarted by
+   the human before this session, and came back on the GPU path with
+   `MeasurementRateHz=5.0` — both settings as left.
+6. **Panel-too-small hint — open for the human.** The threshold is
+   `MinReadableCanvasWidth` 204.0 / `MinReadableCanvasHeight` 116.0
+   (`TrueScopeDraw.h`), and the hint text is "Panel too small"
+   (`STrueScopeWidget.cpp:72`).
+
+### Why two checks are left for the human
+
+`Trace Brightness` / `Histogram Gain` (step 2) and the splitter drag (step 6) are
+the two controls that require a *held* drag, and synthetic input cannot drive them.
+This was established here by a clean control experiment rather than inferred: a
+Quartz click at the slider track produced no change, while a click 30 px below it,
+computed with the *same* coordinate mapping, fired "Reset to default" and moved the
+value 0.125 → 1.000. So the coordinates were right and the widget is simply not
+reached. A press-and-drag along the track, and keyboard navigation into the menu
+followed by arrow keys, both left the value untouched as well; a drag on the panel
+splitter likewise left the layout byte-identical. Three routes, same outcome.
+
+Note this corrects the condition recorded during the benchmark: it is **not**
+specific to High DPI being off. High DPI was **on** for all of the above — menus
+opened, rows clicked, radios flipped — and the drag-capture widgets were still
+unreachable. Menus and buttons are drivable; sliders and splitters are not.
+
+Left for the human, in one sitting:
+
+- Open each panel menu and drag **Trace Brightness** (waveform, parade,
+  vectorscope) and **Histogram Gain** (histogram): the trace must change
+  *continuously during the drag*, on both analysis paths.
+- Drag a panel below 204 × 116 px of canvas and confirm "Panel too small" appears.
+
+Everything else in the list above is verified.
