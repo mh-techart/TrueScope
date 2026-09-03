@@ -172,7 +172,9 @@ mechanism rather than leaving stale traces.
   **Still open:** the main-toolbar button (separate item above), which would reuse
   the same brush.
 - **Higher refresh rates / per-frame mode** — trivial once the GPU path (M5)
-  exists; expose as a setting with a resource-use warning.
+  exists; expose as a setting with a resource-use warning. **Superseded
+  2026-08-26 by "Capture rate — final option set"** below, which is the plan of
+  record for the option shape ("Every frame" is this item's per-frame mode).
 - **Smooth scope drawing via interpolation (decoupled draw rate)** — the
   measurement rate (capture + readback + analysis, the expensive part) and the
   draw rate (rasterizing the scope from existing bin data, nearly free) are
@@ -184,7 +186,10 @@ mechanism rather than leaving stale traces.
   *static* result (an interpolating scope shows in-between values that are
   harder to verify). Depends on M3/M4 (a correct static scope first). Once
   the per-cycle cost measured in M3 is known, this plus a settable
-  measurement rate (M6) covers both performance and smoothness.
+  measurement rate (M6) covers both performance and smoothness. **Constrained by
+  a settled decision (2026-08-26):** "The scope never displays a value that was
+  not measured" (`architecture.md`) — interpolation is off at the lowest capture
+  rate, because a 500 ms invented span could be read as a measurement.
 - **Adaptive measurement rate (CPU compatibility path)** — since the readback
   `Lock` costs **1–2× host frame-time** (measured ≈2× median, 2026-07-11), its
   editor impact is self-scaling if the measurement rate adapts to frame-time:
@@ -738,6 +743,61 @@ built on top of it.
   Pro (12-layout icon grid, Display submenu with Vertical Layout / Show Guides
   / Monochrome / brightness).
 
+## [planned] Capture rate — final option set
+
+The shipped options (1 / 2.5 / 5 Hz) were chosen arbitrarily in an early phase.
+The shape below was settled on 2026-08-26; the values wait on the measurement
+session.
+
+**Three options, not a free number.** A free entry or a slider hands the user a
+performance decision with no feedback to base it on, and invites values (120 Hz)
+that buy nothing. Three named options fit "the end user is an artist" and stay
+testable.
+
+    Capture Rate
+      ○ Low            (~2 Hz)   — no interpolation, see below
+      ● Normal         (~10 Hz)  — default
+      ○ Every frame              — follows the editor's frame rate
+
+- **"Every frame" instead of a high number.** It is self-limiting, promises
+  nothing false, and needs no value: strong hardware gets what it can, weak
+  hardware gets less rather than failing. This assumes captures only fire on
+  frames that actually render — *unverified, must be checked in the source
+  before this ships.*
+- **Why ~10 Hz and not 24 or 30.** Production frame rates are a false lead here:
+  a scope samples no sequence and syncs to no cadence. What matters is
+  **latency** — the delay between the user's hand and the scope responding. The
+  perceptual threshold for a control feeling directly coupled is around 100 ms
+  (general HCI knowledge, not measured for TrueScope), which ~10 Hz clears. Above
+  that the artist cannot resolve the difference, and the cost is real.
+- **Choppiness and latency are different problems.** Choppiness is answered by
+  the interpolated draw rate (separate backlog item) at almost no cost; only
+  latency requires measuring more often. Do not raise the rate to fix
+  smoothness.
+- **No interpolation at "Low"** — see the settled decision "The scope never
+  displays a value that was not measured".
+- **The CPU path gets a note, not a greyed-out option.** The same CPU path
+  behaves very differently on an M1 and on an RTX 5070 Ti, so greying out by path
+  would forbid something that works fine on strong hardware, with no way for the
+  user to know better. Show a qualifier on the entry while the CPU path is
+  active — e.g. `Every frame   (costly on the CPU path)` — and explain it in that
+  entry's tooltip. Every entry gets a tooltip carrying its purpose.
+- **The status line shows the rate actually achieved.** It already names
+  perspective, colour space and path. With the achieved rate beside the requested
+  one, nobody has to guess whether their choice worked out.
+- **The default (~10 Hz) is not fixed until measured.** What is known: 2.5 Hz is
+  unnoticeable on the M1, and at 5 Hz the CPU path already hitches there. 10 Hz
+  on the CPU path has never been measured, and the CPU path is the shipped
+  default until M7. If it does not hold, the answer is probably M7 itself — the
+  GPU default — rather than a lower rate.
+- **Blocking robustness question:** at 2.5–5 Hz an analysis finishes long before
+  the next begins. At 10 Hz or "every frame" that is not guaranteed. What happens
+  when a capture arrives while the previous analysis is still running — dropped,
+  queued, or overlapping? **This must be answered before any option above 5 Hz
+  ships.** Queued analyses would be a fault that only appears on weak hardware
+  under load, which is exactly where nobody finds it calmly. The M1 is the right
+  machine to provoke it.
+
 ## [resolved in phase-5.2] GPU-path housekeeping (from phase-5.1)
 
 All three items were delivered by phase-5.2 (2026-07-13):
@@ -794,25 +854,56 @@ flips.
   result, the thread split was explicitly reported as indicative only. But M7's
   GPU-default decision will need trustworthy per-thread numbers, so this has to be
   understood before that measurement, not during it.
-- **Three measurements to take in one M7 benchmark session**, since the machine
-  is set up once and the questions share the setup:
-  1. **The M7 question itself** — GPU vs. CPU as the shipped default, with
-     trustworthy per-thread numbers (see the unexplained thread-split entry).
-  2. **What High DPI actually costs on this machine** — run the same idle
-     baseline with High DPI on and off. This has been assumed since the first
-     benchmark and never measured; it is the assumption that the old "off"
-     default rested on, and it should be on the record either way.
-  3. **Re-take the M5 A/B under High DPI on** — TrueScope loaded vs. not, at the
-     shipped capture rate. Since M6.1 the scope render targets scale with device
-     pixels, so the "no measurable felt impact" result was measured at one
-     quarter of the real raster load. It is the figure most likely to be quoted
-     publicly, so it should hold under the conditions users actually run in.
-     Note the mechanism differs by path. On the GPU path the scope render
-     targets themselves are sized in device pixels (M6.1 Task 1). On the CPU
-     path — still the compiled default — the raster goes through Slate, whose
-     cost also scales with device pixels. Both scale, so the rationale for the
-     condition change holds either way, but a CPU-path re-take is measuring
-     Slate's raster, not render-target size. Do not read a small result there
-     as contradicting the reason the condition was changed.
-  4. *Optional, cheap while set up:* spot-check the M6.4.1 drag result (0.73× /
-     0.61×) under High DPI on.
+- **The measurements these questions call for are gathered in "Measurement
+  session — one sitting, one setup"** below (2026-08-26), together with the
+  capture-rate questions, since they share one prepared machine. The
+  observations above stay here as the evidence that motivates them.
+
+
+## [planned] Measurement session — one sitting, one setup
+
+These questions share a prepared machine, so they are taken together rather than
+one at a time. **Not yet scheduled and not yet numbered as a phase.** State the
+machine for each: the Windows RTX 5070 Ti is the performance reference, the M1
+the saturation reference.
+
+**Source reading first — no machine needed, and two of the measurements depend
+on the answers:**
+1. **Do captures only fire on frames that actually render?** If so, a requested
+   rate is naturally capped by the editor's frame rate and by `t.MaxFPS`, no
+   clamping logic is needed, and "Every frame" is sound. Currently a hypothesis.
+2. **What happens when a capture arrives while the previous analysis is still
+   running** — dropped, queued, or overlapping? Blocks any rate above 5 Hz.
+   Provoke it on the M1 once the source is understood.
+
+**Measurements:**
+3. **Capture-rate sweep** — 1 Hz through "every frame", both analysis paths, both
+   machines, same scene and conditions. Produces the final option values and the
+   default.
+4. **The M7 question** — GPU vs. CPU as the shipped default, with trustworthy
+   per-thread numbers (see the unexplained thread-split entry).
+5. **What High DPI actually costs on this machine** — the same idle baseline with
+   it on and off. Assumed since the first benchmark, never measured.
+6. **Re-take the M5 A/B under High DPI on** — the figure most likely to be quoted
+   publicly, currently measured at one quarter of the real raster load.
+7. **Does the readback `Lock` behave on D3D12 as it does on Metal?** The 1–2×
+   frame-time cost is a Metal finding (`RHIMapStagingSurface`). The CPU path is
+   the shipped default, and its worst behaviour sits on the machine that is no
+   longer the performance reference — so this cannot be inferred from a Windows
+   run alone, nor dismissed because the M1 is old.
+8. *Optional while set up:* spot-check the M6.4.1 drag result (0.73× / 0.61×)
+   under High DPI on.
+
+**Carried over from the M5 A/B re-take (item 6), so it is not lost with the
+shorter wording:** the mechanism differs by path. On the GPU path the scope
+render targets themselves are sized in device pixels (M6.1 Task 1); on the CPU
+path — still the compiled default — the raster goes through Slate, whose cost
+also scales with device pixels. Both scale, so the rationale for the condition
+change holds either way, but a CPU-path re-take is measuring Slate's raster, not
+render-target size. Do not read a small result there as contradicting the reason
+the condition was changed.
+
+**Related backlog items** (context, not part of the session): the capture-rate
+option set above, the observations under "[M7 input] CPU vs. GPU path cost on
+the M1 Mac Mini", and "Smooth scope drawing via interpolation" in the deferred
+features.

@@ -423,6 +423,28 @@ CVar). Report the verified query commands; only then use them to confirm state.
   transfers it to any hardware. (TrueScope samples *after* the tonemapper, so
   render features — Lumen, TSR, shadows — do not change analysis cost; only
   frame-time matters, and that is what the fixed state pins.)
+- **Every work order states which machine it runs on**, and every report repeats
+  it. The two machines answer different questions (see `architecture.md`, dev
+  environment notes): the Windows RTX 5070 Ti is the performance reference, the
+  M1 Mac Mini the saturation and compatibility reference. A measurement taken on
+  the wrong machine is not merely less useful — it is silently invalid, because
+  nothing in the numbers says which machine produced them.
+- **Hitch counts compare runs; they never pass or fail a phase.** Investigated by
+  the human on 2026-08-26 with `stat UnitGraph` and `stat Hitches` on the M1:
+  - A **held mouse button anywhere in the editor** registers as a hitch lasting
+    as long as the button is held — a five-second hold reports a ~5000 ms hitch.
+  - **Moving the pointer over any editor panel** raises game-thread time (≈6 ms →
+    ≈9–10 ms). This is not TrueScope-specific; the content browser costs more
+    than the TrueScope tab does, and the effect is the same on both analysis
+    paths.
+  - The M1 also hitches at idle with no input at all.
+  So an absolute hitch count says as much about the machine and the operator as
+  about the plugin. **Usable only as a comparison between two runs under
+  identical conditions with no input** — which is how the M6.4.1 figures (108 CPU
+  vs. 3 GPU over 90 s idle) were taken, and why they still stand: the GPU run is
+  the control, so the machine alone cannot account for the difference. Where the
+  machine's own rate must be known, use the `-DisablePlugins=TrueScope` baseline,
+  as M5 did. **Frame times remain the acceptance measure.**
 
 ## Editor settings during measurement
 
@@ -433,6 +455,47 @@ CVar). Report the verified query commands; only then use them to confirm state.
 - **Record conditions with every number.** A timing without its conditions
   (scalability, `ScreenPercentage`, `t.MaxFPS`, VSync, High-DPI, which scene,
   idle vs. interacting) is not a result.
+
+## Reference test environment (host project)
+
+The host project is not versioned (see `architecture.md`, "Repo scope"). It is
+described here instead. Anything measured or verified is measured against a setup
+matching this description; say in the report if yours differed.
+
+**Project:** a stock engine template project, empty apart from the items below.
+The plugin lives at `Plugins/TrueScope/`, cloned from its own repository.
+
+**Scene** — everything here has a purpose, none of it is decoration:
+- `SM_ColorCalibrator` — ships with the engine. The known-values reference for
+  WYSIWYG and scope checks.
+- **A moving subject** (a particle system serves well). Without motion, "live"
+  and "frozen" are indistinguishable, and several findings — the frozen viewport
+  while a menu is open, the capture cadence — can only be seen against it.
+- **A Cine Camera actor.** Test **both** a plain perspective viewport *and* a
+  piloted Cine Camera: they are different routes into the capture, and exact
+  camera measurement is the documented reason the Cine Camera path exists.
+
+**Engine plugins that must be enabled** — MCP toolsets, dev-only. The
+`ModelContextProtocol` plugin supplies only the server and meta-tools; each
+toolset is a separate plugin under `Engine/Plugins/Experimental/Toolsets/`.
+Enable exactly these three:
+- `SlateInspectorToolset` — Slate inspection and automation (Snapshot, Click,
+  PressKey, Screenshot, Windows, WaitFor). This is what verifies the TrueScope
+  tab. `ToolsetRegistry` comes in automatically.
+- `EditorToolset` — spawning and inspecting test scenes.
+- `AutomationTestToolset` — running TrueScope's automation tests from the live
+  editor.
+
+**Do not enable Epic's `AllToolsets` aggregator.** It pulls in roughly 21
+toolsets, almost all irrelevant here. Enabling it produces a *different*
+environment, not an equivalent one, and the difference is invisible until
+something behaves unexpectedly.
+
+**Also required:** OCIO is a hard dependency of TrueScope — its plugin must be
+enabled.
+
+**Benchmark state:** see the fixed benchmark editor state above. Those settings
+are conditions of a measurement, not part of the project.
 
 ## Resolve cross-check — conditions & procedure
 
