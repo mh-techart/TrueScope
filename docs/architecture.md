@@ -389,22 +389,17 @@ copied or transliterated from GPL sources. All math here is textbook-standard
 
 ## Dev environment notes
 
-- **MCP toolsets (host `.uproject`, dev-only):** the `ModelContextProtocol`
-  plugin only provides the server + meta-tools; each actual toolset is a
-  separate plugin under `Engine/Plugins/Experimental/Toolsets/`. We enable
-  exactly three instead of Epic's `AllToolsets` aggregator (which pulls in all
-  ~21, most irrelevant to this project):
-  - `SlateInspectorToolset` — Slate UI automation/inspection (Snapshot, Click,
-    PressKey, **Screenshot**, Windows, WaitFor). This is what verifies the
-    TrueScope tab visually. `ToolsetRegistry` is pulled in automatically.
-  - `EditorToolset` — spawning/inspecting test scenes (color charts,
-    gradients) for the WYSIWYG and scope tests from M2 on.
-  - `AutomationTestToolset` — running TrueScope automation tests from the live
-    editor over MCP.
-
-  These live in the host `UEscopes.uproject` (not under version control), not
-  in `TrueScope.uplugin` — they are development tooling, never a plugin
-  dependency shipped to users.
+- **MCP toolsets (host `.uproject`, dev-only) — enable exactly three, not
+  Epic's aggregator.** The three toolsets we enable, and what each is for, are
+  listed in `dev-rules.md`, "Reference test environment (host project)"; that
+  list is the single copy, this is the decision behind it. We name the three
+  individually rather than enabling `AllToolsets`, which pulls in roughly 21
+  toolsets, almost all irrelevant here — enabling it produces a *different*
+  development environment, not an equivalent one, and the difference stays
+  invisible until something behaves unexpectedly. All of them live in the host
+  `UEscopes.uproject` (not under version control), never in
+  `TrueScope.uplugin` — they are development tooling, never a plugin dependency
+  shipped to users.
 - **Two development machines, with distinct roles (roles assigned 2026-08-26).**
   - **Windows 11 · NVIDIA RTX 5070 Ti, 16 GB VRAM · D3D12 — performance
     reference.** Answers "what can we afford?": capture-rate headroom, the M7
@@ -426,16 +421,18 @@ copied or transliterated from GPL sources. All math here is textbook-standard
     applies. Say which machine a figure came from, always.
   - Cross-platform *parity* (the settled decision) is unaffected: it is a
     correctness requirement and is checked on both.
-- **Reference hardware is modest by design.** All timings so far were measured
-  on a low-end development machine (Apple M1 Mac Mini, 2020, Metal). Treat
-  every performance figure as a conservative upper bound — but note that the
-  readback `Lock`, the dominant cost, is **not** fixed in the way raw compute
-  is. On Metal it drains the **in-flight GPU queue** (see `phase-3.md`,
-  "Correction"), so it costs **1–2× host frame-time** and therefore *shrinks on
-  faster hardware* in proportion to frame rate: roughly the depth of the GPU
-  queue, whatever a frame costs. Express readback-related costs as
-  *frame-times*, not milliseconds — a millisecond figure from this machine does
-  not transfer; the frame-time multiple does.
+- **Reading M1 figures.** The M1 Mac Mini is no longer the performance target
+  (see the role assignment above), but it remains the saturation and
+  compatibility reference, and figures taken on it are still useful — as a
+  conservative bound rather than as a target. A cost that is invisible there is
+  genuinely small; a cost that hurts there may be irrelevant on the hardware
+  users actually run. Note also that the readback `Lock`, the dominant cost, is
+  **not** fixed in the way raw compute is. On Metal it drains the **in-flight
+  GPU queue** (see `phase-3.md`, "Correction"), so it costs **1–2× host
+  frame-time** and therefore *shrinks on faster hardware* in proportion to frame
+  rate: roughly the depth of the GPU queue, whatever a frame costs. Express
+  readback-related costs as *frame-times*, not milliseconds — a millisecond
+  figure from this machine does not transfer; the frame-time multiple does.
 
 ### Measured: controlled readback benchmark (2026-07-11)
 

@@ -781,7 +781,12 @@ testable.
   would forbid something that works fine on strong hardware, with no way for the
   user to know better. Show a qualifier on the entry while the CPU path is
   active — e.g. `Every frame   (costly on the CPU path)` — and explain it in that
-  entry's tooltip. Every entry gets a tooltip carrying its purpose.
+  entry's tooltip. Every entry gets a tooltip carrying its purpose. Note this is
+  a change to existing text, not a new mechanism: the shipped rate tooltip
+  already tells the user that a faster rate briefly blocks the render thread on
+  the CPU path (`STrueScopeMainBar.cpp`, `RateTooltip`). The work is to make
+  that visible on the entry itself and to align the wording with the new option
+  set.
 - **The status line shows the rate actually achieved.** It already names
   perspective, colour space and path. With the achieved rate beside the requested
   one, nobody has to guess whether their choice worked out.
