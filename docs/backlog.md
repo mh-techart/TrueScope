@@ -815,6 +815,11 @@ testable.
   ships.** Queued analyses would be a fault that only appears on weak hardware
   under load, which is exactly where nobody finds it calmly. The M1 is the right
   machine to provoke it.
+- **An older plan exists for the same control.** "Adaptive measurement rate
+  (CPU compatibility path)" proposes a rate that adjusts itself to frame-time
+  instead of being chosen. The two are not incompatible — it could become a
+  fourth option — but they must be reconciled before either ships, and a
+  reader arriving here should know it is there.
 
 ## [resolved in phase-5.2] GPU-path housekeeping (from phase-5.1)
 
