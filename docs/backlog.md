@@ -197,9 +197,13 @@ mechanism rather than leaving stale traces.
   (e.g. "at most two lost frames per second"). On a slow machine this yields
   ~1 Hz automatically; on a workstation ~2.5 Hz or more — one rule, correct
   everywhere. Only relevant to the shipped CPU path (the GPU path has no
-  readback). Ties into the settable rate (M6) and answers the M7 "is the CPU
-  fallback tolerable?" question. Budget in frame-times, not milliseconds, and
-  budget **two** per capture, not one.
+  readback). Reconcile with "Capture rate — final option set" before either
+  ships: that item settles on three named options with no free number, plus a
+  status line showing requested against achieved rate. An automatically
+  adapting rate is not excluded — it could become a fourth option — but the two
+  are currently two plans for one control, and this one is the older. It still
+  answers the M7 "is the CPU fallback tolerable?" question either way. Budget
+  in frame-times, not milliseconds, and budget **two** per capture, not one.
 - **Buffer readback instead of texture readback (unverified)** — *hypothesis, not
   a plan.* The Metal GPU-drain lives in `RHIMapStagingSurface` (texture path).
   Whether `FRHIGPUBufferReadback` + `RHILockStagingBuffer` avoids the
@@ -362,6 +366,15 @@ mechanism rather than leaving stale traces.
   nowhere. For an open-source plugin `CreatedBy` is how a user finds the project.
   Also confirm whether `IsBetaVersion: true` is still wanted at release. Blocking for
   publication, harmless until then.
+- **Create the GitHub repository and add the remote** — decided 2026-08-26
+  (see architecture.md, "Version control stays git"): a private repository
+  first, flipped to public when the plugin is ready. **The human does this,
+  not Claude Code** — dev-rules forbids adding a remote or pushing without an
+  explicit instruction, and that stays. Blocking for two things: working on
+  the Windows machine at all (the host project is deliberately not versioned,
+  so the plugin repo is the only thing that travels), and the `.uplugin` URL
+  fields. What the publication itself needs — README, LICENSE check, metadata,
+  builds on both platforms — is tracked separately.
 - **`VersionName` has no stated rule** — it moved 0.1.0 → 0.1.5 deliberately, but
   nothing records what the number tracks (milestone? release?). Decide and document it
   before the first public release, or it will drift.

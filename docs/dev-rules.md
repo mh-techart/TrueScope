@@ -482,7 +482,8 @@ Enable exactly these three:
 - `SlateInspectorToolset` — Slate inspection and automation (Snapshot, Click,
   PressKey, Screenshot, Windows, WaitFor). This is what verifies the TrueScope
   tab. `ToolsetRegistry` comes in automatically.
-- `EditorToolset` — spawning and inspecting test scenes.
+- `EditorToolset` — spawning and inspecting test scenes (colour charts,
+  gradients) — the source material for the WYSIWYG and scope checks since M2.
 - `AutomationTestToolset` — running TrueScope's automation tests from the live
   editor.
 
