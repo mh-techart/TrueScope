@@ -930,3 +930,58 @@ the condition was changed.
 option set above, the observations under "[M7 input] CPU vs. GPU path cost on
 the M1 Mac Mini", and "Smooth scope drawing via interpolation" in the deferred
 features.
+
+## [option] Recover a floating TrueScope window saved at an unusable size
+
+**Observed 2026-09-29 (M1 Mac Mini, UE 5.8.1).** The TrueScope tab was open but
+invisible, and restarting the editor did not bring it back. It sat in its own
+floating window that macOS reported as **1 × 34 points** at the screen centre
+(1280, 719 on a 2560×1440-point display). The editor's saved layout stored that
+window as `WindowSize_X: 0, WindowSize_Y: 34`.
+
+**Mechanism (verified in the UE 5.8 source):**
+- The editor layout is **per-user and per-engine-version**, not per-project and
+  not part of the plugin. It lives in
+  `~/Library/Application Support/Epic/UnrealEngine/Editor/EditorLayout.json`,
+  which is read first (`LayoutService.cpp`, `LoadFromConfigPrivate`), and in
+  `~/Library/Application Support/Epic/UnrealEngine/5.8/Saved/Config/MacEditor/EditorLayout.ini`,
+  the fallback. Every save writes both.
+- On save, a floating window is stored as its screen rect minus the Slate
+  window border, divided by the DPI scale
+  (`SDockingArea.cpp`, `SetAreaNodeWindowPlacementValues`).
+- On restore, that size goes straight into `SWindow::ClientSize` with **no
+  minimum clamp** (`TabManager.cpp`, `RestoreArea_Helper`). The only floor is
+  the Mac window minimum of 10 × 10 points (`MacWindow.cpp`,
+  `CocoaWindow.cpp`), which leaves a one-point sliver once the border is
+  removed.
+- Closing the window and reopening TrueScope from the Window menu does not
+  help either. The tab reopens in its remembered floating area, at the same
+  remembered size.
+
+**Cause of the shrink — hypothesis, not established.** TrueScope sets no window
+size: its spawner has no `SetDefaultSize`, so a first float uses the engine's
+1000×600 fallback. The window was most likely resized to the macOS minimum at
+some point during the session of 2026-09-28. That is the first log in which a
+floating `TrueScope` window exists. The logs record no window geometry, so what
+shrank it — a user drag or a window-management action — cannot be recovered.
+Any floating editor tab would behave the same way, so this is **engine
+behaviour, not a TrueScope defect**.
+
+**Shipping relevance.** It can reach an end user only if their own floating
+TrueScope window is saved at such a size. Nothing in the plugin produces that
+state, and no plugin file carries it.
+
+**Recovery used (no file edits, editor running):** set the window's size and
+position through macOS Accessibility (`System Events` → `set size of window
+"TrueScope"` to 1000 × 600). The editor then saves the corrected size on its
+next layout write. The manual alternative, with the editor **closed** (it
+rewrites both files on exit), is to delete the TrueScope `Area` from both layout
+files. `Window → Load Layout → Default Editor Layout` also works but resets
+the whole editor layout.
+
+**Option (not built — needs a decision):** a plugin-side guard in
+`SpawnTrueScopeTab` that, once the tab's parent window exists, resizes a
+floating TrueScope window whose client area is below a readable minimum (for
+example, the scopes' 180×120 "Panel too small" threshold) back to a usable
+size. This is a product-behaviour change and belongs in a phase spec, not a
+fix-up.
