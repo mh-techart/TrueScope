@@ -326,9 +326,9 @@ The rule in `dev-rules.md` has been replaced accordingly.
 fallback in `dev-rules.md`), because the `unreal-mcp` skill harness was
 unavailable in this session.
 
-**Commits.** `a87cd70` (Task 1), `d063498` (Task 2), `2aadcee` (Task 3),
-`2abeede` (Task 4), `acc08b6` (Task 5), `303594d` (Task 6), `23cc238` (Task 7),
-`846ac1d` (Task 8), plus the closing documentation commit.
+**Commits.** `0097be9` (Task 1), `3db9c77` (Task 2), `49a3820` (Task 3),
+`c735210` (Task 4), `a0027ae` (Task 5), `c137ba2` (Task 6), `f4012d8` (Task 7),
+`ad95ae0` (Task 8), plus the closing documentation commit.
 
 ## Deliberately out of scope
 
@@ -846,8 +846,8 @@ the defects, which is the point.
 
 ### Commits
 
-`43d15b1` (immediate sliders), `b363208` (uniform text column), `f9e73e6`
-(right-click removed), `0fb8608` (M6.4.1 documentation), `b715da3` (CPU re-map
-guard), `cc33ea9` (drag benchmark), `9ceb4f6` (condition 2 and the frozen-viewport
-caveat), `f74e640` (click-through results), `b162423` (reset icon and row rhythm),
-`4d93651` (parade clearance bound), plus this closing documentation commit.
+`8119e52` (immediate sliders), `2aadb19` (uniform text column), `b23fe81`
+(right-click removed), `73e91b7` (M6.4.1 documentation), `c01f380` (CPU re-map
+guard), `234c893` (drag benchmark), `cb93a85` (condition 2 and the frozen-viewport
+caveat), `90ba483` (click-through results), `2221bc8` (reset icon and row rhythm),
+`27f8882` (parade clearance bound), plus this closing documentation commit.

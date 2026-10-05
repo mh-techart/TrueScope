@@ -318,11 +318,11 @@ decided from. Whether the bottom of the range is useful travel or wasted travel 
 never been checked on screen at a correct default. Tracked in `backlog.md`, "Density
 slider range", to be settled from the Tweakables menu.
 
-**Commits.** `2727c3c` (spec), `0b208dc`, `a332207`, `5ec78cf` (planning items),
-`dd42790` (`.uplugin` UTF-8 re-encode), `c102bb7` (`Config/` + `Resources/`),
-`862422f` (dev-rules + backlog housekeeping), `b4e3d3b` (calibrated defaults +
-refined threshold), `87b256f` (Task 5 results + CPU-vs-GPU delta), `7f92baf` (two
-leftover 1.67 %-era figures), `b73232e` (breakage proof re-run at 1.58 %), plus the
+**Commits.** `ced0bc4` (spec), `9613526`, `681d837`, `f6e0cb7` (planning items),
+`dd684b6` (`.uplugin` UTF-8 re-encode), `05723f3` (`Config/` + `Resources/`),
+`0be431b` (dev-rules + backlog housekeeping), `52103af` (calibrated defaults +
+refined threshold), `0ca6da3` (Task 5 results + CPU-vs-GPU delta), `8ad72af` (two
+leftover 1.67 %-era figures), `e5e52d1` (breakage proof re-run at 1.58 %), plus the
 closing commit that carries this summary.
 
 ## Status
