@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "0.1.5",
+	"VersionName": "0.9.0",
 	"FriendlyName": "TrueScope",
 	"Description": "Viewport Scopes for Unreal Engine Editor — Waveform, RGB Parade, Vectorscope and Histogram in a dockable editor window.",
 	"Category": "Editor",
@@ -20,11 +20,11 @@
 			"Enabled": true
 		}
 	],
-	"CreatedBy": "",
-	"CreatedByURL": "",
-	"DocsURL": "",
+	"CreatedBy": "Michael Herber",
+	"CreatedByURL": "https://github.com/mh-techart",
+	"DocsURL": "https://github.com/mh-techart/TrueScope/tree/main/docs",
 	"MarketplaceURL": "",
-	"SupportURL": "",
+	"SupportURL": "https://github.com/mh-techart/TrueScope/issues",
 	"IsBetaVersion": true,
 	"IsExperimentalVersion": false
 }
