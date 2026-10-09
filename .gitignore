@@ -1,6 +1,28 @@
 # Build artifacts
 Binaries/
 Intermediate/
+Build/
+DerivedDataCache/
+Saved/
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Editors and IDEs
+.vscode/
+.idea/
+.vs/
+*.VC.db
+*.VC.opendb
+*.sln
+*.xcodeproj
+*.xcworkspace
+
+# Local agent/tool configuration — machine-specific, may contain local paths
+.claude/
