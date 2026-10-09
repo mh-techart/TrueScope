@@ -1,4 +1,4 @@
-// Copyright 2026 TrueScope contributors
+// Copyright 2026 Michael Herber
 // SPDX-License-Identifier: Apache-2.0
 
 #include "Capture/TrueScopeCaptureGate.h"
