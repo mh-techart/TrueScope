@@ -1032,6 +1032,6 @@ Decided, not built.
 - **macOS binaries are not code-signed**, so they arrive quarantined. The README
   must carry the `xattr -r -d com.apple.quarantine` step, with building from
   source as the alternative.
-- **Not yet reconciled:** the M7 row in `architecture.md` ("Phase plan
-  (milestones)") still lists Linux among the `RunUAT BuildPlugin` targets.
-  Reconcile the two when the M7 spec is written.
+- **Reconciled in work order 23:** the M7 row in `architecture.md` ("Phase
+  plan (milestones)") no longer lists Linux among the `RunUAT BuildPlugin`
+  targets and states the reason.
