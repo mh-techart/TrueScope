@@ -360,24 +360,25 @@ mechanism rather than leaving stale traces.
   treat bin count, capture format, working colour space and scale reference (code
   values vs nits/PQ/HLG) as one connected decision rather than four separate ones.
   Related: "Scale behavior across bit depth / HDR / color spaces".
-- **Fill the empty `.uplugin` metadata before release** — `CreatedBy`,
-  `CreatedByURL`, `DocsURL`, `MarketplaceURL` and `SupportURL` are empty strings left
-  by the plugin wizard, so the Plugin Browser shows a blank author and the links go
-  nowhere. For an open-source plugin `CreatedBy` is how a user finds the project.
-  Also confirm whether `IsBetaVersion: true` is still wanted at release. Blocking for
-  publication, harmless until then.
-- **Create the GitHub repository and add the remote** — decided 2026-08-26
-  (see architecture.md, "Version control stays git"): a private repository
-  first, flipped to public when the plugin is ready. **The human does this,
-  not Claude Code** — dev-rules forbids adding a remote or pushing without an
-  explicit instruction, and that stays. Blocking for two things: working on
-  the Windows machine at all (the host project is deliberately not versioned,
-  so the plugin repo is the only thing that travels), and the `.uplugin` URL
-  fields. What the publication itself needs — README, LICENSE check, metadata,
-  builds on both platforms — is tracked separately.
-- **`VersionName` has no stated rule** — it moved 0.1.0 → 0.1.5 deliberately, but
-  nothing records what the number tracks (milestone? release?). Decide and document it
-  before the first public release, or it will drift.
+- **[resolved in work order 21] Fill the empty `.uplugin` metadata before
+  release** — `CreatedBy`, `CreatedByURL`, `DocsURL` and `SupportURL` were filled
+  in work order 21 (`57cbd6b`): the author's name, the GitHub account, the
+  repository's `docs/` folder and its issues page. What remains is deliberate:
+  `MarketplaceURL` stays empty because the plugin is not on Fab, and
+  `IsBetaVersion: true` was confirmed as still wanted at this stage. Both are
+  re-checked under "Before making the repository public" below.
+- **[resolved 2026-10-09] Create the GitHub repository and add the remote** —
+  the repository exists at `https://github.com/mh-techart/TrueScope`, private,
+  remote `origin` over HTTPS, first pushed 2026-10-09. The decision of 2026-08-26
+  is unchanged (see architecture.md, "Version control stays git"): it is flipped
+  to public later. Both things this entry blocked are unblocked — the plugin repo
+  now travels to the Windows machine, and the `.uplugin` URL fields are filled.
+  The rule that the human, not Claude Code, adds remotes and pushes still stands.
+- **`VersionName` has no stated rule** — it moved 0.1.0 → 0.1.5 deliberately and
+  is now `0.9.0` (work order 21); the `Version` integer is still `1`. Nothing
+  records what the number tracks (milestone? release?) or how the two relate.
+  **Still open:** decide and document it before the first public release, or it
+  will drift.
 - **Waveform density basis: fraction of column height vs absolute pixel count**
   — Resolve's density transfer was measured at 1080 rows only (2026-08-19: full white
   at ≈34 pixels per column ≈ 3.2 % of column height). Whether Resolve keys on the
@@ -985,3 +986,41 @@ floating TrueScope window whose client area is below a readable minimum (for
 example, the scopes' 180×120 "Panel too small" threshold) back to a usable
 size. This is a product-behaviour change and belongs in a phase spec, not a
 fix-up.
+
+## [checklist] Before making the repository public
+
+These items exist nowhere else. Work through them when the repository is
+flipped to public.
+
+- [ ] **Upload `docs/branding/TrueScope_SocialPreview.png`** through GitHub's
+  social preview setting. It can only be uploaded once the repository is public
+  (GitHub allows it on a private repository only if an image was uploaded
+  before).
+- [ ] **Fill the repository's Website field** once the author's portfolio page
+  is ready.
+- [ ] **Check the README's install section.** It currently describes building
+  from source only. If binary releases exist by then, add them; if not, make
+  sure nothing promises them.
+- [ ] **Confirm `IsBetaVersion` and `VersionName`** are still what should ship
+  (see the `.uplugin` metadata and `VersionName` entries under "Deferred
+  features").
+
+## [decided — M7] Precompiled binaries for the first release
+
+Decided, not built.
+
+- **Windows and macOS.** **Linux deliberately excluded** — it builds from source
+  but has never been tested, and maintaining binaries for it is not worth it.
+- **Why they exist at all:** a Blueprint-only project has no C++ toolchain, so a
+  source-only plugin cannot be compiled there at all. That excludes a large part
+  of the intended audience — artists and colourists, who rarely have Visual
+  Studio or Xcode installed. Precompiled binaries load without any compiler.
+- **Unverified and to be proven in M7:** that a precompiled TrueScope actually
+  loads in a Blueprint-only project on a machine with no toolchain. Plausible,
+  never tested. It belongs in M7's acceptance criteria, not in its findings.
+- **macOS binaries are not code-signed**, so they arrive quarantined. The README
+  must carry the `xattr -r -d com.apple.quarantine` step, with building from
+  source as the alternative.
+- **Not yet reconciled:** the M7 row in `architecture.md` ("Phase plan
+  (milestones)") still lists Linux among the `RunUAT BuildPlugin` targets.
+  Reconcile the two when the M7 spec is written.
