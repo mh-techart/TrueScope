@@ -7,10 +7,10 @@ body:
       value: |
         Thanks for taking the time to report this.
 
-        One thing worth trying first: if the scopes render wrongly, switch the
-        analysis path (gear icon → Analysis path → CPU compatibility) and see
-        whether it still happens. That single answer narrows most rendering
-        problems down a long way.
+        One thing worth trying first: if the scopes render wrongly, open the
+        settings (the gear icon at the top right of the TrueScope tab) and switch
+        from **GPU** to **CPU**, then see whether it still happens. That single
+        answer narrows most rendering problems down a long way.
 
   - type: textarea
     id: what-happened
@@ -72,12 +72,12 @@ body:
   - type: dropdown
     id: path
     attributes:
-      label: Does it also happen on the other analysis path?
-      description: Switch with the gear icon → Analysis path.
+      label: Does it also happen with the other setting (GPU / CPU)?
+      description: Switch it with the gear icon at the top right of the TrueScope tab.
       options:
-        - Happens on both GPU and CPU
-        - Only on the GPU path
-        - Only on the CPU path
+        - Happens with both GPU and CPU
+        - Only with GPU
+        - Only with CPU
         - Not applicable / did not try
     validations:
       required: true
@@ -96,9 +96,16 @@ body:
     attributes:
       label: Log output
       description: |
-        Any `LogTrueScope` lines from the Output Log, plus any warning or error
-        from around the time it happened. Entering `Log LogTrueScope Verbose` in
-        the editor console before reproducing gives considerably more detail.
+        Any lines from the Output Log in TrueScope's two log categories,
+        `LogTrueScope` and `LogTrueScopeAnalysis`, plus any warning or error
+        from around the time it happened. For considerably more detail, enter
+        both of these in the editor console before reproducing — each command
+        raises only the category it names:
+
+        ```
+        Log LogTrueScope Verbose
+        Log LogTrueScopeAnalysis Verbose
+        ```
       render: text
     validations:
       required: false
