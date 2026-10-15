@@ -286,6 +286,27 @@ strict:
 
 ## Build & test hygiene (learned the hard way)
 
+- **Running the automation suite headless.** The generic invocation; the exact
+  engine and project paths for a given machine belong in the host project's
+  `CLAUDE.md`:
+
+  ```
+  $UE_ROOT/Engine/Binaries/<Platform>/UnrealEditor-Cmd "$PROJECT_ROOT/<Project>.uproject" \
+    -ExecCmds="Automation RunTests TrueScope; Quit" -unattended -nopause -nullrhi -log
+  ```
+
+  There are two run modes, and both exist for a reason:
+  - **`-nullrhi`** — no GPU device at all. The five GPU equivalence tests
+    (`TrueScopeGpuEquivalenceTest.cpp`) detect the null RHI, skip themselves and
+    **still count as passed**. A full green count in this mode therefore does not
+    mean the GPU tests ran.
+  - **`-RenderOffscreen`** in place of `-nullrhi` — a real RHI with no window, so
+    the GPU tests actually run. **A change that touches the GPU path needs this
+    mode.**
+
+  Both modes report the same count (52 tests as of work order 23, five of them
+  GPU tests), so the count cannot tell them apart — the mode used has to be
+  stated alongside it.
 - **Close the editor before a headless test run.** With an editor instance
   running, UBT emits hot-reload dylibs (`-0001`, `-0002`) while the module
   manifest still points at the older one — a test run then silently executes

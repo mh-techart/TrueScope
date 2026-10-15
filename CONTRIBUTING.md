@@ -26,19 +26,11 @@ contributions are welcome; larger ones need a discussion issue first.
 - **It builds** on the platform you changed. Say which platforms you tested on,
   and name the engine version.
 - **The automation tests pass.** Run the `TrueScope.*` suite headless, with the
-  editor closed:
-
-  ```
-  UnrealEditor-Cmd <YourProject>.uproject -ExecCmds="Automation RunTests TrueScope; Quit" -unattended -nopause -nullrhi -log
-  ```
-
-  Under `-nullrhi` the GPU equivalence tests skip themselves and still count as
-  passed; run the suite a second time with `-RenderOffscreen` in place of
-  `-nullrhi` (a real RHI, no window) to exercise them. The conditions are
-  described under *"Build & test hygiene"* in
-  [`docs/dev-rules.md`](docs/dev-rules.md). Report the test count you got — the
-  count is this project's stale-code tripwire, so a number lower than expected
-  means something did not rebuild.
+  editor closed. The invocation, its two run modes and when each one is needed
+  are under *"Build & test hygiene"* in [`docs/dev-rules.md`](docs/dev-rules.md).
+  Report the test count you got, and which mode you ran — the count is this
+  project's stale-code tripwire, so a number lower than expected means something
+  did not rebuild.
 - **New behaviour comes with a test.** For a bug fix, the regression test must be
   shown to fail on the reintroduced bug and pass after the fix — see *"Prove a
   regression test has teeth"* in [`docs/architecture.md`](docs/architecture.md).
