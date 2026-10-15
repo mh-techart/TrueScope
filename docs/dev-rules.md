@@ -307,6 +307,11 @@ strict:
   Both modes report the same count (52 tests as of work order 23, five of them
   GPU tests), so the count cannot tell them apart — the mode used has to be
   stated alongside it.
+
+  The results go to the editor log, not to the terminal: on macOS that is
+  `~/Library/Logs/Unreal Engine/UEscopesEditor/UEscopes.log` (the path on the
+  Windows machine differs), so a terminal that shows no results does not mean
+  nothing ran.
 - **Close the editor before a headless test run.** With an editor instance
   running, UBT emits hot-reload dylibs (`-0001`, `-0002`) while the module
   manifest still points at the older one — a test run then silently executes

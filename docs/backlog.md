@@ -362,7 +362,9 @@ mechanism rather than leaving stale traces.
   Related: "Scale behavior across bit depth / HDR / color spaces".
 - **Scale granularity with an 8-bit capture — compare against DaVinci Resolve.**
   TrueScope plots on the familiar 0–1023 scale, but captures 8-bit, so only 256
-  distinct values can appear, at multiples of 4. Whether that is worth telling
+  distinct values can ever appear on a 1024-step axis, spaced roughly four
+  positions apart (the exact step depends on how the top of the 8-bit range maps
+  to the top of the axis, which has not been checked). Whether that is worth telling
   the user depends on an answer nobody has looked up yet: **does Resolve behave
   the same way on 8-bit material?** If it does, this is simply how the industry's
   tools work on 8-bit input and needs no mention anywhere. If Resolve carries
@@ -483,6 +485,33 @@ mechanism rather than leaving stale traces.
   Blueprint-only users; verify current Fab submission terms at M7 time.
 - **Engine version ports (±1 minor)** — after M6; per-version binaries in
   GitHub releases.
+- **Which shader model the macOS tests actually exercise — open, not blocking.**
+  The `-RenderOffscreen` test run of work order 23 logged *"To use SM6 on this
+  system, please ensure you are running Mac OS 15. Falling back to SM5"* on a
+  machine running **macOS 26**. The five GPU tests therefore ran under SM5. It is
+  **not known** which shader model the interactive editor uses on the same
+  machine, so it is not known whether the GPU tests exercise what a user gets.
+
+  **Three things to untangle before this means anything**, none of them urgent:
+
+  1. **The engine's version check is the suspect, not the machine.** macOS 15 is
+     from 2024. Apple ships a new macOS every year, prompts insistently for the
+     update, and ties Xcode versions to it — nobody downgrades, and keeping
+     machines on old macOS versions is not a realistic development setup. Apple
+     also switched to year-based naming, so **macOS 26 is not eleven releases
+     past macOS 15**; it is the very next release. A check written before that
+     change cannot read 26 correctly. This is an Unreal-side question, not a
+     TrueScope one.
+  2. **Whether SM6 runs on an M1 at all is unverified.** It may require newer
+     Apple silicon, in which case the fallback is correct behaviour and only the
+     message is misleading.
+  3. Only once 1 and 2 are answered does the question that matters — whether the
+     GPU tests and the interactive editor agree — become answerable at all.
+
+  Relevant to the M7 cross-platform parity work and to the measurement session.
+  **Not relevant to shipping 0.9:** the plugin demonstrably runs on both
+  development machines and on both analysis paths. Recorded so this is not
+  rediscovered expensively later.
 - **Scope display modes** — small per-scope display variants, seen in FCP:
   **Monochrome** (white instead of colored traces), Show Guides toggle,
   trace-brightness control **(now specified: a per-scope gain slider, M6.3)**,
