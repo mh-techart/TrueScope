@@ -485,14 +485,20 @@ CVar). Report the verified query commands; only then use them to confirm state.
 - **Record conditions with every number.** A timing without its conditions
   (scalability, `ScreenPercentage`, `t.MaxFPS`, VSync, High-DPI, which scene,
   idle vs. interacting) is not a result.
-- **Announce before taking over the editor or the pointer.** Any step driving the
-  editor through synthetic input — MCP clicks, key presses, window scripting, an
-  editor restart — takes the machine away from the human with no warning. Say
-  what is about to happen and wait for a go-ahead before the first such step in a
-  session. The human may be using the mouse: a stray pointer movement can land a
-  click somewhere unintended, and a screenshot can capture a state that never
-  existed. A screenshot taken while the human was moving the pointer is not
-  evidence.
+- **Announce before taking over the interactive editor or the pointer.** The rule
+  governs the **interactive editor**: any step involving the pointer, the editor
+  window, synthetic input or screenshots — MCP clicks, key presses, window
+  scripting, an editor restart — takes the machine away from the human with no
+  warning. Say what is about to happen and wait for a go-ahead before the first
+  such step in a session. The human may be using the mouse: a stray pointer
+  movement can land a click somewhere unintended, and a screenshot can capture a
+  state that never existed. A screenshot taken while the human was moving the
+  pointer is not evidence.
+  **Headless and windowless runs are explicitly not covered** — a
+  `UnrealEditor-Cmd` automation run under `-nullrhi` or `-RenderOffscreen` (see
+  "Build & test hygiene") has no UI and no pointer, and takes nothing away from
+  the human, so it needs no announcement. Closing a running interactive editor so
+  that such a run can start *is* covered.
 
 ## Reference test environment (host project)
 
