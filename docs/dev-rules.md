@@ -191,15 +191,24 @@ it as follows:
 - **Visual verification is part of done:** after UI-affecting changes, launch
   the editor, take a screenshot of the TrueScope tab via MCP, and inspect it
   before declaring a task complete.
-- **Slate popup menus can be opened by MCP — with a two-step sequence.** `Click`
-  alone on a menu button returns `true` and opens nothing; `Click` followed by
-  `PressKey "Enter"` opens the menu reliably. All four TrueScope panel menus and
-  the settings popup were opened and screenshotted this way with no human input
-  (2026-08-22). This supersedes the earlier blanket "MCP cannot open Slate popup
-  menus".
-  **Caveat on the evidence:** that session used the direct HTTP JSON-RPC fallback
-  transport, because the skill harness was unavailable. Confirm the sequence once
-  through the normal harness before relying on it there, and record the result.
+- **Slate popup menus can be opened by MCP — but the sequence depends on the
+  menu.** Two cases have been observed, and they are opposite:
+  - **TrueScope panel menus and the settings popup — `Click`, then `PressKey
+    "Enter"`.** `Click` alone on the menu button returns `true` and opens
+    nothing; `Click` followed by `PressKey "Enter"` opens the menu reliably. All
+    four panel menus and the settings popup were opened and screenshotted this
+    way with no human input (2026-08-22). This supersedes the earlier blanket
+    "MCP cannot open Slate popup menus".
+  - **The editor's main menu bar (File, Edit, Window …) — `Click` alone.** There
+    `Click` alone opened the Window menu, and `Click` followed by `PressKey
+    "Enter"` did not (work order 21, 2026-10-09).
+  - Any other menu is untested. Do not carry either sequence over by analogy:
+    confirm that a menu window actually appeared before recording which one
+    worked.
+  **Caveat on the evidence:** both findings came through the direct HTTP
+  JSON-RPC fallback transport, because the skill harness was unavailable in both
+  sessions. Confirming each sequence once through the normal harness is still
+  **outstanding**; record the result when it is obtained.
   **Still out of reach, and not a High-DPI issue** (High DPI was *on* throughout):
   anything requiring a **held drag** — sliders, splitters. Those need a human
   hand; ask, and say in the report which checks were human-verified.
@@ -455,6 +464,14 @@ CVar). Report the verified query commands; only then use them to confirm state.
 - **Record conditions with every number.** A timing without its conditions
   (scalability, `ScreenPercentage`, `t.MaxFPS`, VSync, High-DPI, which scene,
   idle vs. interacting) is not a result.
+- **Announce before taking over the editor or the pointer.** Any step driving the
+  editor through synthetic input — MCP clicks, key presses, window scripting, an
+  editor restart — takes the machine away from the human with no warning. Say
+  what is about to happen and wait for a go-ahead before the first such step in a
+  session. The human may be using the mouse: a stray pointer movement can land a
+  click somewhere unintended, and a screenshot can capture a state that never
+  existed. A screenshot taken while the human was moving the pointer is not
+  evidence.
 
 ## Reference test environment (host project)
 
