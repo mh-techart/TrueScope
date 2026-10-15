@@ -360,6 +360,17 @@ mechanism rather than leaving stale traces.
   treat bin count, capture format, working colour space and scale reference (code
   values vs nits/PQ/HLG) as one connected decision rather than four separate ones.
   Related: "Scale behavior across bit depth / HDR / color spaces".
+- **Scale granularity with an 8-bit capture — compare against DaVinci Resolve.**
+  TrueScope plots on the familiar 0–1023 scale, but captures 8-bit, so only 256
+  distinct values can appear, at multiples of 4. Whether that is worth telling
+  the user depends on an answer nobody has looked up yet: **does Resolve behave
+  the same way on 8-bit material?** If it does, this is simply how the industry's
+  tools work on 8-bit input and needs no mention anywhere. If Resolve carries
+  more precision through to its scopes, then TrueScope could and should do the
+  same, and this becomes work rather than a note. Deliberately **not** mentioned
+  in the README until it is settled — an unexplained caveat costs more trust than
+  it buys. Related: the capture format itself, in the README's
+  wider-colour-space roadmap item.
 - **[resolved in work order 21] Fill the empty `.uplugin` metadata before
   release** — `CreatedBy`, `CreatedByURL`, `DocsURL` and `SupportURL` were filled
   in work order 21 (`57cbd6b`): the author's name, the GitHub account, the

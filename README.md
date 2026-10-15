@@ -148,7 +148,7 @@ These are the directions the project is likely to take next (no fixed schedule):
 
 - **Viewport overlays** — zebra, over/under-exposure warning, false color to add to TrueScope's capabilities.
 
-- **Wider color-space support** — calibration and verification beyond sRGB / Rec.709. This is especially important for virtual production pipelines. TrueScope currently captures 10-bit, in Unreal's A2B10G10R10 format.
+- **Wider color-space support** — calibration and verification beyond sRGB / Rec.709. This is especially important for virtual production pipelines. The engine delivers the post-tonemap image as 10-bit A2B10G10R10, but TrueScope currently captures into an 8-bit target; a higher-precision capture is part of this work.
 
 - **Cross-platform parity verification** — confirm that Windows and macOS produce the same values on both analysis paths.
 
