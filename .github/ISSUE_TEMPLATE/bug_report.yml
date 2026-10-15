@@ -1,0 +1,104 @@
+name: Bug report
+description: Something in TrueScope behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        One thing worth trying first: if the scopes render wrongly, switch the
+        analysis path (gear icon → Analysis path → CPU compatibility) and see
+        whether it still happens. That single answer narrows most rendering
+        problems down a long way.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see? A screenshot of the TrueScope panel usually says more than a description.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Window → TrueScope
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: engine
+    attributes:
+      label: Unreal Engine version
+      placeholder: "5.8.2"
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      description: Model, and the driver version if you know it.
+      placeholder: "NVIDIA RTX 4070, driver 566.36"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: path
+    attributes:
+      label: Does it also happen on the other analysis path?
+      description: Switch with the gear icon → Analysis path.
+      options:
+        - Happens on both GPU and CPU
+        - Only on the GPU path
+        - Only on the CPU path
+        - Not applicable / did not try
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: TrueScope version
+      description: Shown in Edit → Plugins.
+      placeholder: "0.9.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log output
+      description: |
+        Any `LogTrueScope` lines from the Output Log, plus any warning or error
+        from around the time it happened. Entering `Log LogTrueScope Verbose` in
+        the editor console before reproducing gives considerably more detail.
+      render: text
+    validations:
+      required: false

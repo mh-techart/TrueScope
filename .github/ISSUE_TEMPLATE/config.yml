@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation, architecture and backlog
+    url: https://github.com/mh-techart/TrueScope/tree/main/docs
+    about: How TrueScope works, what is planned, and what was deliberately left out.
+  - name: Feature requests
+    url: https://github.com/mh-techart/TrueScope/blob/main/CONTRIBUTING.md#feature-requests
+    about: Feature requests are closed with a pointer to the backlog — please read this first.
